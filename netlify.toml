@@ -1,0 +1,11 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Poll Gmail every 10 minutes for new mail to/from known contacts
+[functions."gmail-sync"]
+  schedule = "*/10 * * * *"

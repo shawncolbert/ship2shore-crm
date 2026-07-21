@@ -1,0 +1,159 @@
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchDefaultPipeline, moveOpportunity, cancelOpportunity } from '../lib/supabase'
+
+const money = (n) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+    .format(Number(n || 0))
+
+const PORT_LABEL = {
+  long_beach: 'Long Beach',
+  wilmington: 'Wilmington',
+  matson: 'Matson',
+  other: 'Other',
+}
+
+export default function Pipeline() {
+  const qc = useQueryClient()
+  const [dragId, setDragId] = useState(null)
+  const [overStage, setOverStage] = useState(null)
+  const [cancelling, setCancelling] = useState(null)
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['pipeline'],
+    queryFn: fetchDefaultPipeline,
+  })
+
+  const onCancel = async (id) => {
+    setCancelling(id)
+    qc.setQueryData(['pipeline'], (prev) => {
+      if (!prev) return prev
+      return { ...prev, opportunities: prev.opportunities.filter((o) => o.id !== id) }
+    })
+    try {
+      await cancelOpportunity(id)
+    } finally {
+      qc.invalidateQueries({ queryKey: ['pipeline'] })
+      setCancelling(null)
+    }
+  }
+
+  const onDrop = async (stageId) => {
+    setOverStage(null)
+    const id = dragId
+    setDragId(null)
+    if (!id) return
+
+    // optimistic update
+    qc.setQueryData(['pipeline'], (prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        opportunities: prev.opportunities.map((o) =>
+          o.id === id ? { ...o, stage_id: stageId } : o
+        ),
+      }
+    })
+    try {
+      await moveOpportunity(id, stageId)
+    } finally {
+      qc.invalidateQueries({ queryKey: ['pipeline'] })
+    }
+  }
+
+  if (isLoading) return <div className="p-8 text-sm text-muted">Loading board…</div>
+  if (error)
+    return (
+      <div className="p-8 text-sm text-port">
+        Couldn’t load the pipeline. Make sure the schema ran and you’re signed in.
+      </div>
+    )
+
+  const { stages, opportunities } = data
+
+  return (
+    <div className="flex h-full flex-col p-6 lg:p-8">
+      <header className="mb-5">
+        <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">
+          Pipeline
+        </h1>
+        <p className="text-sm text-muted">Drag a job to move it through the stages.</p>
+      </header>
+
+      <div className="flex flex-1 gap-4 overflow-x-auto pb-2">
+        {stages.map((stage) => {
+          const cards = opportunities.filter((o) => o.stage_id === stage.id)
+          const total = cards.reduce((s, c) => s + Number(c.value || 0), 0)
+          const isOver = overStage === stage.id
+          return (
+            <div
+              key={stage.id}
+              onDragOver={(e) => { e.preventDefault(); setOverStage(stage.id) }}
+              onDragLeave={() => setOverStage((s) => (s === stage.id ? null : s))}
+              onDrop={() => onDrop(stage.id)}
+              className={`flex w-72 shrink-0 flex-col rounded-xl border bg-canvas/60 ${
+                isOver ? 'border-accent ring-2 ring-accent/30' : 'border-line'
+              }`}
+            >
+              <div className="flex items-center justify-between px-3 py-2.5">
+                <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  {stage.name}
+                  <span className="rounded-full bg-ink/10 px-1.5 text-xs text-ink/70">
+                    {cards.length}
+                  </span>
+                </span>
+                <span className="font-[family-name:var(--font-mono)] text-xs text-muted">
+                  {money(total)}
+                </span>
+              </div>
+
+              <div className="flex-1 space-y-2 px-2 pb-3">
+                {cards.length === 0 && (
+                  <div className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-xs text-muted">
+                    Drop jobs here
+                  </div>
+                )}
+                {cards.map((c) => (
+                  <article
+                    key={c.id}
+                    draggable
+                    onDragStart={() => setDragId(c.id)}
+                    onDragEnd={() => setDragId(null)}
+                    className={`group cursor-grab rounded-lg border border-line bg-surface p-3 shadow-sm active:cursor-grabbing ${
+                      dragId === c.id ? 'opacity-50' : ''
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-medium text-ink">
+                        {c.contacts?.full_name || c.title || 'Job'}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <span className="font-[family-name:var(--font-mono)] text-sm text-ink">
+                          {money(c.value)}
+                        </span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onCancel(c.id) }}
+                          disabled={cancelling === c.id}
+                          title="Cancel job"
+                          className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+                            <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-xs text-muted">
+                      {c.service_code && <span className="capitalize">{c.service_code.replace(/_/g, ' ')}</span>}
+                      {c.port && <span>· {PORT_LABEL[c.port] || c.port}</span>}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
