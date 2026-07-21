@@ -151,7 +151,7 @@ create table if not exists public.opportunities (
                 ('long_beach','wilmington','matson','other')),
   value         numeric(10,2) not null default 0,
   status        text not null default 'open'
-                check (status in ('open','won','lost')),
+                check (status in ('open','won','lost','cancelled')),
   scheduled_at  timestamptz,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
