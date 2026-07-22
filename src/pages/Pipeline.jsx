@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchDefaultPipeline, moveOpportunity, cancelOpportunity } from '../lib/supabase'
+import NewContactModal from '../components/NewContactModal'
 
 const money = (n) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -18,6 +19,7 @@ export default function Pipeline() {
   const [dragId, setDragId] = useState(null)
   const [overStage, setOverStage] = useState(null)
   const [cancelling, setCancelling] = useState(null)
+  const [showNew, setShowNew] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['pipeline'],
@@ -73,11 +75,19 @@ export default function Pipeline() {
 
   return (
     <div className="flex h-full flex-col p-4 sm:p-6 lg:p-8">
-      <header className="mb-5">
-        <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">
-          Pipeline
-        </h1>
-        <p className="text-sm text-muted">Drag a job to move it through the stages.</p>
+      <header className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">
+            Pipeline
+          </h1>
+          <p className="text-sm text-muted">Drag a job to move it through the stages.</p>
+        </div>
+        <button
+          onClick={() => setShowNew(true)}
+          className="shrink-0 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-accent-600"
+        >
+          + New booking
+        </button>
       </header>
 
       <div className="flex flex-1 gap-4 overflow-x-auto pb-2">
@@ -154,6 +164,8 @@ export default function Pipeline() {
           )
         })}
       </div>
+
+      <NewContactModal open={showNew} onClose={() => setShowNew(false)} />
     </div>
   )
 }

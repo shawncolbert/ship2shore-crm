@@ -4,10 +4,12 @@ import { Link } from 'react-router-dom'
 import { fetchContacts } from '../lib/supabase'
 import SegmentFilter from '../components/SegmentFilter'
 import Badge from '../components/Badge'
+import NewContactModal from '../components/NewContactModal'
 
 export default function Contacts() {
   const [segment, setSegment] = useState(null)
   const [search, setSearch] = useState('')
+  const [showNew, setShowNew] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['contacts', segment, search],
@@ -16,11 +18,19 @@ export default function Contacts() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <header className="mb-6">
-        <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">
-          Contacts
-        </h1>
-        <p className="text-sm text-muted">Brokers, dispatchers, and clients.</p>
+      <header className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">
+            Contacts
+          </h1>
+          <p className="text-sm text-muted">Brokers, dispatchers, and clients.</p>
+        </div>
+        <button
+          onClick={() => setShowNew(true)}
+          className="shrink-0 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-accent-600"
+        >
+          + New contact
+        </button>
       </header>
 
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -71,6 +81,8 @@ export default function Contacts() {
           </Link>
         ))}
       </div>
+
+      <NewContactModal open={showNew} onClose={() => setShowNew(false)} />
     </div>
   )
 }

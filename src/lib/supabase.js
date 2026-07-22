@@ -30,6 +30,95 @@ export async function fetchContacts({ segment = null, search = '' } = {}) {
   return data
 }
 
+// The org the signed-in user belongs to. Inserts must carry this org_id
+// so they satisfy the row-level-security policy (with check org_id in my orgs).
+export async function fetchMyOrgId() {
+  const { data, error } = await supabase
+    .from('memberships')
+    .select('org_id')
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error('No organization found for this user.')
+  return data.org_id
+}
+
+export async function fetchServices() {
+  const { data, error } = await supabase
+    .from('services')
+    .select('code, name, default_rate')
+    .eq('active', true)
+    .order('name', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+// Create a contact and, optionally, a "New Booking" opportunity for it.
+// `booking` is null to skip the pipeline card, or an object with
+// { title, service_code, port, value } to also drop a card in the first stage.
+export async function createContactWithBooking({ contact, booking = null }) {
+  const orgId = await fetchMyOrgId()
+
+  const payload = {
+    org_id: orgId,
+    full_name: contact.full_name?.trim() || null,
+    company: contact.company?.trim() || null,
+    phone: contact.phone?.trim() || null,
+    email: contact.email?.trim() || null,
+    segment: contact.segment || null,
+    source: 'manual',
+  }
+
+  const { data: newContact, error: cErr } = await supabase
+    .from('contacts')
+    .insert(payload)
+    .select('id, full_name, company, phone, email, segment')
+    .single()
+  if (cErr) throw cErr
+
+  let opportunity = null
+  if (booking) {
+    // Drop the card into the default pipeline's first stage ("New Booking").
+    const { data: pipeline, error: pErr } = await supabase
+      .from('pipelines')
+      .select('id')
+      .eq('org_id', orgId)
+      .eq('is_default', true)
+      .limit(1)
+      .single()
+    if (pErr) throw pErr
+
+    const { data: stage, error: sErr } = await supabase
+      .from('stages')
+      .select('id')
+      .eq('pipeline_id', pipeline.id)
+      .order('position', { ascending: true })
+      .limit(1)
+      .single()
+    if (sErr) throw sErr
+
+    const { data: newOpp, error: oErr } = await supabase
+      .from('opportunities')
+      .insert({
+        org_id: orgId,
+        contact_id: newContact.id,
+        pipeline_id: pipeline.id,
+        stage_id: stage.id,
+        title: booking.title?.trim() || null,
+        service_code: booking.service_code || null,
+        port: booking.port || null,
+        value: Number(booking.value) || 0,
+        status: 'open',
+      })
+      .select('id')
+      .single()
+    if (oErr) throw oErr
+    opportunity = newOpp
+  }
+
+  return { contact: newContact, opportunity }
+}
+
 export async function fetchContact(id) {
   const [contact, jobs, appts, activities] = await Promise.all([
     supabase.from('contacts').select('*').eq('id', id).single(),
