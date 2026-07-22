@@ -21,7 +21,7 @@ export default function ContactDetail() {
   const { contact, jobs, appointments, activities } = data
 
   return (
-    <div className="p-6 lg:p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link to="/contacts" className="text-sm text-muted hover:text-ink">‹ Contacts</Link>
 
       <header className="mt-3 mb-6 flex items-start justify-between">

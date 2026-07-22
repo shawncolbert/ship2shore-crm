@@ -29,8 +29,8 @@ export default function Inbox() {
 
   return (
     <div className="flex h-full">
-      {/* Conversation list */}
-      <div className="flex w-80 shrink-0 flex-col border-r border-line bg-surface">
+      {/* Conversation list — full width on mobile; hidden once a thread is open */}
+      <div className={`${active ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-line bg-surface md:w-80`}>
         <div className="border-b border-line px-4 py-3">
           <h1 className="font-[family-name:var(--font-display)] text-lg font-bold text-ink">Inbox</h1>
           <p className="text-xs text-muted">Email conversations. SMS lane is dormant until a compliant Ship2Shore number is set up.</p>
@@ -74,9 +74,9 @@ export default function Inbox() {
 
       {/* Thread */}
       {active ? (
-        <Thread conversation={active} />
+        <Thread conversation={active} onBack={() => setActiveId(null)} />
       ) : (
-        <div className="flex flex-1 items-center justify-center text-sm text-muted">
+        <div className="hidden flex-1 items-center justify-center text-sm text-muted md:flex">
           Select a conversation.
         </div>
       )}
@@ -95,7 +95,7 @@ function ChannelTag({ channel }) {
   )
 }
 
-function Thread({ conversation }) {
+function Thread({ conversation, onBack }) {
   const qc = useQueryClient()
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
@@ -134,10 +134,21 @@ function Thread({ conversation }) {
   }
 
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="border-b border-line bg-surface px-5 py-3">
-        <div className="font-medium text-ink">{conversation.contacts?.full_name || conversation.contacts?.email}</div>
-        <div className="text-xs text-muted">{conversation.contacts?.email}</div>
+    <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex items-center gap-2 border-b border-line bg-surface px-4 py-3 md:px-5">
+        <button
+          onClick={onBack}
+          aria-label="Back to inbox"
+          className="-ml-1 rounded p-1 text-muted hover:text-ink md:hidden"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <div className="min-w-0">
+          <div className="truncate font-medium text-ink">{conversation.contacts?.full_name || conversation.contacts?.email}</div>
+          <div className="truncate text-xs text-muted">{conversation.contacts?.email}</div>
+        </div>
       </div>
 
       <div className="flex-1 space-y-3 overflow-auto bg-canvas px-5 py-4">
