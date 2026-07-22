@@ -90,7 +90,7 @@ export default function Pipeline() {
         </button>
       </header>
 
-      <div className="flex flex-1 gap-4 overflow-x-auto pb-2">
+      <div className="flex flex-1 gap-3 overflow-x-auto pb-2">
         {stages.map((stage) => {
           const cards = opportunities.filter((o) => o.stage_id === stage.id)
           const total = cards.reduce((s, c) => s + Number(c.value || 0), 0)
@@ -101,7 +101,7 @@ export default function Pipeline() {
               onDragOver={(e) => { e.preventDefault(); setOverStage(stage.id) }}
               onDragLeave={() => setOverStage((s) => (s === stage.id ? null : s))}
               onDrop={() => onDrop(stage.id)}
-              className={`flex w-72 shrink-0 flex-col rounded-xl border bg-canvas/60 ${
+              className={`flex min-w-[11rem] flex-1 basis-0 flex-col rounded-xl border bg-canvas/60 ${
                 isOver ? 'border-accent ring-2 ring-accent/30' : 'border-line'
               }`}
             >
