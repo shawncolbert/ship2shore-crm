@@ -1,11 +1,18 @@
 import { useState } from 'react'
+import { Navigate } from 'react-router-dom'
 import { supabase, isConfigured } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
+  const { session, loading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+
+  // Already signed in (or just signed in successfully) — go to the dashboard.
+  // Without this, a successful sign-in leaves you sitting on /login.
+  if (!loading && session) return <Navigate to="/" replace />
 
   const signIn = async (e) => {
     e?.preventDefault()
