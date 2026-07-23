@@ -155,7 +155,7 @@ export async function fetchDefaultPipeline() {
 
   const { data: opps, error: oErr } = await supabase
     .from('opportunities')
-    .select('id, title, service_code, port, value, stage_id, contact_id, status, billing_number, contacts(full_name, company)')
+    .select('id, title, service_code, port, value, stage_id, contact_id, status, billing_number, cleared, paid, contacts(full_name, company)')
     .eq('pipeline_id', pipeline.id)
   if (oErr) throw oErr
 
@@ -182,6 +182,15 @@ export async function setOpportunityBilling(id, billingNumber) {
     .from('opportunities').update({ billing_number: value }).eq('id', id)
   if (error) throw error
   return value
+}
+
+// Toggle per-job flags (cleared, paid). Pass only the fields you're changing.
+export async function patchOpportunity(id, patch) {
+  const allowed = {}
+  if ('cleared' in patch) allowed.cleared = !!patch.cleared
+  if ('paid' in patch) allowed.paid = !!patch.paid
+  const { error } = await supabase.from('opportunities').update(allowed).eq('id', id)
+  if (error) throw error
 }
 
 export async function fetchDashboardStats() {

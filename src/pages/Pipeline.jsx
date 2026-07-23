@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchDefaultPipeline, moveOpportunity, cancelOpportunity, setOpportunityBilling } from '../lib/supabase'
+import { fetchDefaultPipeline, moveOpportunity, cancelOpportunity, setOpportunityBilling, patchOpportunity } from '../lib/supabase'
 import NewContactModal from '../components/NewContactModal'
 
 const money = (n) =>
@@ -37,6 +37,24 @@ export default function Pipeline() {
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
       setCancelling(null)
+    }
+  }
+
+  // Toggle a per-job flag (cleared / paid) with an optimistic card update.
+  const onPatch = async (id, patch) => {
+    qc.setQueryData(['pipeline'], (prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        opportunities: prev.opportunities.map((o) =>
+          o.id === id ? { ...o, ...patch } : o
+        ),
+      }
+    })
+    try {
+      await patchOpportunity(id, patch)
+    } finally {
+      qc.invalidateQueries({ queryKey: ['pipeline'] })
     }
   }
 
@@ -150,6 +168,7 @@ export default function Pipeline() {
                     cancelling={cancelling}
                     onCancel={onCancel}
                     onSaveBilling={onSaveBilling}
+                    onPatch={onPatch}
                   />
                 ))}
               </div>
@@ -163,7 +182,7 @@ export default function Pipeline() {
   )
 }
 
-function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling }) {
+function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling, onPatch }) {
   const ref = useRef(null)
   // A text input inside a draggable=true element can't take focus in Chrome.
   // Flip the card's draggable flag off imperatively the instant the billing
@@ -181,13 +200,21 @@ function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling }) 
       }`}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-medium text-ink">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
           {c.contacts?.full_name || c.title || 'Job'}
         </span>
         <div className="flex shrink-0 items-center gap-1">
-          <span className="font-[family-name:var(--font-mono)] text-sm text-ink">
+          {/* Click the price to strike it through = customer paid */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onPatch(c.id, { paid: !c.paid }) }}
+            title={c.paid ? 'Paid — click to mark unpaid' : 'Mark as paid'}
+            className={`rounded font-[family-name:var(--font-mono)] text-sm transition-colors hover:bg-canvas ${
+              c.paid ? 'text-starboard line-through decoration-2' : 'text-ink'
+            }`}
+          >
             {money(c.value)}
-          </span>
+          </button>
           <button
             onClick={(e) => { e.stopPropagation(); onCancel(c.id) }}
             disabled={cancelling === c.id}
@@ -201,8 +228,16 @@ function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling }) 
         </div>
       </div>
       <div className="mt-1 flex items-center gap-2 text-xs text-muted">
-        {c.service_code && <span className="capitalize">{c.service_code.replace(/_/g, ' ')}</span>}
-        {c.port && <span>· {PORT_LABEL[c.port] || c.port}</span>}
+        {c.service_code && <span className="truncate capitalize">{c.service_code.replace(/_/g, ' ')}</span>}
+        {c.port && <span className="shrink-0">· {PORT_LABEL[c.port] || c.port}</span>}
+      </div>
+
+      {/* Cleared toggle: NC = not cleared, C = cleared */}
+      <div className="mt-2">
+        <ClearedToggle
+          cleared={c.cleared}
+          onToggle={() => onPatch(c.id, { cleared: !c.cleared })}
+        />
       </div>
 
       <BillingField
@@ -212,6 +247,38 @@ function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling }) 
         onInteractEnd={() => setDraggable(true)}
       />
     </article>
+  )
+}
+
+// Cleared / not-cleared switch. Shows a sliding toggle plus a C / NC label.
+function ClearedToggle({ cleared, onToggle }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={cleared}
+      aria-label={cleared ? 'Cleared' : 'Not cleared'}
+      title={cleared ? 'Cleared — click to mark not cleared' : 'Not cleared — click to mark cleared'}
+      onClick={(e) => { e.stopPropagation(); onToggle() }}
+      className="flex shrink-0 items-center gap-1"
+    >
+      <span
+        className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors ${
+          cleared ? 'bg-starboard' : 'bg-slate-300'
+        }`}
+      >
+        <span
+          className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+            cleared ? 'translate-x-4' : 'translate-x-0.5'
+          }`}
+        />
+      </span>
+      <span
+        className={`w-5 text-[10px] font-bold ${cleared ? 'text-starboard' : 'text-port'}`}
+      >
+        {cleared ? 'C' : 'NC'}
+      </span>
+    </button>
   )
 }
 
