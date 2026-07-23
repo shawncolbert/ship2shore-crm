@@ -47,6 +47,7 @@ export const handler = async (event) => {
 
   const url = process.env.SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_KEY
+    || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.service_role_key
   const org = process.env.ORG_ID
   if (!url || !serviceKey) return json(500, { error: 'Missing SUPABASE_URL / SUPABASE_SERVICE_KEY' })
   if (!org) return json(500, { error: 'Missing ORG_ID' })
