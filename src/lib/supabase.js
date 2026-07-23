@@ -155,7 +155,7 @@ export async function fetchDefaultPipeline() {
 
   const { data: opps, error: oErr } = await supabase
     .from('opportunities')
-    .select('id, title, service_code, port, value, stage_id, contact_id, status, contacts(full_name, company)')
+    .select('id, title, service_code, port, value, stage_id, contact_id, status, billing_number, contacts(full_name, company)')
     .eq('pipeline_id', pipeline.id)
   if (oErr) throw oErr
 
@@ -172,6 +172,16 @@ export async function cancelOpportunity(id) {
   const { error } = await supabase
     .from('opportunities').update({ status: 'cancelled' }).eq('id', id)
   if (error) throw error
+}
+
+// Ship billing number that rides along with a job. Capped at 16 chars;
+// blank clears it. Stays on the opportunity through every stage.
+export async function setOpportunityBilling(id, billingNumber) {
+  const value = billingNumber?.trim() ? billingNumber.trim().slice(0, 16) : null
+  const { error } = await supabase
+    .from('opportunities').update({ billing_number: value }).eq('id', id)
+  if (error) throw error
+  return value
 }
 
 export async function fetchDashboardStats() {

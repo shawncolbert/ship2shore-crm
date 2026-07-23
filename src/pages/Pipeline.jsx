@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchDefaultPipeline, moveOpportunity, cancelOpportunity } from '../lib/supabase'
+import { fetchDefaultPipeline, moveOpportunity, cancelOpportunity, setOpportunityBilling } from '../lib/supabase'
 import NewContactModal from '../components/NewContactModal'
 
 const money = (n) =>
@@ -37,6 +37,24 @@ export default function Pipeline() {
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
       setCancelling(null)
+    }
+  }
+
+  const onSaveBilling = async (id, value) => {
+    // optimistic: show it on the card right away
+    qc.setQueryData(['pipeline'], (prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        opportunities: prev.opportunities.map((o) =>
+          o.id === id ? { ...o, billing_number: value || null } : o
+        ),
+      }
+    })
+    try {
+      await setOpportunityBilling(id, value)
+    } finally {
+      qc.invalidateQueries({ queryKey: ['pipeline'] })
     }
   }
 
@@ -124,40 +142,15 @@ export default function Pipeline() {
                   </div>
                 )}
                 {cards.map((c) => (
-                  <article
+                  <JobCard
                     key={c.id}
-                    draggable
-                    onDragStart={() => setDragId(c.id)}
-                    onDragEnd={() => setDragId(null)}
-                    className={`group cursor-grab rounded-lg border border-line bg-surface p-3 shadow-sm active:cursor-grabbing ${
-                      dragId === c.id ? 'opacity-50' : ''
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-sm font-medium text-ink">
-                        {c.contacts?.full_name || c.title || 'Job'}
-                      </span>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <span className="font-[family-name:var(--font-mono)] text-sm text-ink">
-                          {money(c.value)}
-                        </span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onCancel(c.id) }}
-                          disabled={cancelling === c.id}
-                          title="Cancel job"
-                          className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
-                            <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mt-1 flex items-center gap-2 text-xs text-muted">
-                      {c.service_code && <span className="capitalize">{c.service_code.replace(/_/g, ' ')}</span>}
-                      {c.port && <span>· {PORT_LABEL[c.port] || c.port}</span>}
-                    </div>
-                  </article>
+                    c={c}
+                    dragId={dragId}
+                    setDragId={setDragId}
+                    cancelling={cancelling}
+                    onCancel={onCancel}
+                    onSaveBilling={onSaveBilling}
+                  />
                 ))}
               </div>
             </div>
@@ -166,6 +159,119 @@ export default function Pipeline() {
       </div>
 
       <NewContactModal open={showNew} onClose={() => setShowNew(false)} />
+    </div>
+  )
+}
+
+function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling }) {
+  const ref = useRef(null)
+  // A text input inside a draggable=true element can't take focus in Chrome.
+  // Flip the card's draggable flag off imperatively the instant the billing
+  // field is touched (before focus), and back on when we leave it.
+  const setDraggable = (on) => { if (ref.current) ref.current.draggable = on }
+
+  return (
+    <article
+      ref={ref}
+      draggable
+      onDragStart={() => setDragId(c.id)}
+      onDragEnd={() => setDragId(null)}
+      className={`group cursor-grab rounded-lg border border-line bg-surface p-3 shadow-sm active:cursor-grabbing ${
+        dragId === c.id ? 'opacity-50' : ''
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-sm font-medium text-ink">
+          {c.contacts?.full_name || c.title || 'Job'}
+        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          <span className="font-[family-name:var(--font-mono)] text-sm text-ink">
+            {money(c.value)}
+          </span>
+          <button
+            onClick={(e) => { e.stopPropagation(); onCancel(c.id) }}
+            disabled={cancelling === c.id}
+            title="Cancel job"
+            className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+              <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div className="mt-1 flex items-center gap-2 text-xs text-muted">
+        {c.service_code && <span className="capitalize">{c.service_code.replace(/_/g, ' ')}</span>}
+        {c.port && <span>· {PORT_LABEL[c.port] || c.port}</span>}
+      </div>
+
+      <BillingField
+        value={c.billing_number}
+        onSave={(v) => onSaveBilling(c.id, v)}
+        onInteractStart={() => setDraggable(false)}
+        onInteractEnd={() => setDraggable(true)}
+      />
+    </article>
+  )
+}
+
+// Per-job ship billing number (≤16 chars). Lives on the card and rides
+// along with the job through every stage. Pointer events are stopped so
+// typing/tapping here never starts a card drag.
+function BillingField({ value, onSave, onInteractStart, onInteractEnd }) {
+  const [draft, setDraft] = useState(value || '')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const stop = (e) => e.stopPropagation()
+
+  const commit = async () => {
+    if (saving) return
+    const next = draft.trim().slice(0, 16)
+    if (next === (value || '')) {
+      setSaved(true); setTimeout(() => setSaved(false), 1200)
+      return
+    }
+    setSaving(true)
+    try {
+      await onSave(next)
+      setSaved(true); setTimeout(() => setSaved(false), 1200)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div
+      className="mt-2 flex items-center gap-1"
+      draggable={false}
+      onMouseDown={stop}
+      onPointerDown={(e) => { stop(e); onInteractStart?.() }}
+      onClick={stop}
+      onDragStart={stop}
+    >
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value.slice(0, 16))}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit() } }}
+        onFocus={onInteractStart}
+        onBlur={onInteractEnd}
+        maxLength={16}
+        draggable={false}
+        placeholder="Ship billing #"
+        aria-label="Ship billing number"
+        className="min-w-0 flex-1 rounded border border-line bg-canvas px-2 py-1 font-[family-name:var(--font-mono)] text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+      />
+      <button
+        type="button"
+        onClick={commit}
+        disabled={saving}
+        title="Save billing number"
+        className={`shrink-0 rounded px-2 py-1 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+          saved ? 'bg-starboard text-white' : 'bg-ink text-white hover:bg-ink-700'
+        }`}
+      >
+        {saved ? 'Saved ✓' : saving ? '…' : 'Enter'}
+      </button>
     </div>
   )
 }
