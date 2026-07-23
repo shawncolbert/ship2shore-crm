@@ -1,4 +1,4 @@
-import { admin } from './_shared/supabaseAdmin.js'
+import { createClient } from '@supabase/supabase-js'
 
 // ---------------------------------------------------------------------------
 // ops-summary — read-only pipeline snapshot for the Claude Ops Center HUD.
@@ -10,6 +10,9 @@ import { admin } from './_shared/supabaseAdmin.js'
 // Auth: gated by a shared token. Set OPS_SUMMARY_TOKEN in Netlify env, then
 // call with ?key=<that token>. If the env var is missing the endpoint refuses
 // to serve (fail closed) so business data is never accidentally public.
+//
+// The Supabase client is built lazily inside the handler so a missing env var
+// returns a clean JSON error instead of crashing the function at load time.
 // ---------------------------------------------------------------------------
 
 const CORS = {
@@ -42,8 +45,14 @@ export const handler = async (event) => {
   const key = event.queryStringParameters?.key || ''
   if (key !== expected) return json(401, { error: 'Unauthorized' })
 
+  const url = process.env.SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY
   const org = process.env.ORG_ID
-  if (!org) return json(500, { error: 'ORG_ID not set' })
+  if (!url || !serviceKey) return json(500, { error: 'Missing SUPABASE_URL / SUPABASE_SERVICE_KEY' })
+  if (!org) return json(500, { error: 'Missing ORG_ID' })
+
+  // Service-role client — bypasses RLS. Only ever runs server-side.
+  const admin = createClient(url, serviceKey, { auth: { persistSession: false } })
 
   try {
     // Default pipeline stages (for stage-by-stage counts, in board order).
