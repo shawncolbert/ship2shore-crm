@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchDefaultPipeline, moveOpportunity, cancelOpportunity, setOpportunityBilling, patchOpportunity } from '../lib/supabase'
 import NewContactModal from '../components/NewContactModal'
@@ -185,6 +185,7 @@ export default function Pipeline() {
 
 function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling, onPatch }) {
   const ref = useRef(null)
+  const navigate = useNavigate()
   // A text input inside a draggable=true element can't take focus in Chrome.
   // Flip the card's draggable flag off imperatively the instant the billing
   // field is touched (before focus), and back on when we leave it.
@@ -202,20 +203,19 @@ function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling, on
     >
       <div className="flex items-start justify-between gap-2">
         {c.contact_id ? (
-          <Link
-            to={`/contacts/${c.contact_id}`}
+          <button
+            type="button"
             title="Open contact — email, call or text"
             draggable={false}
-            onPointerDown={(e) => { e.stopPropagation(); setDraggable(false) }}
-            onPointerUp={() => setDraggable(true)}
-            onPointerLeave={() => setDraggable(true)}
+            style={{ touchAction: 'manipulation' }}
+            onClick={(e) => { e.stopPropagation(); navigate(`/contacts/${c.contact_id}`) }}
+            onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onDragStart={(e) => e.preventDefault()}
-            onClick={(e) => e.stopPropagation()}
-            className="min-w-0 flex-1 truncate text-sm font-medium text-ink hover:text-accent hover:underline"
+            className="min-w-0 flex-1 truncate text-left text-sm font-medium text-ink underline decoration-transparent underline-offset-2 hover:text-accent hover:decoration-accent"
           >
             {c.contacts?.full_name || c.title || 'Job'}
-          </Link>
+          </button>
         ) : (
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
             {c.contacts?.full_name || c.title || 'Job'}
