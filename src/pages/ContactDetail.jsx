@@ -261,8 +261,8 @@ function DeliveryOrders({ contact, jobs }) {
 function Row({ label, value }) {
   return (
     <div className="flex justify-between gap-4">
-      <dt className="text-muted">{label}</dt>
-      <dd className="text-right text-ink">{value || '—'}</dd>
+      <dt className="shrink-0 text-muted">{label}</dt>
+      <dd className="min-w-0 flex-1 break-all text-right text-ink">{value || '—'}</dd>
     </div>
   )
 }

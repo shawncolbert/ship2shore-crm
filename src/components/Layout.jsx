@@ -117,8 +117,9 @@ export default function Layout({ children }) {
         <Account />
       </aside>
 
-      {/* Main */}
-      <main className="min-h-0 flex-1 overflow-auto">{children}</main>
+      {/* Main — min-w-0 lets it shrink in the flex row; overflow-x-hidden keeps
+          any stray wide element from shifting the whole page sideways on phones */}
+      <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">{children}</main>
     </div>
   )
 }
