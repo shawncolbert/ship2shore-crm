@@ -120,7 +120,7 @@ function Thread({ conversation, onBack }) {
         conversationId: conversation.id,
         contactId: conversation.contact_id,
         to: conversation.contacts?.email,
-        subject: lastSubject || `Ship2Shore — ${conversation.contacts?.full_name || ''}`.trim(),
+        subject: lastSubject || `Ship2Shore - ${conversation.contacts?.full_name || ''}`.trim(),
         body,
       })
       setBody('')
