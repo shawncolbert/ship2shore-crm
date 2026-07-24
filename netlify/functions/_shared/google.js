@@ -17,17 +17,61 @@ export async function googleAccessToken() {
   return (await r.json()).access_token
 }
 
+// Email headers must be 7-bit ASCII. Any non-ASCII text (em dashes, curly
+// quotes, accents, emoji) has to be wrapped as an RFC 2047 "encoded-word"
+// or it turns into mojibake in recipients' clients. Pure-ASCII values pass
+// through untouched; non-ASCII values are UTF-8/base64 encoded-words, chunked
+// on code-point boundaries so a multibyte character is never split.
+function encodeHeaderWord(value) {
+  const s = String(value ?? '')
+  if (/^[\x00-\x7F]*$/.test(s)) return s
+  const words = []
+  let chunk = ''
+  const flush = () => {
+    if (chunk) {
+      words.push(`=?UTF-8?B?${Buffer.from(chunk, 'utf8').toString('base64')}?=`)
+      chunk = ''
+    }
+  }
+  for (const ch of s) {
+    // Keep each encoded-word's source well under the 75-char header-word limit.
+    if (Buffer.byteLength(chunk + ch, 'utf8') > 45) flush()
+    chunk += ch
+  }
+  flush()
+  return words.join('\r\n ') // fold long values across multiple encoded-words
+}
+
+// Address headers may be "Display Name <addr>" — only the display name may
+// carry non-ASCII, and the <addr> must stay bare. Encode just the name part.
+function encodeAddressHeader(value) {
+  const s = String(value ?? '').trim()
+  const m = s.match(/^(.*?)\s*<([^>]+)>$/)
+  if (m) {
+    const name = m[1].trim().replace(/^"(.*)"$/, '$1')
+    return name ? `${encodeHeaderWord(name)} <${m[2]}>` : `<${m[2]}>`
+  }
+  return s // bare address, already ASCII
+}
+
 export function buildRaw({ from, to, subject, body }) {
+  // Body is base64-encoded UTF-8 so any characters survive intact.
+  const b64body = Buffer.from(String(body ?? ''), 'utf8')
+    .toString('base64')
+    .replace(/(.{76})/g, '$1\r\n')
   const msg = [
-    `From: ${from}`,
-    `To: ${to}`,
-    `Subject: ${subject}`,
+    `From: ${encodeAddressHeader(from)}`,
+    `To: ${encodeAddressHeader(to)}`,
+    `Subject: ${encodeHeaderWord(subject)}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
     '',
-    body,
+    b64body,
   ].join('\r\n')
-  return Buffer.from(msg).toString('base64')
+  // msg is now pure ASCII (encoded headers + base64 body), so the final
+  // base64url wrapping can't double-encode anything.
+  return Buffer.from(msg, 'utf8').toString('base64')
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
