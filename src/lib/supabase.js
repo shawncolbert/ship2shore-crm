@@ -259,3 +259,57 @@ export async function sendEmail({ conversationId, contactId, to, subject, body }
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Send failed')
   return res.json()
 }
+
+/* ------------------------------------------------------------------ */
+/* Delivery orders / attachments + customer upload links               */
+/* ------------------------------------------------------------------ */
+
+export async function fetchAttachments(contactId) {
+  const { data, error } = await supabase
+    .from('attachments')
+    .select('id, file_name, file_path, size_bytes, opportunity_id, created_at, opportunities(title)')
+    .eq('contact_id', contactId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function uploadDeliveryOrder({ orgId, contactId, opportunityId = null, file }) {
+  const safe = file.name.replace(/[^\w.\-]+/g, '_')
+  const path = `${orgId}/${contactId}/${Date.now()}-${safe}`
+  const up = await supabase.storage.from('delivery-orders').upload(path, file, { upsert: false })
+  if (up.error) throw up.error
+  const { data: { user } } = await supabase.auth.getUser()
+  const { error } = await supabase.from('attachments').insert({
+    org_id: orgId, contact_id: contactId, opportunity_id: opportunityId || null,
+    file_name: file.name, file_path: path, mime_type: file.type || null,
+    size_bytes: file.size || null, uploaded_by: user?.id || null,
+  })
+  if (error) throw error
+}
+
+export async function signedAttachmentUrl(filePath) {
+  const { data, error } = await supabase.storage.from('delivery-orders').createSignedUrl(filePath, 120)
+  if (error) throw error
+  return data.signedUrl
+}
+
+export async function deleteAttachment({ id, filePath }) {
+  await supabase.storage.from('delivery-orders').remove([filePath])
+  const { error } = await supabase.from('attachments').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Create a shareable upload link (/u/<token>) for a contact/job the customer
+// can use to send their delivery order. Returns the full URL.
+export async function createUploadLink({ orgId, contactId, opportunityId = null, label = null }) {
+  const token = (crypto?.randomUUID?.() || `${Date.now()}${Math.random()}`).replace(/-/g, '')
+  const expires = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString()
+  const { data: { user } } = await supabase.auth.getUser()
+  const { error } = await supabase.from('upload_links').insert({
+    token, org_id: orgId, contact_id: contactId, opportunity_id: opportunityId || null,
+    created_by: user?.id || null, expires_at: expires, label,
+  })
+  if (error) throw error
+  return `${window.location.origin}/u/${token}`
+}

@@ -11,6 +11,7 @@ import ContactDetail from './pages/ContactDetail'
 import Pipeline from './pages/Pipeline'
 import Dashboard from './pages/Dashboard'
 import Inbox from './pages/Inbox'
+import PublicUpload from './pages/PublicUpload'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -21,6 +22,8 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* Public customer upload link — no auth gate */}
+      <Route path="/u/:token" element={<PublicUpload />} />
       <Route
         path="/*"
         element={
