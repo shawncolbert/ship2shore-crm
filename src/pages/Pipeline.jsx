@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchDefaultPipeline, moveOpportunity, cancelOpportunity, setOpportunityBilling, patchOpportunity } from '../lib/supabase'
+import { fetchDefaultPipeline, moveOpportunity, cancelOpportunity, setOpportunityBilling, patchOpportunity, updateOpportunity } from '../lib/supabase'
 import NewContactModal from '../components/NewContactModal'
 
 const money = (n) =>
@@ -24,6 +24,16 @@ const PORT_LABEL = {
   matson: 'Matson',
   other: 'Other',
 }
+
+// <input type="datetime-local"> works in the device's local time. Shawn runs
+// Pacific, so this matches the Pacific display on the card.
+const toLocalInput = (iso) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+const fromLocalInput = (v) => (v ? new Date(v).toISOString() : null)
 
 export default function Pipeline() {
   const qc = useQueryClient()
@@ -64,6 +74,25 @@ export default function Pipeline() {
     })
     try {
       await patchOpportunity(id, patch)
+    } finally {
+      qc.invalidateQueries({ queryKey: ['pipeline'] })
+    }
+  }
+
+  // Save edited opportunity fields (title, port, scheduled_at) with an
+  // optimistic card update, same pattern as billing.
+  const onSaveFields = async (id, patch) => {
+    qc.setQueryData(['pipeline'], (prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        opportunities: prev.opportunities.map((o) =>
+          o.id === id ? { ...o, ...patch } : o
+        ),
+      }
+    })
+    try {
+      await updateOpportunity(id, patch)
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
     }
@@ -179,6 +208,7 @@ export default function Pipeline() {
                     cancelling={cancelling}
                     onCancel={onCancel}
                     onSaveBilling={onSaveBilling}
+                    onSaveFields={onSaveFields}
                     onPatch={onPatch}
                   />
                 ))}
@@ -193,13 +223,24 @@ export default function Pipeline() {
   )
 }
 
-function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling, onPatch }) {
+function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling, onSaveFields, onPatch }) {
   const ref = useRef(null)
   const navigate = useNavigate()
+  const [editing, setEditing] = useState(false)
   // A text input inside a draggable=true element can't take focus in Chrome.
   // Flip the card's draggable flag off imperatively the instant the billing
   // field is touched (before focus), and back on when we leave it.
   const setDraggable = (on) => { if (ref.current) ref.current.draggable = on }
+
+  if (editing) {
+    return (
+      <JobEditor
+        c={c}
+        onCancel={() => setEditing(false)}
+        onSave={async (patch) => { await onSaveFields(c.id, patch); setEditing(false) }}
+      />
+    )
+  }
 
   return (
     <article
@@ -244,6 +285,15 @@ function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling, on
             {money(c.value)}
           </button>
           <button
+            onClick={(e) => { e.stopPropagation(); setEditing(true) }}
+            title="Edit job details"
+            className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-canvas hover:text-accent"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+              <path d="M12.146 2.146a.5.5 0 0 1 .708 0l1 1a.5.5 0 0 1 0 .708l-8 8a.5.5 0 0 1-.223.128l-3 .857a.5.5 0 0 1-.618-.618l.857-3a.5.5 0 0 1 .128-.223l8-8Zm.354 1.061L11.707 4 12 4.293l.793-.793-.293-.293ZM11 5 4.5 11.5l-.5 1.5 1.5-.5L12 6l-1-1Z" />
+            </svg>
+          </button>
+          <button
             onClick={(e) => { e.stopPropagation(); onCancel(c.id) }}
             disabled={cancelling === c.id}
             title="Cancel job"
@@ -286,6 +336,93 @@ function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling, on
         onInteractStart={() => setDraggable(false)}
         onInteractEnd={() => setDraggable(true)}
       />
+    </article>
+  )
+}
+
+// Inline editor for a job card's title, port and scheduled time. Replaces the
+// card while open so the compact card stays uncluttered. Not draggable.
+function JobEditor({ c, onCancel, onSave }) {
+  const [title, setTitle] = useState(c.title || '')
+  const [port, setPort] = useState(c.port || '')
+  const [when, setWhen] = useState(toLocalInput(c.scheduled_at))
+  const [saving, setSaving] = useState(false)
+  const stop = (e) => e.stopPropagation()
+
+  const save = async () => {
+    if (saving) return
+    setSaving(true)
+    try {
+      await onSave({
+        title: title.trim() || null,
+        port: port || null,
+        scheduled_at: fromLocalInput(when),
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <article
+      draggable={false}
+      onMouseDown={stop}
+      onPointerDown={stop}
+      onClick={stop}
+      onDragStart={(e) => e.preventDefault()}
+      className="rounded-lg border border-accent bg-surface p-3 shadow-sm ring-2 ring-accent/30"
+    >
+      <div className="space-y-2">
+        <div>
+          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Title</label>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Job title"
+            className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Port</label>
+          <select
+            value={port}
+            onChange={(e) => setPort(e.target.value)}
+            className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent"
+          >
+            <option value="">—</option>
+            {Object.entries(PORT_LABEL).map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Scheduled (Pacific)</label>
+          <input
+            type="datetime-local"
+            value={when}
+            onChange={(e) => setWhen(e.target.value)}
+            className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+          />
+        </div>
+        <div className="flex items-center gap-1 pt-0.5">
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="rounded bg-accent px-2.5 py-1 text-[11px] font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="rounded border border-line px-2.5 py-1 text-[11px] font-medium text-ink hover:bg-canvas disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
     </article>
   )
 }
