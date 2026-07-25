@@ -7,6 +7,7 @@ const nav = [
   { to: '/inbox', label: 'Inbox' },
   { to: '/contacts', label: 'Contacts' },
   { to: '/pipeline', label: 'Pipeline' },
+  { to: '/documents', label: 'Documents' },
 ]
 
 function Brand() {

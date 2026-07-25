@@ -11,6 +11,7 @@ import ContactDetail from './pages/ContactDetail'
 import Pipeline from './pages/Pipeline'
 import Dashboard from './pages/Dashboard'
 import Inbox from './pages/Inbox'
+import Documents from './pages/Documents'
 import PublicUpload from './pages/PublicUpload'
 import './index.css'
 
@@ -35,6 +36,7 @@ function App() {
                 <Route path="contacts" element={<Contacts />} />
                 <Route path="contacts/:id" element={<ContactDetail />} />
                 <Route path="pipeline" element={<Pipeline />} />
+                <Route path="documents" element={<Documents />} />
               </Routes>
             </Layout>
           </ProtectedRoute>
