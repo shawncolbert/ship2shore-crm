@@ -155,7 +155,7 @@ export async function fetchDefaultPipeline() {
 
   const { data: opps, error: oErr } = await supabase
     .from('opportunities')
-    .select('id, title, service_code, port, value, stage_id, contact_id, status, billing_number, cleared, paid, contacts(full_name, company)')
+    .select('id, title, service_code, port, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, contacts(full_name, company)')
     .eq('pipeline_id', pipeline.id)
   if (oErr) throw oErr
 
