@@ -333,6 +333,40 @@ export async function deleteAttachment({ id, filePath }) {
   if (error) throw error
 }
 
+// --- Auto-ingested document review queue (gmail-sync) --------------------
+
+// Delivery Orders / gate passes that gmail-sync pulled from email but couldn't
+// match to a job. The dispatcher links or dismisses each one.
+export async function fetchReviewDocuments() {
+  const { data, error } = await supabase
+    .from('attachments')
+    .select('id, file_name, file_path, kind, bl_number, size_bytes, created_at, contact_id, contacts(full_name)')
+    .eq('source', 'gmail_auto')
+    .eq('needs_review', true)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+// Open jobs the dispatcher can attach a reviewed document to.
+export async function fetchLinkableJobs() {
+  const { data, error } = await supabase
+    .from('opportunities')
+    .select('id, title, billing_number, bl_number, contact_id, contacts(full_name)')
+    .neq('status', 'cancelled')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+// Attach a reviewed document to a job (and its contact), clearing the flag.
+export async function linkDocumentToJob({ attachmentId, opportunityId, contactId }) {
+  const patch = { opportunity_id: opportunityId, needs_review: false }
+  if (contactId) patch.contact_id = contactId
+  const { error } = await supabase.from('attachments').update(patch).eq('id', attachmentId)
+  if (error) throw error
+}
+
 // Create a shareable upload link (/u/<token>) for a contact/job the customer
 // can use to send their delivery order. Returns the full URL.
 export async function createUploadLink({ orgId, contactId, opportunityId = null, label = null }) {
