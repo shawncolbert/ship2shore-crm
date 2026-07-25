@@ -193,6 +193,39 @@ export async function patchOpportunity(id, patch) {
   if (error) throw error
 }
 
+// Edit the core contact fields from the contact detail view. Only the fields
+// passed are written; empty strings are stored as null (except full_name, which
+// the caller validates as required). Returns the updated row.
+export async function updateContact(id, patch) {
+  const clean = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  const allowed = {}
+  if ('full_name' in patch) allowed.full_name = patch.full_name?.trim() || null
+  if ('company' in patch) allowed.company = clean(patch.company)
+  if ('phone' in patch) allowed.phone = clean(patch.phone)
+  if ('email' in patch) allowed.email = clean(patch.email)
+  if ('notes' in patch) allowed.notes = clean(patch.notes)
+  const { data, error } = await supabase
+    .from('contacts').update(allowed).eq('id', id).select('*').single()
+  if (error) throw error
+  return data
+}
+
+// Edit editable opportunity fields (title, port, scheduled_at, billing_number)
+// from the pipeline card. Only the passed fields are written. scheduled_at
+// expects an ISO string or null; billing_number is capped at 16 chars.
+export async function updateOpportunity(id, patch) {
+  const allowed = {}
+  if ('title' in patch) allowed.title = patch.title?.trim() || null
+  if ('port' in patch) allowed.port = patch.port?.trim() || null
+  if ('scheduled_at' in patch) allowed.scheduled_at = patch.scheduled_at || null
+  if ('billing_number' in patch)
+    allowed.billing_number = patch.billing_number?.trim() ? patch.billing_number.trim().slice(0, 16) : null
+  const { data, error } = await supabase
+    .from('opportunities').update(allowed).eq('id', id).select('*').single()
+  if (error) throw error
+  return data
+}
+
 export async function fetchDashboardStats() {
   const { data: stages } = await supabase
     .from('stages').select('id, name, is_won').order('position')

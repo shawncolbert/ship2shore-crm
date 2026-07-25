@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import {
   fetchContact, fetchMyOrgId, fetchAttachments, uploadDeliveryOrder,
-  signedAttachmentUrl, deleteAttachment, createUploadLink,
+  signedAttachmentUrl, deleteAttachment, createUploadLink, updateContact,
 } from '../lib/supabase'
 import { calendlyPrefillUrl, mailtoUrl } from '../lib/config'
 import Badge from '../components/Badge'
@@ -52,24 +52,7 @@ export default function ContactDetail() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left: details */}
-        <section className={card}>
-          <h2 className={h2}>Details</h2>
-          <dl className="space-y-2 text-sm">
-            <Row label="Phone" value={contact.phone
-              ? <a className="text-accent hover:underline" href={`tel:${contact.phone}`}>{contact.phone}</a> : null} />
-            <Row label="Email" value={contact.email
-              ? <a className="text-accent hover:underline" href={mailtoUrl(contact)}>{contact.email}</a> : null} />
-            <Row label="Source" value={contact.source} />
-          </dl>
-          {contact.tags?.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-1.5">
-              {contact.tags.map((t) => (
-                <span key={t} className="rounded bg-canvas px-2 py-0.5 text-[11px] text-ink">{t}</span>
-              ))}
-            </div>
-          )}
-          {contact.notes && <p className="mt-4 text-sm text-ink/80">{contact.notes}</p>}
-        </section>
+        <ContactDetails contact={contact} />
 
         {/* Middle: jobs + appointments + timeline */}
         <section className="space-y-6 lg:col-span-2">
@@ -254,6 +237,107 @@ function DeliveryOrders({ contact, jobs }) {
           ))}
         </ul>
       )}
+    </div>
+  )
+}
+
+const emailOk = (e) => !e || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim())
+
+function ContactDetails({ contact }) {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState('')
+  const [form, setForm] = useState(null)
+
+  function startEdit() {
+    setForm({
+      full_name: contact.full_name || '',
+      company: contact.company || '',
+      phone: contact.phone || '',
+      email: contact.email || '',
+      notes: contact.notes || '',
+    })
+    setErr(''); setSaved(false); setEditing(true)
+  }
+
+  function cancel() { setEditing(false); setErr('') }
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  async function save() {
+    if (!form.full_name.trim()) { setErr('Name can’t be empty.'); return }
+    if (!emailOk(form.email)) { setErr('That email doesn’t look right.'); return }
+    setSaving(true); setErr('')
+    try {
+      await updateContact(contact.id, form)
+      await qc.invalidateQueries({ queryKey: ['contact', contact.id] })
+      qc.invalidateQueries({ queryKey: ['contacts'] })
+      setEditing(false); setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (e) {
+      setErr('Couldn’t save: ' + (e.message || e))
+    } finally { setSaving(false) }
+  }
+
+  if (editing) {
+    return (
+      <section className={card}>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className={h2 + ' mb-0'}>Edit details</h2>
+        </div>
+        <div className="space-y-3 text-sm">
+          <Field label="Name" value={form.full_name} onChange={set('full_name')} placeholder="Full name" />
+          <Field label="Company" value={form.company} onChange={set('company')} placeholder="Company" />
+          <Field label="Phone" value={form.phone} onChange={set('phone')} placeholder="+1 555-000-0000" type="tel" />
+          <Field label="Email" value={form.email} onChange={set('email')} placeholder="name@example.com" type="email" />
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted">Notes</label>
+            <textarea value={form.notes} onChange={set('notes')} rows={3}
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
+          </div>
+          {err && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
+          <div className="flex items-center gap-2 pt-1">
+            <button className={btnAccent} disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</button>
+            <button className={btn} disabled={saving} onClick={cancel}>Cancel</button>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className={card}>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className={h2 + ' mb-0'}>Details</h2>
+        <button className="text-xs font-medium text-accent hover:underline" onClick={startEdit}>Edit</button>
+      </div>
+      {saved && <p className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">✓ Saved</p>}
+      <dl className="space-y-2 text-sm">
+        <Row label="Phone" value={contact.phone
+          ? <a className="text-accent hover:underline" href={`tel:${contact.phone}`}>{contact.phone}</a> : null} />
+        <Row label="Email" value={contact.email
+          ? <a className="text-accent hover:underline" href={mailtoUrl(contact)}>{contact.email}</a> : null} />
+        <Row label="Source" value={contact.source} />
+      </dl>
+      {contact.tags?.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {contact.tags.map((t) => (
+            <span key={t} className="rounded bg-canvas px-2 py-0.5 text-[11px] text-ink">{t}</span>
+          ))}
+        </div>
+      )}
+      {contact.notes && <p className="mt-4 text-sm text-ink/80">{contact.notes}</p>}
+    </section>
+  )
+}
+
+function Field({ label, value, onChange, placeholder, type = 'text' }) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-muted">{label}</label>
+      <input type={type} value={value} onChange={onChange} placeholder={placeholder}
+        className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
     </div>
   )
 }
