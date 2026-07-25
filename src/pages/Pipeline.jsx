@@ -8,6 +8,16 @@ const money = (n) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
     .format(Number(n || 0))
 
+// Scheduled pickup/service time, shown in Pacific (the business timezone).
+// e.g. "Jul 28, 10:00 AM"
+const fmtSched = (d) =>
+  d
+    ? new Date(d).toLocaleString('en-US', {
+        timeZone: 'America/Los_Angeles',
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+      })
+    : null
+
 const PORT_LABEL = {
   long_beach: 'Long Beach',
   wilmington: 'Wilmington',
@@ -245,6 +255,18 @@ function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling, on
           </button>
         </div>
       </div>
+      {c.scheduled_at && (
+        <div className="mt-1.5">
+          <span
+            title="Scheduled pickup / service time (Pacific)"
+            className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-semibold text-ink ring-1 ring-inset ring-accent/40"
+          >
+            <span aria-hidden="true">🗓️</span>
+            {fmtSched(c.scheduled_at)}
+          </span>
+        </div>
+      )}
+
       <div className="mt-1 flex items-center gap-2 text-xs text-muted">
         {c.service_code && <span className="truncate capitalize">{c.service_code.replace(/_/g, ' ')}</span>}
         {c.port && <span className="shrink-0">· {PORT_LABEL[c.port] || c.port}</span>}
