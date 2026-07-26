@@ -360,11 +360,15 @@ export async function fetchLinkableJobs() {
 }
 
 // Attach a reviewed document to a job (and its contact), clearing the flag.
+// Selects the row back so a 0-row update (e.g. blocked by RLS) surfaces as an
+// error instead of silently doing nothing.
 export async function linkDocumentToJob({ attachmentId, opportunityId, contactId }) {
   const patch = { opportunity_id: opportunityId, needs_review: false }
   if (contactId) patch.contact_id = contactId
-  const { error } = await supabase.from('attachments').update(patch).eq('id', attachmentId)
+  const { data, error } = await supabase
+    .from('attachments').update(patch).eq('id', attachmentId).select('id')
   if (error) throw error
+  if (!data || data.length === 0) throw new Error('Could not update this document — permission denied.')
 }
 
 // Create a shareable upload link (/u/<token>) for a contact/job the customer
