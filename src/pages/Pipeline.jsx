@@ -273,17 +273,14 @@ function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling, on
           </span>
         )}
         <div className="flex shrink-0 items-center gap-1">
-          {/* Click the price to strike it through = customer paid */}
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onPatch(c.id, { paid: !c.paid }) }}
-            title={c.paid ? 'Paid — click to mark unpaid' : 'Mark as paid'}
-            className={`rounded font-[family-name:var(--font-mono)] text-sm transition-colors hover:bg-canvas ${
-              c.paid ? 'text-starboard line-through decoration-2' : 'text-ink'
-            }`}
-          >
-            {money(c.value)}
-          </button>
+          {/* Tap the amount to edit it. "Paid" is the separate toggle below. */}
+          <AmountField
+            value={c.value}
+            paid={c.paid}
+            onSave={(v) => onSaveFields(c.id, { value: v })}
+            onInteractStart={() => setDraggable(false)}
+            onInteractEnd={() => setDraggable(true)}
+          />
           <button
             onClick={(e) => { e.stopPropagation(); setEditing(true) }}
             title="Edit job details"
@@ -322,11 +319,15 @@ function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling, on
         {c.port && <span className="shrink-0">· {PORT_LABEL[c.port] || c.port}</span>}
       </div>
 
-      {/* Cleared toggle: NC = not cleared, C = cleared */}
-      <div className="mt-2">
+      {/* Cleared (NC/C) and Paid toggles */}
+      <div className="mt-2 flex items-center gap-4">
         <ClearedToggle
           cleared={c.cleared}
           onToggle={() => onPatch(c.id, { cleared: !c.cleared })}
+        />
+        <PaidToggle
+          paid={c.paid}
+          onToggle={() => onPatch(c.id, { paid: !c.paid })}
         />
       </div>
 
@@ -439,6 +440,112 @@ function JobEditor({ c, onCancel, onSave }) {
         </div>
       </div>
     </article>
+  )
+}
+
+// Tap the amount to edit it inline. Pointer events are stopped so tapping/
+// typing here never starts a card drag (same approach as BillingField).
+function AmountField({ value, paid, onSave, onInteractStart, onInteractEnd }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const stop = (e) => e.stopPropagation()
+
+  const begin = () => { setDraft(value == null ? '' : String(value)); setEditing(true); onInteractStart?.() }
+  const done = () => { setEditing(false); onInteractEnd?.() }
+
+  const commit = async () => {
+    if (saving) return
+    const next = draft.trim() === '' ? null : Number(draft)
+    if (next !== null && !Number.isFinite(next)) { done(); return }
+    setSaving(true)
+    try { await onSave(next); done() }
+    finally { setSaving(false) }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        title="Tap to edit amount"
+        onClick={(e) => { stop(e); begin() }}
+        onPointerDown={stop}
+        onMouseDown={stop}
+        className={`rounded px-1 font-[family-name:var(--font-mono)] text-sm transition-colors hover:bg-canvas ${
+          paid ? 'text-starboard line-through decoration-2' : 'text-ink'
+        }`}
+      >
+        {money(value)}
+      </button>
+    )
+  }
+
+  return (
+    <div
+      className="flex items-center gap-1"
+      draggable={false}
+      onMouseDown={stop}
+      onPointerDown={(e) => { stop(e); onInteractStart?.() }}
+      onClick={stop}
+      onDragStart={stop}
+    >
+      <span className="text-xs text-muted">$</span>
+      <input
+        autoFocus
+        type="number"
+        inputMode="decimal"
+        min="0"
+        step="1"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); commit() }
+          if (e.key === 'Escape') { done() }
+        }}
+        onBlur={commit}
+        draggable={false}
+        aria-label="Job amount"
+        className="w-16 rounded border border-line bg-canvas px-1.5 py-0.5 font-[family-name:var(--font-mono)] text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+      />
+      <button
+        type="button"
+        onClick={commit}
+        disabled={saving}
+        title="Save amount"
+        className="shrink-0 rounded bg-ink px-1.5 py-0.5 text-[11px] font-semibold text-white hover:bg-ink-700 disabled:opacity-50"
+      >
+        {saving ? '…' : '✓'}
+      </button>
+    </div>
+  )
+}
+
+// Paid / unpaid switch, mirroring ClearedToggle.
+function PaidToggle({ paid, onToggle }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={paid}
+      title={paid ? 'Paid — click to mark unpaid' : 'Mark as paid'}
+      onClick={(e) => { e.stopPropagation(); onToggle() }}
+      className="flex shrink-0 items-center gap-1"
+    >
+      <span
+        className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors ${
+          paid ? 'bg-starboard' : 'bg-slate-300'
+        }`}
+      >
+        <span
+          className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+            paid ? 'translate-x-4' : 'translate-x-0.5'
+          }`}
+        />
+      </span>
+      <span className={`text-[10px] font-bold ${paid ? 'text-starboard' : 'text-muted'}`}>
+        {paid ? 'PAID' : 'UNPAID'}
+      </span>
+    </button>
   )
 }
 
