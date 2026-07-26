@@ -65,6 +65,14 @@ Deno.serve(async (req: Request) => {
       .eq("id", opportunity_id)
       .maybeSingle();
 
+    // The customer confirmation email is only meaningful with a real pickup
+    // time. If the job moved to Scheduled without a scheduled_at, don't send —
+    // otherwise the customer gets a "time to be confirmed" email. Set the time
+    // on the card and it'll go out on the next move into Scheduled.
+    if (action === "send_confirmation" && !opp?.scheduled_at) {
+      return json({ skipped: true, reason: "no scheduled_at", action, new_stage });
+    }
+
     // Contact info for the automations.
     const { data: contact } = await supabase
       .from("contacts")
