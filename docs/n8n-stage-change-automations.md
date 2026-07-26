@@ -35,27 +35,41 @@ map to an action (see below); everything else returns `{ "skipped": true }`.
 Convert `scheduled_at` to Pacific for display in n8n:
 `{{ $json.scheduled_at ? DateTime.fromISO($json.scheduled_at).setZone('America/Los_Angeles').toFormat('LLL d, h:mm a') : '' }}`
 
-## What needs to be built in n8n (manual — no workflow files in this repo)
+## The workflow is prebuilt — just import it
 
-There is no n8n API/credential wired into this repo, so the workflow itself is
-built once in the n8n UI. Structure: **Webhook node → Switch on `{{ $json.action }}` → one branch each.**
+Import `n8n/ship2shore-stage-automations.json` (in this repo) into n8n. It already
+contains the whole flow: **Webhook → Unwrap payload (Code) → Switch on `action` →
+one branch each.**
 
 | `action` | Trigger stage | Branch does |
 |----------|---------------|-------------|
-| `send_confirmation` | → Scheduled | Email `contact.email` a confirmation with the Pacific `scheduled_at` |
-| `notify_completed` | → Completed | Slack/email **Shawn** that the job is done (include `title`, `contact.full_name`) |
-| `log_paid` | → Paid | No action yet — just log (e.g. append to a sheet / no-op) |
-| `notify_canceled` | → Canceled | Notify **Shawn**: `contact.full_name` + `old_stage` (the stage it was in) |
+| `send_confirmation` | → Scheduled | Emails `contact.email` a confirmation with the Pacific `scheduled_at` |
+| `notify_completed` | → Completed | Emails **Shawn** (shawncolbert1971@gmail.com) that the job is done |
+| `log_paid` | → Paid | No-op node (nothing to send yet — a placeholder to build on) |
+| `notify_canceled` | → Canceled | Emails **Shawn** with `contact.full_name` + `old_stage` (the stage it left) |
 
-### Setup steps
-1. In n8n, create a workflow with a **Webhook** (POST) trigger. Copy its production URL.
-2. Set the Supabase secret so the Edge Function forwards to it:
-   `supabase secrets set N8N_STAGE_CHANGE_WEBHOOK_URL="https://<your-n8n>/webhook/…"`
-   (or set it in Supabase Dashboard → Edge Functions → stage-change-webhook → Secrets).
-3. Add a **Switch** node keyed on `{{ $json.action }}` with the four cases above.
-4. Build each branch (Gmail/SMTP for emails, Slack node for Shawn's alerts).
-5. Test: move a real card into **Scheduled** on the board and confirm the webhook run in n8n.
+The three email nodes are **Gmail** nodes so they match the Gmail account you
+already use. They ship without a credential attached — you pick yours on import.
+
+### Setup steps (one time, ~5 min)
+1. **Import:** n8n → *Workflows* → *Import from File* → choose
+   `n8n/ship2shore-stage-automations.json`.
+2. **Attach Gmail:** open each of the three email nodes
+   (*Email customer confirmation*, *Notify Shawn — job completed*,
+   *Notify Shawn — job canceled*) and select/create a **Gmail OAuth2** credential.
+   (Prefer SMTP or Slack? Swap the node type — the field expressions carry over.)
+3. **Activate** the workflow, then open the **Webhook** node and copy its
+   **Production URL**.
+4. **Point the Edge Function at it** — set the Supabase secret:
+   `supabase secrets set N8N_STAGE_CHANGE_WEBHOOK_URL="https://<your-n8n>/webhook/ship2shore-stage-change"`
+   (or Supabase Dashboard → Edge Functions → stage-change-webhook → Secrets).
+5. **Test:** move a real card into **Scheduled** on the board and confirm the run
+   appears in n8n and the confirmation email goes out.
 
 > Until `N8N_STAGE_CHANGE_WEBHOOK_URL` holds a real URL, the Edge Function returns
 > `{ "note": "…not set; event not forwarded", "eventPayload": {…} }` instead of
 > forwarding — so you can inspect the exact payload in the function logs first.
+
+> The "Unwrap payload" Code node exists because n8n delivers a POST body under
+> `$json.body`; it lifts those fields to the top level so every downstream
+> expression can read `{{ $json.contact.email }}`, `{{ $json.scheduled_at }}`, etc.
