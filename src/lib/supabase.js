@@ -230,24 +230,43 @@ export async function updateOpportunity(id, patch) {
   return data
 }
 
+// Live reporting metrics for the dashboard. Queried on page load; small enough
+// data that we aggregate client-side rather than with a backend function.
 export async function fetchDashboardStats() {
-  const { data: stages } = await supabase
-    .from('stages').select('id, name, is_won').order('position')
-  const { data: opps } = await supabase
-    .from('opportunities').select('id, value, stage_id, status')
+  const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString()
+  const monthAgo = new Date(Date.now() - 30 * 864e5).toISOString()
 
-  const byStage = (stages || []).map((s) => ({
-    name: s.name,
-    count: (opps || []).filter((o) => o.stage_id === s.id).length,
-  }))
-  const openValue = (opps || [])
-    .filter((o) => o.status === 'open')
-    .reduce((sum, o) => sum + Number(o.value || 0), 0)
-  const wonValue = (opps || [])
-    .filter((o) => o.status === 'won')
+  const [stagesRes, oppsRes, leadsRes] = await Promise.all([
+    supabase.from('stages').select('id, name, position, is_won, is_lost').order('position'),
+    supabase.from('opportunities').select('id, value, stage_id, status, updated_at'),
+    supabase.from('contacts').select('id', { count: 'exact', head: true }).gte('created_at', weekAgo),
+  ])
+  const stages = stagesRes.data || []
+  const opps = oppsRes.data || []
+  const newLeadsWeek = leadsRes.count || 0
+
+  const stageById = Object.fromEntries(stages.map((s) => [s.id, s]))
+  const nameOf = (o) => stageById[o.stage_id]?.name || ''
+  const isClosed = (n) => ['Completed', 'Paid', 'Canceled', 'Cancelled'].includes(n)
+  const isDone = (n) => n === 'Completed' || n === 'Paid' // closed-won
+
+  // Only the main workflow stages (position >= 0: New Booking … Paid, Canceled).
+  const byStage = stages
+    .filter((s) => s.position >= 0)
+    .map((s) => ({ name: s.name, count: opps.filter((o) => o.stage_id === s.id).length }))
+
+  // Open pipeline value: everything not in a closed/canceled stage (and not a
+  // canceled record).
+  const openValue = opps
+    .filter((o) => o.status !== 'cancelled' && !isClosed(nameOf(o)))
     .reduce((sum, o) => sum + Number(o.value || 0), 0)
 
-  return { byStage, openValue, wonValue, totalJobs: (opps || []).length }
+  // Jobs currently in Completed/Paid whose last change was within the window —
+  // a proxy for "moved to closed", since we don't keep stage history.
+  const closedThisWeek = opps.filter((o) => isDone(nameOf(o)) && o.updated_at >= weekAgo).length
+  const closedThisMonth = opps.filter((o) => isDone(nameOf(o)) && o.updated_at >= monthAgo).length
+
+  return { byStage, openValue, totalJobs: opps.length, closedThisWeek, closedThisMonth, newLeadsWeek }
 }
 
 /* ------------------------------------------------------------------ */
