@@ -6,13 +6,21 @@ import {
 } from '../lib/supabase'
 
 const card = 'rounded-xl border border-line bg-surface p-5'
-const h2 = 'mb-3 text-xs font-semibold uppercase tracking-wide text-muted'
 const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
 const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
 
 const kindLabel = (k) =>
   k === 'gate_pass' ? 'Gate pass' : k === 'delivery_order' ? 'Delivery Order' : 'Shipping doc'
 const kb = (n) => (n ? `${Math.max(1, Math.round(n / 1024))} KB` : '')
+// Auto-pulled email attachments are stored with URL-encoded names
+// ("Delivery%20Order%20...pdf"); show them readable.
+const prettyName = (s) => { try { return decodeURIComponent(s) } catch { return s } }
+// Label a job clearly by the customer's name + the number you'd match on.
+const jobLabel = (j) => {
+  const who = j.contacts?.full_name || j.title || 'Job'
+  const num = j.billing_number || j.bl_number
+  return num ? `${who} — #${num}` : who
+}
 
 export default function Documents() {
   const qc = useQueryClient()
@@ -28,7 +36,7 @@ export default function Documents() {
   }
 
   async function dismiss(f) {
-    if (!confirm(`Delete ${f.file_name}? This removes the file.`)) return
+    if (!confirm(`Delete ${prettyName(f.file_name)}? This removes the file.`)) return
     try { await deleteAttachment({ id: f.id, filePath: f.file_path }); refresh() }
     catch (e) { setErr(e.message || String(e)) }
   }
@@ -38,7 +46,8 @@ export default function Documents() {
       <header className="mb-6">
         <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Documents to review</h1>
         <p className="text-sm text-muted">
-          Delivery Orders and gate passes pulled from email that didn’t auto-match a job. Link each to the right job, or dismiss it.
+          Delivery Orders and gate passes pulled from email that didn’t auto-match a job.
+          Match the document’s <span className="font-medium text-ink">BL#</span> to a job below, then Link — or dismiss it.
         </p>
       </header>
 
@@ -82,26 +91,28 @@ function DocRow({ f, jobs, onDownload, onDismiss, onLinked, onError }) {
     <div className={card}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => onDownload(f)} className="truncate text-left text-sm font-medium text-ink hover:text-accent">
-              📄 {f.file_name}
-            </button>
-            <span className="rounded bg-canvas px-2 py-0.5 text-[11px] font-medium text-ink">{kindLabel(f.kind)}</span>
-          </div>
-          <div className="mt-1 text-xs text-muted">
-            {f.bl_number && <span className="font-[family-name:var(--font-mono)]">BL {f.bl_number} · </span>}
-            {f.contacts?.full_name ? `From ${f.contacts.full_name}` : 'Unknown sender'}
-            {kb(f.size_bytes) ? ` · ${kb(f.size_bytes)}` : ''}
+          <button onClick={() => onDownload(f)} className="block max-w-full truncate text-left text-sm font-medium text-ink hover:text-accent">
+            📄 {prettyName(f.file_name)}
+          </button>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+            {f.bl_number ? (
+              <span className="rounded bg-accent/15 px-2 py-0.5 font-[family-name:var(--font-mono)] font-semibold text-ink ring-1 ring-inset ring-accent/40">
+                BL# {f.bl_number}
+              </span>
+            ) : (
+              <span className="rounded bg-canvas px-2 py-0.5 text-muted">No BL# found — open the file to read it</span>
+            )}
+            <span className="rounded bg-canvas px-2 py-0.5 text-ink">{kindLabel(f.kind)}</span>
+            {f.contacts?.full_name && <span className="text-muted">From {f.contacts.full_name}</span>}
+            {kb(f.size_bytes) && <span className="text-muted">{kb(f.size_bytes)}</span>}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <select value={jobId} onChange={(e) => setJobId(e.target.value)}
-            className="max-w-[16rem] rounded-lg border border-line px-2 py-2 text-sm outline-none focus:border-accent">
-            <option value="">Link to job…</option>
+            className="max-w-[18rem] rounded-lg border border-line px-2 py-2 text-sm outline-none focus:border-accent">
+            <option value="">Choose the customer / job…</option>
             {jobs.map((j) => (
-              <option key={j.id} value={j.id}>
-                {(j.contacts?.full_name || j.title || 'Job')}{j.billing_number ? ` · ${j.billing_number}` : ''}
-              </option>
+              <option key={j.id} value={j.id}>{jobLabel(j)}</option>
             ))}
           </select>
           <button className={btnAccent} disabled={busy || !jobId} onClick={link}>{busy ? 'Linking…' : 'Link'}</button>
