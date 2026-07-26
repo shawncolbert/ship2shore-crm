@@ -220,6 +220,10 @@ export async function updateOpportunity(id, patch) {
   if ('scheduled_at' in patch) allowed.scheduled_at = patch.scheduled_at || null
   if ('billing_number' in patch)
     allowed.billing_number = patch.billing_number?.trim() ? patch.billing_number.trim().slice(0, 16) : null
+  if ('value' in patch) {
+    const n = Number(patch.value)
+    allowed.value = Number.isFinite(n) && n >= 0 ? n : null
+  }
   const { data, error } = await supabase
     .from('opportunities').update(allowed).eq('id', id).select('*').single()
   if (error) throw error
