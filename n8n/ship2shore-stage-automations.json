@@ -1,0 +1,187 @@
+{
+  "name": "Ship2Shore — Stage Change Automations",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "description": "Receives stage-change events from the Supabase stage-change-webhook and runs an automation per action: send_confirmation, notify_completed, log_paid, notify_canceled. Import into n8n, attach a Gmail credential to the three email nodes, copy the Webhook production URL into the Supabase secret N8N_STAGE_CHANGE_WEBHOOK_URL, then activate."
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ship2shore-stage-change",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Stage change (Webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 420],
+      "webhookId": "ship2shore-stage-change"
+    },
+    {
+      "parameters": {
+        "jsCode": "// The Supabase webhook posts the event as the request body. n8n puts that\n// under $json.body for a POST webhook; unwrap it so downstream nodes can use\n// {{ $json.action }}, {{ $json.contact.email }}, etc. directly.\nreturn $input.all().map((item) => ({ json: item.json.body ?? item.json }));"
+      },
+      "id": "unwrap-payload",
+      "name": "Unwrap payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 420]
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "loose" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "send_confirmation",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "send_confirmation"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "loose" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "notify_completed",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "notify_completed"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "loose" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "log_paid",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "log_paid"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "loose" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "notify_canceled",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "notify_canceled"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "route-by-action",
+      "name": "Route by action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [680, 420]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.contact.email }}",
+        "subject": "Your Ship2Shore pickup is scheduled",
+        "emailType": "text",
+        "message": "=Hi {{ $json.contact.full_name }},\n\nThis confirms your Ship2Shore booking{{ $json.title ? ' — ' + $json.title : '' }} is scheduled for {{ $json.scheduled_at ? DateTime.fromISO($json.scheduled_at).setZone('America/Los_Angeles').toFormat(\"cccc, LLL d, yyyy 'at' h:mm a\") + ' Pacific' : 'a time we will confirm shortly' }}.\n\nIf you need to make any changes, just reply to this email.\n\nThank you,\nShip2Shore Dispatch",
+        "options": {}
+      },
+      "id": "email-confirmation",
+      "name": "Email customer confirmation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [940, 140]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "shawncolbert1971@gmail.com",
+        "subject": "=✅ Job completed — {{ $json.contact.full_name }}",
+        "emailType": "text",
+        "message": "=A job was marked completed.\n\nCustomer: {{ $json.contact.full_name }}\nJob: {{ $json.title || $json.service_code || 'Job' }}\nPort: {{ $json.port || '—' }}\nValue: ${{ $json.value || 0 }}\nPhone: {{ $json.contact.phone || '—' }}",
+        "options": {}
+      },
+      "id": "notify-completed",
+      "name": "Notify Shawn — job completed",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [940, 320]
+    },
+    {
+      "parameters": {},
+      "id": "log-paid",
+      "name": "Log paid (no action yet)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [940, 500]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "shawncolbert1971@gmail.com",
+        "subject": "=⚠️ Job canceled — {{ $json.contact.full_name }}",
+        "emailType": "text",
+        "message": "=A job was canceled.\n\nCustomer: {{ $json.contact.full_name }}\nJob: {{ $json.title || $json.service_code || 'Job' }}\nWas in stage: {{ $json.old_stage || '—' }}\nPort: {{ $json.port || '—' }}\nPhone: {{ $json.contact.phone || '—' }}",
+        "options": {}
+      },
+      "id": "notify-canceled",
+      "name": "Notify Shawn — job canceled",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [940, 680]
+    }
+  ],
+  "connections": {
+    "Stage change (Webhook)": {
+      "main": [
+        [ { "node": "Unwrap payload", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Unwrap payload": {
+      "main": [
+        [ { "node": "Route by action", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Route by action": {
+      "main": [
+        [ { "node": "Email customer confirmation", "type": "main", "index": 0 } ],
+        [ { "node": "Notify Shawn — job completed", "type": "main", "index": 0 } ],
+        [ { "node": "Log paid (no action yet)", "type": "main", "index": 0 } ],
+        [ { "node": "Notify Shawn — job canceled", "type": "main", "index": 0 } ]
+      ]
+    }
+  }
+}
