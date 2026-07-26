@@ -346,6 +346,7 @@ function JobEditor({ c, onCancel, onSave }) {
   const [title, setTitle] = useState(c.title || '')
   const [port, setPort] = useState(c.port || '')
   const [when, setWhen] = useState(toLocalInput(c.scheduled_at))
+  const [amount, setAmount] = useState(c.value ?? '')
   const [saving, setSaving] = useState(false)
   const stop = (e) => e.stopPropagation()
 
@@ -357,6 +358,7 @@ function JobEditor({ c, onCancel, onSave }) {
         title: title.trim() || null,
         port: port || null,
         scheduled_at: fromLocalInput(when),
+        value: amount === '' ? null : amount,
       })
     } finally {
       setSaving(false)
@@ -380,6 +382,19 @@ function JobEditor({ c, onCancel, onSave }) {
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Job title"
             className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Amount ($)</label>
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="1"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0"
+            className="w-full rounded border border-line bg-canvas px-2 py-1 font-[family-name:var(--font-mono)] text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           />
         </div>
         <div>
