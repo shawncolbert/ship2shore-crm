@@ -77,6 +77,7 @@ export default function Documents() {
   const { data: docs, isLoading } = useQuery({ queryKey: ['reviewDocs'], queryFn: fetchReviewDocuments })
   const { data: jobs } = useQuery({ queryKey: ['linkableJobs'], queryFn: fetchLinkableJobs })
   const [err, setErr] = useState('')
+  const [clearing, setClearing] = useState(false)
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['reviewDocs'] })
 
@@ -85,20 +86,45 @@ export default function Documents() {
     catch (e) { setErr(e.message) }
   }
 
-  async function dismiss(f) {
+  async function del(f) {
     if (!confirm(`Delete ${prettyName(f.file_name)}? This removes the file.`)) return
     try { await deleteAttachment({ id: f.id, filePath: f.file_path }); refresh() }
     catch (e) { setErr(e.message || String(e)) }
   }
 
+  async function deleteAll() {
+    if (!docs?.length) return
+    if (!confirm(`Delete all ${docs.length} document${docs.length === 1 ? '' : 's'} in this list? This removes the files.`)) return
+    setClearing(true); setErr('')
+    try {
+      for (const f of docs) {
+        await deleteAttachment({ id: f.id, filePath: f.file_path })
+      }
+      refresh()
+    } catch (e) {
+      setErr(e.message || String(e)); refresh()
+    } finally { setClearing(false) }
+  }
+
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <header className="mb-6">
-        <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Documents to review</h1>
-        <p className="text-sm text-muted">
-          Delivery Orders and gate passes pulled from email that didn’t auto-match a job.
-          The closest job is suggested by BL#; confirm it with Link, pick another, or dismiss.
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Documents to review</h1>
+          <p className="text-sm text-muted">
+            Delivery Orders and gate passes pulled from email that didn’t auto-match a job.
+            The closest job is suggested by BL#; confirm it with Link, pick another, or delete.
+          </p>
+        </div>
+        {docs?.length > 0 && (
+          <button
+            onClick={deleteAll}
+            disabled={clearing}
+            className="shrink-0 rounded-lg border border-line px-3 py-2 text-sm font-medium text-port hover:bg-red-50 disabled:opacity-50"
+          >
+            {clearing ? 'Deleting…' : `🗑️ Delete all (${docs.length})`}
+          </button>
+        )}
       </header>
 
       {err && <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
@@ -112,7 +138,7 @@ export default function Documents() {
       ) : (
         <div className="space-y-3">
           {docs.map((f) => (
-            <DocRow key={f.id} f={f} jobs={jobs || []} onDownload={download} onDismiss={dismiss}
+            <DocRow key={f.id} f={f} jobs={jobs || []} onDownload={download} onDelete={del}
               onLinked={refresh} onError={setErr} />
           ))}
         </div>
@@ -121,7 +147,7 @@ export default function Documents() {
   )
 }
 
-function DocRow({ f, jobs, onDownload, onDismiss, onLinked, onError }) {
+function DocRow({ f, jobs, onDownload, onDelete, onLinked, onError }) {
   const [jobId, setJobId] = useState('')
   const [busy, setBusy] = useState(false)
   const touched = useRef(false)
@@ -185,7 +211,7 @@ function DocRow({ f, jobs, onDownload, onDismiss, onLinked, onError }) {
           </select>
           <button className={btnAccent} disabled={busy || !jobId} onClick={link}>{busy ? 'Linking…' : 'Link'}</button>
           <button className={btn} disabled={busy} onClick={() => onDownload(f)}>Download</button>
-          <button className={btn} disabled={busy} onClick={() => onDismiss(f)}>Dismiss</button>
+          <button className={btn + ' text-port'} disabled={busy} onClick={() => onDelete(f)}>Delete</button>
         </div>
       </div>
     </div>
