@@ -236,19 +236,24 @@ export async function fetchDashboardStats() {
   const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString()
   const monthAgo = new Date(Date.now() - 30 * 864e5).toISOString()
 
-  const [stagesRes, oppsRes, leadsRes] = await Promise.all([
+  const [stagesRes, oppsRes, leadsRes, closesRes] = await Promise.all([
     supabase.from('stages').select('id, name, position, is_won, is_lost').order('position'),
     supabase.from('opportunities').select('id, value, stage_id, status, updated_at'),
     supabase.from('contacts').select('id', { count: 'exact', head: true }).gte('created_at', weekAgo),
+    // Exact "moved into Completed/Paid" events from the stage-change history.
+    supabase.from('opportunity_stage_changes')
+      .select('opportunity_id, to_stage, changed_at')
+      .in('to_stage', ['Completed', 'Paid'])
+      .gte('changed_at', monthAgo),
   ])
   const stages = stagesRes.data || []
   const opps = oppsRes.data || []
   const newLeadsWeek = leadsRes.count || 0
+  const closes = closesRes.data || []
 
   const stageById = Object.fromEntries(stages.map((s) => [s.id, s]))
   const nameOf = (o) => stageById[o.stage_id]?.name || ''
   const isClosed = (n) => ['Completed', 'Paid', 'Canceled', 'Cancelled'].includes(n)
-  const isDone = (n) => n === 'Completed' || n === 'Paid' // closed-won
 
   // Only the main workflow stages (position >= 0: New Booking … Paid, Canceled).
   const byStage = stages
@@ -261,10 +266,13 @@ export async function fetchDashboardStats() {
     .filter((o) => o.status !== 'cancelled' && !isClosed(nameOf(o)))
     .reduce((sum, o) => sum + Number(o.value || 0), 0)
 
-  // Jobs currently in Completed/Paid whose last change was within the window —
-  // a proxy for "moved to closed", since we don't keep stage history.
-  const closedThisWeek = opps.filter((o) => isDone(nameOf(o)) && o.updated_at >= weekAgo).length
-  const closedThisMonth = opps.filter((o) => isDone(nameOf(o)) && o.updated_at >= monthAgo).length
+  // Jobs that actually moved into Completed/Paid in each window, from the
+  // stage-change history. Distinct opportunity_id so a job that went
+  // Completed → Paid within the window is still counted once.
+  const closedIn = (since) =>
+    new Set(closes.filter((c) => c.changed_at >= since).map((c) => c.opportunity_id)).size
+  const closedThisWeek = closedIn(weekAgo)
+  const closedThisMonth = closedIn(monthAgo)
 
   return { byStage, openValue, totalJobs: opps.length, closedThisWeek, closedThisMonth, newLeadsWeek }
 }
