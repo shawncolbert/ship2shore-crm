@@ -1,0 +1,226 @@
+import { admin } from './_shared/supabaseAdmin.js'
+
+// Public, unauthenticated native booking widget — an in-app alternative to the
+// Calendly link. A customer picks a service + time slot and this writes the
+// SAME shape of records the Calendly webhook produces (contacts +
+// opportunities + appointments), so the rest of the pipeline (dashboard,
+// automations, documents) needs no changes to handle either source.
+//
+// This is additive: the Calendly webhook and integration are untouched and
+// keep working exactly as before, in parallel.
+
+// Same org/pipeline/stage ids the Calendly webhook uses, so both sources land
+// jobs in the same place on the board.
+const ORG_ID = '11111111-1111-1111-1111-111111111111'
+const PIPELINE_ID = '22222222-2222-2222-2222-222222222222'
+const NEW_BOOKING_STAGE_ID = '19770400-dade-4ea2-8339-5587c249a059'
+
+// --- Basic availability rules (deliberately simple for v1) ---------------
+// One shared calendar (one crew/vehicle at a time) across all service types.
+// Business hours Mon–Sat, 8am–5pm Pacific, fixed 1-hour slots. Bookable up to
+// 21 days out; a slot must start at least 2 hours from now.
+const TIMEZONE = 'America/Los_Angeles'
+const BUSINESS_START_HOUR = 8
+const BUSINESS_END_HOUR = 17
+const SLOT_MINUTES = 60
+const MIN_LEAD_HOURS = 2
+const MAX_DAYS_OUT = 21
+
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+const json = (statusCode, body) => ({
+  statusCode, headers: { 'Content-Type': 'application/json', ...cors }, body: JSON.stringify(body),
+})
+
+// Convert a Pacific wall-clock time (Y/M/D H:M) to a real UTC Date, handling
+// PST/PDT automatically. Self-contained (Intl-only) so it doesn't depend on
+// the server process's own timezone.
+function offsetMinutesAt(utcMs, timeZone) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+  const parts = Object.fromEntries(dtf.formatToParts(new Date(utcMs)).map((p) => [p.type, p.value]))
+  const hour = parts.hour === '24' ? 0 : Number(parts.hour)
+  const asUtc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), hour, Number(parts.minute), Number(parts.second))
+  return (asUtc - utcMs) / 60000
+}
+function zonedWallTimeToUtc(y, m, d, hh, mm, timeZone) {
+  const guess = Date.UTC(y, m - 1, d, hh, mm, 0)
+  const offset = offsetMinutesAt(guess, timeZone)
+  return new Date(guess - offset * 60000)
+}
+// Y/M/D of a UTC instant, as seen in the given timezone.
+function zonedYmd(date, timeZone) {
+  const dtf = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
+  const parts = Object.fromEntries(dtf.formatToParts(date).map((p) => [p.type, p.value]))
+  return { y: Number(parts.year), m: Number(parts.month), d: Number(parts.day) }
+}
+
+function parseDateParam(dateStr) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''))
+  if (!m) return null
+  return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) }
+}
+
+// List candidate hourly slots for one Pacific calendar day, minus already
+// booked (non-canceled) appointments and past/too-soon times.
+async function availableSlots(dateStr) {
+  const ymd = parseDateParam(dateStr)
+  if (!ymd) return { error: 'Bad date' }
+
+  const now = new Date()
+  const today = zonedYmd(now, TIMEZONE)
+  const dayIndexToday = Math.round(
+    (Date.UTC(ymd.y, ymd.m - 1, ymd.d) - Date.UTC(today.y, today.m - 1, today.d)) / 864e5
+  )
+  if (dayIndexToday < 0 || dayIndexToday > MAX_DAYS_OUT) return { slots: [] }
+
+  // Sunday closed (0=Sunday in the Pacific-local week).
+  const dow = new Date(Date.UTC(ymd.y, ymd.m - 1, ymd.d)).getUTCDay()
+  if (dow === 0) return { slots: [] }
+
+  const dayStartUtc = zonedWallTimeToUtc(ymd.y, ymd.m, ymd.d, 0, 0, TIMEZONE)
+  const dayEndUtc = zonedWallTimeToUtc(ymd.y, ymd.m, ymd.d, 23, 59, TIMEZONE)
+
+  const { data: busy, error } = await admin
+    .from('appointments')
+    .select('start_at, end_at, status')
+    .eq('org_id', ORG_ID)
+    .neq('status', 'canceled')
+    .lte('start_at', dayEndUtc.toISOString())
+    .gte('end_at', dayStartUtc.toISOString())
+  if (error) return { error: error.message }
+
+  const earliest = new Date(now.getTime() + MIN_LEAD_HOURS * 3600 * 1000)
+  const slots = []
+  for (let hour = BUSINESS_START_HOUR; hour < BUSINESS_END_HOUR; hour++) {
+    const slotStart = zonedWallTimeToUtc(ymd.y, ymd.m, ymd.d, hour, 0, TIMEZONE)
+    const slotEnd = new Date(slotStart.getTime() + SLOT_MINUTES * 60 * 1000)
+    if (slotStart < earliest) continue
+    const conflict = (busy || []).some((a) => {
+      const aStart = new Date(a.start_at).getTime()
+      const aEnd = a.end_at ? new Date(a.end_at).getTime() : aStart + 3600 * 1000
+      return aStart < slotEnd.getTime() && aEnd > slotStart.getTime()
+    })
+    if (!conflict) slots.push(slotStart.toISOString())
+  }
+  return { slots }
+}
+
+async function listServices() {
+  const { data, error } = await admin
+    .from('services').select('code, name, default_rate').eq('active', true).order('name')
+  if (error) return { error: error.message }
+  return { services: data || [] }
+}
+
+async function bookSlot(payload) {
+  const { service_code, port, start_at, full_name, email, phone, notes } = payload
+  if (!service_code || !start_at || !full_name || !email) {
+    return { status: 400, body: { error: 'Missing required fields.' } }
+  }
+
+  const { data: service } = await admin
+    .from('services').select('code, name, default_rate').eq('code', service_code).eq('active', true).maybeSingle()
+  if (!service) return { status: 400, body: { error: 'Unknown service.' } }
+
+  const startAt = new Date(start_at)
+  if (Number.isNaN(startAt.getTime())) return { status: 400, body: { error: 'Bad start time.' } }
+  const earliest = new Date(Date.now() + MIN_LEAD_HOURS * 3600 * 1000)
+  if (startAt < earliest) return { status: 409, body: { error: 'That time is no longer available. Please pick another.' } }
+  const endAt = new Date(startAt.getTime() + SLOT_MINUTES * 60 * 1000)
+
+  // Re-check the slot is still free (race-safe enough for this volume).
+  const { data: conflicts } = await admin
+    .from('appointments')
+    .select('id')
+    .eq('org_id', ORG_ID)
+    .neq('status', 'canceled')
+    .lt('start_at', endAt.toISOString())
+    .gt('end_at', startAt.toISOString())
+  if (conflicts && conflicts.length > 0) {
+    return { status: 409, body: { error: 'That time was just booked. Please pick another slot.' } }
+  }
+
+  const cleanEmail = String(email).trim().toLowerCase()
+  const cleanPhone = phone ? String(phone).trim() : null
+
+  const { data: existingContact } = await admin
+    .from('contacts').select('id, phone').eq('org_id', ORG_ID).eq('email', cleanEmail).maybeSingle()
+
+  let contactId
+  if (existingContact) {
+    contactId = existingContact.id
+    if (cleanPhone && !existingContact.phone) {
+      await admin.from('contacts').update({ phone: cleanPhone }).eq('id', contactId)
+    }
+  } else {
+    const { data: newContact, error: contactErr } = await admin
+      .from('contacts')
+      .insert({
+        org_id: ORG_ID, full_name: String(full_name).trim(), email: cleanEmail, phone: cleanPhone,
+        segment: 'private', source: 'in_app',
+      })
+      .select('id').single()
+    if (contactErr || !newContact) return { status: 500, body: { error: 'Could not create contact.', detail: contactErr?.message } }
+    contactId = newContact.id
+  }
+
+  const title = service.name
+  const { data: opp, error: oppErr } = await admin
+    .from('opportunities')
+    .insert({
+      org_id: ORG_ID, contact_id: contactId, pipeline_id: PIPELINE_ID, stage_id: NEW_BOOKING_STAGE_ID,
+      title, service_code: service.code, port: port || null, value: service.default_rate,
+      status: 'open', scheduled_at: startAt.toISOString(),
+    })
+    .select('id').single()
+  if (oppErr || !opp) return { status: 500, body: { error: 'Could not create booking.', detail: oppErr?.message } }
+
+  const { error: apptErr } = await admin.from('appointments').insert({
+    org_id: ORG_ID, contact_id: contactId, opportunity_id: opp.id,
+    source: 'in_app', external_id: null, title, port: port || null, service_code: service.code,
+    start_at: startAt.toISOString(), end_at: endAt.toISOString(), status: 'scheduled',
+  })
+  if (apptErr) return { status: 500, body: { error: 'Could not create appointment.', detail: apptErr.message } }
+
+  if (notes) {
+    await admin.from('activities').insert({
+      org_id: ORG_ID, contact_id: contactId, type: 'note', body: `Booking note: ${String(notes).slice(0, 1000)}`,
+    })
+  }
+
+  return { status: 200, body: { ok: true, contact_id: contactId, opportunity_id: opp.id, start_at: startAt.toISOString() } }
+}
+
+export const handler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: cors }
+  if (event.httpMethod !== 'POST') return json(405, { error: 'POST only' })
+
+  let payload
+  try { payload = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'Bad JSON' }) }
+  const { action } = payload
+
+  try {
+    if (action === 'services') {
+      const r = await listServices()
+      return r.error ? json(500, { error: r.error }) : json(200, r)
+    }
+    if (action === 'availability') {
+      const r = await availableSlots(payload.date)
+      return r.error ? json(500, { error: r.error }) : json(200, r)
+    }
+    if (action === 'book') {
+      const r = await bookSlot(payload)
+      return json(r.status, r.body)
+    }
+    return json(400, { error: 'Unknown action' })
+  } catch (e) {
+    return json(500, { error: String(e.message || e) })
+  }
+}

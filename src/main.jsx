@@ -14,6 +14,7 @@ import Inbox from './pages/Inbox'
 import Documents from './pages/Documents'
 import Automations from './pages/Automations'
 import PublicUpload from './pages/PublicUpload'
+import PublicBooking from './pages/PublicBooking'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -26,6 +27,8 @@ function App() {
       <Route path="/login" element={<Login />} />
       {/* Public customer upload link — no auth gate */}
       <Route path="/u/:token" element={<PublicUpload />} />
+      {/* Public native booking widget — no auth gate, additive to Calendly */}
+      <Route path="/book" element={<PublicBooking />} />
       <Route
         path="/*"
         element={
