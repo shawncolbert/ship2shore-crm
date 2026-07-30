@@ -12,6 +12,7 @@ import Pipeline from './pages/Pipeline'
 import Dashboard from './pages/Dashboard'
 import Inbox from './pages/Inbox'
 import Documents from './pages/Documents'
+import Automations from './pages/Automations'
 import PublicUpload from './pages/PublicUpload'
 import './index.css'
 
@@ -37,6 +38,7 @@ function App() {
                 <Route path="contacts/:id" element={<ContactDetail />} />
                 <Route path="pipeline" element={<Pipeline />} />
                 <Route path="documents" element={<Documents />} />
+                <Route path="automations" element={<Automations />} />
               </Routes>
             </Layout>
           </ProtectedRoute>

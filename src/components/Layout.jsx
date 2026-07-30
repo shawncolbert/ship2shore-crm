@@ -8,6 +8,7 @@ const nav = [
   { to: '/contacts', label: 'Contacts' },
   { to: '/pipeline', label: 'Pipeline' },
   { to: '/documents', label: 'Documents' },
+  { to: '/automations', label: 'Automations' },
 ]
 
 function Brand() {
