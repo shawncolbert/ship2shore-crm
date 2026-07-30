@@ -415,3 +415,47 @@ export async function createUploadLink({ orgId, contactId, opportunityId = null,
   if (error) throw error
   return `${window.location.origin}/u/${token}`
 }
+
+/* ------------------------------------------------------------------ */
+/* Automation rules (stage-change automations, configured in-app)      */
+/* ------------------------------------------------------------------ */
+
+// Workflow stage names (New Booking … Paid, Canceled) for the rule dropdowns.
+export async function fetchStageNames() {
+  const { data, error } = await supabase
+    .from('stages').select('name, position').gte('position', 0).order('position')
+  if (error) throw error
+  return (data || []).map((s) => s.name)
+}
+
+export async function fetchAutomationRules() {
+  const { data, error } = await supabase
+    .from('automation_rules')
+    .select('id, from_stage, to_stage, action, email_subject, email_body, enabled, position')
+    .order('position', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function createAutomationRule(rule) {
+  const orgId = await fetchMyOrgId()
+  const { data, error } = await supabase
+    .from('automation_rules')
+    .insert({ org_id: orgId, ...rule })
+    .select('*').single()
+  if (error) throw error
+  return data
+}
+
+export async function updateAutomationRule(id, patch) {
+  const { data, error } = await supabase
+    .from('automation_rules').update(patch).eq('id', id).select('*').single()
+  if (error) throw error
+  if (!data) throw new Error('Could not save this rule — permission denied.')
+  return data
+}
+
+export async function deleteAutomationRule(id) {
+  const { error } = await supabase.from('automation_rules').delete().eq('id', id)
+  if (error) throw error
+}
