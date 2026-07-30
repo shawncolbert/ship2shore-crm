@@ -24,14 +24,16 @@ function pacificToday() {
   return { y: Number(parts.year), m: Number(parts.month), d: Number(parts.day) }
 }
 
-// Next 21 calendar days (matching the server's booking window), Sundays
-// excluded (closed). Each entry carries the YYYY-MM-DD key the API expects.
+// Next 21 calendar days (matching the server's booking window), weekends
+// excluded (no Saturday or Sunday work). Each entry carries the YYYY-MM-DD
+// key the API expects.
 function upcomingDays() {
   const { y, m, d } = pacificToday()
   const days = []
   for (let offset = 0; offset <= 21; offset++) {
     const marker = new Date(Date.UTC(y, m - 1, d + offset))
-    if (marker.getUTCDay() === 0) continue // Sunday
+    const dow = marker.getUTCDay()
+    if (dow === 0 || dow === 6) continue // Saturday or Sunday
     const key = `${marker.getUTCFullYear()}-${String(marker.getUTCMonth() + 1).padStart(2, '0')}-${String(marker.getUTCDate()).padStart(2, '0')}`
     const label = marker.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' })
     days.push({ key, label })

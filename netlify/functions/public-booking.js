@@ -16,15 +16,17 @@ const PIPELINE_ID = '22222222-2222-2222-2222-222222222222'
 const NEW_BOOKING_STAGE_ID = '19770400-dade-4ea2-8339-5587c249a059'
 
 // --- Basic availability rules (deliberately simple for v1) ---------------
-// One shared calendar (one crew/vehicle at a time) across all service types.
-// Business hours Mon–Sat, 8am–5pm Pacific, fixed 1-hour slots. Bookable up to
-// 21 days out; a slot must start at least 2 hours from now.
+// Up to CAPACITY jobs can run in the same slot (multiple crews/vehicles).
+// Business hours Mon–Fri, 8am–5pm Pacific, fixed 1-hour slots — no Saturday
+// or Sunday work. Bookable up to 21 days out; a slot must start at least
+// 2 hours from now.
 const TIMEZONE = 'America/Los_Angeles'
 const BUSINESS_START_HOUR = 8
 const BUSINESS_END_HOUR = 17
 const SLOT_MINUTES = 60
 const MIN_LEAD_HOURS = 2
 const MAX_DAYS_OUT = 21
+const CAPACITY = 3
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -80,9 +82,9 @@ async function availableSlots(dateStr) {
   )
   if (dayIndexToday < 0 || dayIndexToday > MAX_DAYS_OUT) return { slots: [] }
 
-  // Sunday closed (0=Sunday in the Pacific-local week).
+  // No Saturday or Sunday work (0=Sunday, 6=Saturday).
   const dow = new Date(Date.UTC(ymd.y, ymd.m - 1, ymd.d)).getUTCDay()
-  if (dow === 0) return { slots: [] }
+  if (dow === 0 || dow === 6) return { slots: [] }
 
   const dayStartUtc = zonedWallTimeToUtc(ymd.y, ymd.m, ymd.d, 0, 0, TIMEZONE)
   const dayEndUtc = zonedWallTimeToUtc(ymd.y, ymd.m, ymd.d, 23, 59, TIMEZONE)
@@ -102,12 +104,12 @@ async function availableSlots(dateStr) {
     const slotStart = zonedWallTimeToUtc(ymd.y, ymd.m, ymd.d, hour, 0, TIMEZONE)
     const slotEnd = new Date(slotStart.getTime() + SLOT_MINUTES * 60 * 1000)
     if (slotStart < earliest) continue
-    const conflict = (busy || []).some((a) => {
+    const overlapping = (busy || []).filter((a) => {
       const aStart = new Date(a.start_at).getTime()
       const aEnd = a.end_at ? new Date(a.end_at).getTime() : aStart + 3600 * 1000
       return aStart < slotEnd.getTime() && aEnd > slotStart.getTime()
-    })
-    if (!conflict) slots.push(slotStart.toISOString())
+    }).length
+    if (overlapping < CAPACITY) slots.push(slotStart.toISOString())
   }
   return { slots }
 }
@@ -135,7 +137,7 @@ async function bookSlot(payload) {
   if (startAt < earliest) return { status: 409, body: { error: 'That time is no longer available. Please pick another.' } }
   const endAt = new Date(startAt.getTime() + SLOT_MINUTES * 60 * 1000)
 
-  // Re-check the slot is still free (race-safe enough for this volume).
+  // Re-check the slot still has room (race-safe enough for this volume).
   const { data: conflicts } = await admin
     .from('appointments')
     .select('id')
@@ -143,8 +145,8 @@ async function bookSlot(payload) {
     .neq('status', 'canceled')
     .lt('start_at', endAt.toISOString())
     .gt('end_at', startAt.toISOString())
-  if (conflicts && conflicts.length > 0) {
-    return { status: 409, body: { error: 'That time was just booked. Please pick another slot.' } }
+  if (conflicts && conflicts.length >= CAPACITY) {
+    return { status: 409, body: { error: 'That time just filled up. Please pick another slot.' } }
   }
 
   const cleanEmail = String(email).trim().toLowerCase()
