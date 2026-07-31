@@ -173,6 +173,11 @@ export async function cancelOpportunity(id) {
   const { error } = await supabase
     .from('opportunities').update({ status: 'cancelled' }).eq('id', id)
   if (error) throw error
+  // Also cancel the linked appointment(s) -- otherwise they stay 'scheduled'
+  // forever and keep occupying a booking-widget slot for a job that's dead.
+  const { error: apptErr } = await supabase
+    .from('appointments').update({ status: 'cancelled' }).eq('opportunity_id', id).eq('status', 'scheduled')
+  if (apptErr) throw apptErr
 }
 
 // Ship billing number that rides along with a job. Capped at 16 chars;
