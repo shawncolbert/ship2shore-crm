@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
+import { fetchMyProfile } from '../lib/supabase'
 
 const nav = [
   { to: '/', label: 'Dashboard', end: true },
@@ -26,9 +28,12 @@ function Brand() {
 }
 
 function NavItems({ onNavigate }) {
+  const { data: profile } = useQuery({ queryKey: ['myProfile'], queryFn: fetchMyProfile })
+  const items = profile?.platform_admin ? [...nav, { to: '/admin/orgs', label: 'Organizations' }] : nav
+
   return (
     <nav className="flex-1 space-y-1 px-3">
-      {nav.map((item) => (
+      {items.map((item) => (
         <NavLink
           key={item.to}
           to={item.to}

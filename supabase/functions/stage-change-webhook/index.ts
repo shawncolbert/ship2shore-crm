@@ -136,12 +136,18 @@ Deno.serve(async (req: Request) => {
 
     if (matched.length === 0) return json({ skipped: true, old_stage, new_stage });
 
+    // Scoped to org_id: opportunity_id/contact_id are only trustworthy paired
+    // with the org that actually owns them -- without this, a caller could
+    // supply their own org_id (so gmail/payment settings resolve correctly)
+    // together with another tenant's opportunity_id/contact_id and have that
+    // tenant's job/contact data read out and emailed to an attacker-chosen
+    // address.
     const { data: opp } = await supabase
       .from("opportunities")
       .select("id, title, value, scheduled_at, service_code, port, billing_number, payment_method_requested")
-      .eq("id", opportunity_id).maybeSingle();
+      .eq("id", opportunity_id).eq("org_id", org_id).maybeSingle();
     const { data: contact } = await supabase
-      .from("contacts").select("id, full_name, email, phone").eq("id", contact_id).maybeSingle();
+      .from("contacts").select("id, full_name, email, phone").eq("id", contact_id).eq("org_id", org_id).maybeSingle();
 
     const fullName = contact?.full_name || "there";
     const vars: Record<string, string> = {
