@@ -13,6 +13,7 @@ import Dashboard from './pages/Dashboard'
 import Inbox from './pages/Inbox'
 import Documents from './pages/Documents'
 import Automations from './pages/Automations'
+import PaymentSettings from './pages/PaymentSettings'
 import PublicUpload from './pages/PublicUpload'
 import PublicBooking from './pages/PublicBooking'
 import './index.css'
@@ -42,6 +43,7 @@ function App() {
                 <Route path="pipeline" element={<Pipeline />} />
                 <Route path="documents" element={<Documents />} />
                 <Route path="automations" element={<Automations />} />
+                <Route path="payment-settings" element={<PaymentSettings />} />
               </Routes>
             </Layout>
           </ProtectedRoute>

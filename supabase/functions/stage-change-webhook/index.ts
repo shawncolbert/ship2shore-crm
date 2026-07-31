@@ -3,9 +3,10 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // Fired by the `trg_notify_stage_change` trigger on public.opportunities.
 // Reads user-configurable rules from public.automation_rules and runs the
-// matching action IN-APP (send customer email / notify internally / log),
-// using the org's connected Gmail. Editing rules in the Automations settings
-// page changes behaviour immediately -- no code or n8n changes needed.
+// matching action IN-APP (send customer email / notify internally / send a
+// manual payment request / log), using the org's connected Gmail. Editing
+// rules in the Automations settings page changes behaviour immediately --
+// no code or n8n changes needed.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -81,6 +82,38 @@ async function sendGmail(token: string, from: string, to: string, subject: strin
   return await res.json();
 }
 
+// Manual payment requests (Zelle/Venmo/Cash App/Apple Pay) -- mirrors
+// src/lib/paymentRequest.js on the client. None of these four have an API,
+// so there's no way to detect payment automatically either way; a
+// dispatcher confirms and moves the card to Paid by hand.
+const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  zelle: "Zelle", venmo: "Venmo", cashapp: "Cash App", apple_pay: "Apple Pay",
+};
+const money = (n: unknown) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(n) || 0);
+function paymentInstructions(method: string, handle: string, amount: unknown, jobRef: string): string {
+  const amt = money(amount);
+  const ref = jobRef ? ` — please include "${jobRef}" in the memo/note` : "";
+  switch (method) {
+    case "zelle": return `Please send ${amt} to ${handle} via Zelle${ref}.`;
+    case "venmo": return `Please send ${amt} to ${handle} via Venmo${ref}.`;
+    case "cashapp": return `Please send ${amt} to ${handle} via Cash App${ref}.`;
+    case "apple_pay": return `Please send ${amt} to ${handle} via Apple Pay (Apple Cash)${ref}.`;
+    default: return `Please send ${amt} to ${handle}${ref}.`;
+  }
+}
+function buildPaymentRequestEmail(opts: { method: string; handle: string; amount: unknown; contactFirstName: string; jobTitle: string; jobRef: string }) {
+  const label = PAYMENT_METHOD_LABEL[opts.method] || opts.method;
+  const amt = money(opts.amount);
+  const subject = `Payment request — ${amt}${opts.jobTitle ? ` for ${opts.jobTitle}` : ""}`;
+  const body =
+    `Hi ${opts.contactFirstName || "there"},\n\n` +
+    `${opts.jobTitle ? `For your Ship2Shore job (${opts.jobTitle}), the ` : "The "}amount due is ${amt}.\n\n` +
+    `${paymentInstructions(opts.method, opts.handle, opts.amount, opts.jobRef)}\n\n` +
+    `${label}: ${opts.handle}\n\n` +
+    `Thank you,\nShip2Shore Dispatch`;
+  return { subject, body };
+}
+
 Deno.serve(async (req: Request) => {
   try {
     const { opportunity_id, contact_id, org_id, old_stage_id, new_stage_id } = await req.json();
@@ -104,7 +137,8 @@ Deno.serve(async (req: Request) => {
     if (matched.length === 0) return json({ skipped: true, old_stage, new_stage });
 
     const { data: opp } = await supabase
-      .from("opportunities").select("id, title, value, scheduled_at, service_code, port")
+      .from("opportunities")
+      .select("id, title, value, scheduled_at, service_code, port, billing_number, payment_method_requested")
       .eq("id", opportunity_id).maybeSingle();
     const { data: contact } = await supabase
       .from("contacts").select("id, full_name, email, phone").eq("id", contact_id).maybeSingle();
@@ -123,6 +157,7 @@ Deno.serve(async (req: Request) => {
     };
 
     let gmail: { token: string; from: string } | null = null;
+    let paymentSettings: any = undefined; // undefined = not fetched yet, null = fetched but none exists
     const results: any[] = [];
 
     for (const rule of matched) {
@@ -151,6 +186,28 @@ Deno.serve(async (req: Request) => {
             `Email: ${contact?.email || "—"}`;
           await sendGmail(gmail.token, gmail.from, gmail.from, subject, body);
           results.push({ action: rule.action, ok: true, to: gmail.from });
+        } else if (rule.action === "send_payment_request") {
+          if (!contact?.email) { results.push({ action: rule.action, ok: false, reason: "contact has no email" }); continue; }
+          if (paymentSettings === undefined) {
+            const { data: ps } = await supabase.from("payment_settings").select("*").eq("org_id", org_id).maybeSingle();
+            paymentSettings = ps || null;
+          }
+          const method = opp?.payment_method_requested || paymentSettings?.default_method;
+          if (!method) { results.push({ action: rule.action, ok: false, reason: "no payment method requested yet and no default method set" }); continue; }
+          const handle = paymentSettings?.[`${method}_handle`];
+          if (!handle) { results.push({ action: rule.action, ok: false, reason: `no ${method} handle set in Payment Settings` }); continue; }
+          gmail = gmail || await gmailAccessToken(supabase, org_id);
+          if (!gmail) { results.push({ action: rule.action, ok: false, reason: "no Gmail connected" }); continue; }
+          const { subject, body } = buildPaymentRequestEmail({
+            method, handle, amount: opp?.value,
+            contactFirstName: vars.first_name, jobTitle: opp?.title || "",
+            jobRef: opp?.billing_number || opp?.title || "",
+          });
+          await sendGmail(gmail.token, gmail.from, contact.email, subject, body);
+          await supabase.from("opportunities")
+            .update({ payment_requested_at: new Date().toISOString(), payment_method_requested: method })
+            .eq("id", opportunity_id);
+          results.push({ action: rule.action, ok: true, to: contact.email, method });
         }
 
         // Timeline entry for the audit trail.

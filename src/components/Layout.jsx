@@ -9,6 +9,7 @@ const nav = [
   { to: '/pipeline', label: 'Pipeline' },
   { to: '/documents', label: 'Documents' },
   { to: '/automations', label: 'Automations' },
+  { to: '/payment-settings', label: 'Payments' },
 ]
 
 function Brand() {
