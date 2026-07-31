@@ -14,6 +14,7 @@ const label = 'mb-1 block text-[10px] font-semibold uppercase tracking-wide text
 const ACTIONS = [
   { value: 'send_customer_email', label: 'Send customer email' },
   { value: 'notify_internal', label: 'Notify me internally' },
+  { value: 'send_payment_request', label: 'Send payment request' },
   { value: 'log_only', label: 'Log only' },
 ]
 const actionLabel = (a) => ACTIONS.find((x) => x.value === a)?.label || a
@@ -151,6 +152,17 @@ function RuleRow({ rule, stages, onChanged, onError }) {
               value={draft.email_body || ''} onChange={(e) => set('email_body', e.target.value)}
               placeholder={'Hi {{first_name}},\n\nYour booking is scheduled for {{scheduled_at}}.'} />
           </div>
+        </div>
+      )}
+
+      {draft.action === 'send_payment_request' && (
+        <div className="mt-3 border-t border-line pt-3">
+          <p className="text-xs text-muted">
+            Sends a payment request (Zelle / Venmo / Cash App / Apple Pay) using whichever method was last requested
+            on the job, or your <span className="font-medium text-ink">default method</span> if none was.
+            Set handles and the default in <span className="font-medium text-ink">Payment Settings</span>. If neither
+            is set, this rule is skipped for that job rather than failing.
+          </p>
         </div>
       )}
 
