@@ -68,11 +68,26 @@ async function gmailAccessToken(supabase: any, org_id: string): Promise<{ token:
   return { token, from: row.email };
 }
 
-async function sendGmail(token: string, from: string, to: string, subject: string, body: string) {
-  const raw = [
-    `From: ${from}`, `To: ${to}`, `Subject: ${subject}`,
-    "MIME-Version: 1.0", 'Content-Type: text/plain; charset="UTF-8"', "", body,
-  ].join("\r\n");
+// `html` is optional -- send_customer_email/notify_internal keep sending a
+// single plain-text part exactly as before; only send_payment_request passes
+// html, for a styled card/button instead of a wall of text.
+async function sendGmail(token: string, from: string, to: string, subject: string, body: string, html?: string) {
+  let raw: string;
+  if (html) {
+    const boundary = `s2s_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    raw = [
+      `From: ${from}`, `To: ${to}`, `Subject: ${subject}`, "MIME-Version: 1.0",
+      `Content-Type: multipart/alternative; boundary="${boundary}"`, "",
+      `--${boundary}`, 'Content-Type: text/plain; charset="UTF-8"', "", body,
+      `--${boundary}`, 'Content-Type: text/html; charset="UTF-8"', "", html,
+      `--${boundary}--`,
+    ].join("\r\n");
+  } else {
+    raw = [
+      `From: ${from}`, `To: ${to}`, `Subject: ${subject}`,
+      "MIME-Version: 1.0", 'Content-Type: text/plain; charset="UTF-8"', "", body,
+    ].join("\r\n");
+  }
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -95,12 +110,87 @@ function paymentInstructions(method: string, handle: string, amount: unknown, jo
   const ref = jobRef ? ` — please include "${jobRef}" in the memo/note` : "";
   switch (method) {
     case "zelle": return `Please send ${amt} to ${handle} via Zelle${ref}.`;
-    case "venmo": return `Please send ${amt} to ${handle} via Venmo${ref}.`;
-    case "cashapp": return `Please send ${amt} to ${handle} via Cash App${ref}.`;
+    case "venmo": return `Please send ${amt} via Venmo${ref}: ${venmoLink(handle, amount)}`;
+    case "cashapp": return `Please send ${amt} via Cash App${ref}: ${cashAppLink(handle, amount)}`;
     case "apple_pay": return `Please send ${amt} to ${handle} via Apple Pay (Apple Cash)${ref}.`;
     default: return `Please send ${amt} to ${handle}${ref}.`;
   }
 }
+function venmoLink(handle: string, amount: unknown): string {
+  const clean = String(handle || "").replace(/^@/, "").trim();
+  return `https://venmo.com/u/${encodeURIComponent(clean)}?amount=${encodeURIComponent(Number(amount) || 0)}`;
+}
+function cashAppLink(handle: string, amount: unknown): string {
+  const clean = String(handle || "").replace(/^\$/, "").trim();
+  return `https://cash.app/$${encodeURIComponent(clean)}/${encodeURIComponent(Number(amount) || 0)}`;
+}
+const hasPayLink = (method: string) => method === "venmo" || method === "cashapp";
+const escapeHtml = (s: unknown) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) => (({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as Record<string, string>)[c]));
+
+// Inline-styled, table-based HTML -- identical design to
+// src/lib/paymentRequest.js's buildHtmlBody() so the email looks the same
+// whether it was sent by a dispatcher's click or this automation.
+function buildHtmlBody(opts: { method: string; handle: string; amount: unknown; contactFirstName: string; jobTitle: string; jobRef: string }): string {
+  const amt = money(opts.amount);
+  const label = PAYMENT_METHOD_LABEL[opts.method] || opts.method;
+  const greeting = escapeHtml(opts.contactFirstName || "there");
+  const jobLine = opts.jobTitle
+    ? `For your Ship2Shore job (${escapeHtml(opts.jobTitle)}), the amount due is:`
+    : "The amount due is:";
+  const refLine = opts.jobRef
+    ? `<p style="margin:8px 0 0;font-size:13px;color:#6b7280;">Please include <strong>${escapeHtml(opts.jobRef)}</strong> in the memo/note.</p>`
+    : "";
+
+  let actionBlock: string;
+  if (hasPayLink(opts.method)) {
+    const url = opts.method === "venmo" ? venmoLink(opts.handle, opts.amount) : cashAppLink(opts.handle, opts.amount);
+    actionBlock = `
+      <tr><td align="center" style="padding:8px 0 4px;">
+        <a href="${url}" style="display:inline-block;background:#e8a317;color:#1a1a1a;font-weight:700;font-size:16px;text-decoration:none;padding:14px 32px;border-radius:10px;">
+          Pay ${amt} with ${escapeHtml(label)}
+        </a>
+      </td></tr>
+      <tr><td align="center" style="padding:6px 0 0;">
+        <p style="margin:0;font-size:12px;color:#9ca3af;word-break:break-all;">${url}</p>
+      </td></tr>`;
+  } else {
+    actionBlock = `
+      <tr><td style="padding:8px 0 4px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fdf6e8;border:2px solid #e8a317;border-radius:12px;">
+          <tr><td align="center" style="padding:22px 20px;">
+            <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#8a6d1a;">Send via ${escapeHtml(label)}</div>
+            <div style="margin-top:8px;font-size:26px;font-weight:700;color:#1a1a1a;">${escapeHtml(opts.handle)}</div>
+            <div style="margin-top:6px;font-size:14px;color:#4b5563;">Amount: <strong>${amt}</strong></div>
+          </td></tr>
+        </table>
+      </td></tr>`;
+  }
+
+  return `
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;">
+  <tr><td align="center">
+    <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+      <tr><td style="background:#1a1a1a;padding:18px 28px;">
+        <span style="color:#e8a317;font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Ship2Shore Dispatch</span>
+      </td></tr>
+      <tr><td style="padding:28px 28px 8px;">
+        <p style="margin:0 0 4px;font-size:15px;color:#1a1a1a;">Hi ${greeting},</p>
+        <p style="margin:0;font-size:15px;color:#1a1a1a;">${jobLine}</p>
+        <p style="margin:6px 0 0;font-size:32px;font-weight:700;color:#1a1a1a;">${amt}</p>
+      </td></tr>
+      <tr><td style="padding:4px 28px 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${actionBlock}</table>
+        ${refLine}
+      </td></tr>
+      <tr><td style="padding:24px 28px 28px;">
+        <p style="margin:0;font-size:13px;color:#9ca3af;">Thank you,<br>Ship2Shore Dispatch</p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>`;
+}
+
 function buildPaymentRequestEmail(opts: { method: string; handle: string; amount: unknown; contactFirstName: string; jobTitle: string; jobRef: string }) {
   const label = PAYMENT_METHOD_LABEL[opts.method] || opts.method;
   const amt = money(opts.amount);
@@ -111,7 +201,8 @@ function buildPaymentRequestEmail(opts: { method: string; handle: string; amount
     `${paymentInstructions(opts.method, opts.handle, opts.amount, opts.jobRef)}\n\n` +
     `${label}: ${opts.handle}\n\n` +
     `Thank you,\nShip2Shore Dispatch`;
-  return { subject, body };
+  const html = buildHtmlBody(opts);
+  return { subject, body, html };
 }
 
 Deno.serve(async (req: Request) => {
@@ -204,12 +295,12 @@ Deno.serve(async (req: Request) => {
           if (!handle) { results.push({ action: rule.action, ok: false, reason: `no ${method} handle set in Payment Settings` }); continue; }
           gmail = gmail || await gmailAccessToken(supabase, org_id);
           if (!gmail) { results.push({ action: rule.action, ok: false, reason: "no Gmail connected" }); continue; }
-          const { subject, body } = buildPaymentRequestEmail({
+          const { subject, body, html } = buildPaymentRequestEmail({
             method, handle, amount: opp?.value,
             contactFirstName: vars.first_name, jobTitle: opp?.title || "",
             jobRef: opp?.billing_number || opp?.title || "",
           });
-          await sendGmail(gmail.token, gmail.from, contact.email, subject, body);
+          await sendGmail(gmail.token, gmail.from, contact.email, subject, body, html);
           await supabase.from("opportunities")
             .update({ payment_requested_at: new Date().toISOString(), payment_method_requested: method })
             .eq("id", opportunity_id);

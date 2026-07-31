@@ -311,12 +311,12 @@ export async function sendPaymentRequest(opportunityId, method) {
   if (!handle) throw new Error(`Set your ${meta.label} handle in Payment Settings before sending.`)
 
   const firstName = (contact.full_name || '').split(/\s+/)[0] || 'there'
-  const { subject, body } = buildPaymentRequestEmail({
+  const { subject, body, html } = buildPaymentRequestEmail({
     method, handle, amount: opp.value, contactFirstName: firstName,
     jobTitle: opp.title, jobRef: opp.billing_number || opp.title || '',
   })
 
-  await sendEmail({ contactId: contact.id, to: contact.email, subject, body })
+  await sendEmail({ contactId: contact.id, to: contact.email, subject, body, html })
 
   const { error: updErr } = await supabase
     .from('opportunities')
@@ -500,7 +500,7 @@ export function subscribeMessages(onChange) {
 }
 
 // Send an email reply through the Netlify function (server holds Gmail creds).
-export async function sendEmail({ conversationId, contactId, to, subject, body }) {
+export async function sendEmail({ conversationId, contactId, to, subject, body, html }) {
   const { data: { session } } = await supabase.auth.getSession()
   const res = await fetch('/.netlify/functions/send-email', {
     method: 'POST',
@@ -508,7 +508,7 @@ export async function sendEmail({ conversationId, contactId, to, subject, body }
       'Content-Type': 'application/json',
       Authorization: `Bearer ${session?.access_token || ''}`,
     },
-    body: JSON.stringify({ conversationId, contactId, to, subject, body }),
+    body: JSON.stringify({ conversationId, contactId, to, subject, body, html }),
   })
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Send failed')
   return res.json()
