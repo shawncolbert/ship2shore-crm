@@ -336,9 +336,10 @@ export async function fetchDashboardStats() {
   const isClosed = (n) => ['Completed', 'Paid', 'Canceled', 'Cancelled'].includes(n)
 
   // Only the main workflow stages (position >= 0: New Booking … Paid, Canceled).
+  // id is kept so the dashboard can drill into "jobs in this stage" precisely.
   const byStage = stages
     .filter((s) => s.position >= 0)
-    .map((s) => ({ name: s.name, count: opps.filter((o) => o.stage_id === s.id).length }))
+    .map((s) => ({ id: s.id, name: s.name, count: opps.filter((o) => o.stage_id === s.id).length }))
 
   // Open pipeline value: everything not in a closed/canceled stage (and not a
   // canceled record).
@@ -355,6 +356,91 @@ export async function fetchDashboardStats() {
   const closedThisMonth = closedIn(monthAgo)
 
   return { byStage, openValue, totalJobs: opps.length, closedThisWeek, closedThisMonth, newLeadsWeek }
+}
+
+/* ------------------------------------------------------------------ */
+/* Dashboard drill-downs — fetched lazily, only when a stat card opens  */
+/* a list. Rows share one shape so DrillDownModal can render any of     */
+/* them: { id, contactId, contactName, jobTitle, stageName, date, value }. */
+/* ------------------------------------------------------------------ */
+
+const CLOSED_STAGE_NAMES = ['Completed', 'Paid', 'Canceled', 'Cancelled']
+
+export async function fetchOpenPipelineJobs() {
+  const { data: stages, error: sErr } = await supabase.from('stages').select('id, name')
+  if (sErr) throw sErr
+  const closedIds = new Set((stages || []).filter((s) => CLOSED_STAGE_NAMES.includes(s.name)).map((s) => s.id))
+  const nameById = Object.fromEntries((stages || []).map((s) => [s.id, s.name]))
+
+  const { data, error } = await supabase
+    .from('opportunities')
+    .select('id, title, value, stage_id, status, scheduled_at, contact_id, contacts(full_name)')
+    .neq('status', 'cancelled')
+    .order('scheduled_at', { ascending: true, nullsFirst: false })
+  if (error) throw error
+
+  return (data || [])
+    .filter((o) => !closedIds.has(o.stage_id))
+    .map((o) => ({
+      id: o.id, contactId: o.contact_id, contactName: o.contacts?.full_name || 'Unnamed contact',
+      jobTitle: o.title, stageName: nameById[o.stage_id] || '', date: o.scheduled_at, value: o.value,
+    }))
+}
+
+// Jobs that moved into Completed/Paid within the last `days` days, from the
+// exact stage-change history (matches fetchDashboardStats' closedThisWeek/Month).
+export async function fetchClosedJobs(days) {
+  const since = new Date(Date.now() - days * 864e5).toISOString()
+  const { data, error } = await supabase
+    .from('opportunity_stage_changes')
+    .select('opportunity_id, to_stage, changed_at, opportunities(id, title, value, contact_id, contacts(full_name))')
+    .in('to_stage', ['Completed', 'Paid'])
+    .gte('changed_at', since)
+    .order('changed_at', { ascending: false })
+  if (error) throw error
+
+  // A job that went Completed -> Paid within the window has two rows; keep
+  // only the most recent (rows already come back newest-first).
+  const seen = new Set()
+  const rows = []
+  for (const row of data || []) {
+    if (seen.has(row.opportunity_id)) continue
+    seen.add(row.opportunity_id)
+    const opp = row.opportunities
+    rows.push({
+      id: row.opportunity_id, contactId: opp?.contact_id, contactName: opp?.contacts?.full_name || 'Unnamed contact',
+      jobTitle: opp?.title, stageName: row.to_stage, date: row.changed_at, value: opp?.value,
+    })
+  }
+  return rows
+}
+
+export async function fetchNewLeadsList(days) {
+  const since = new Date(Date.now() - days * 864e5).toISOString()
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('id, full_name, company, segment, created_at')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data || []).map((c) => ({
+    id: c.id, contactId: c.id, contactName: c.full_name || 'Unnamed contact',
+    jobTitle: c.company || null, stageName: c.segment || null, date: c.created_at, value: null,
+  }))
+}
+
+export async function fetchJobsByStage(stageId, stageName) {
+  const { data, error } = await supabase
+    .from('opportunities')
+    .select('id, title, value, scheduled_at, contact_id, contacts(full_name)')
+    .eq('stage_id', stageId)
+    .neq('status', 'cancelled')
+    .order('scheduled_at', { ascending: true, nullsFirst: false })
+  if (error) throw error
+  return (data || []).map((o) => ({
+    id: o.id, contactId: o.contact_id, contactName: o.contacts?.full_name || 'Unnamed contact',
+    jobTitle: o.title, stageName, date: o.scheduled_at, value: o.value,
+  }))
 }
 
 /* ------------------------------------------------------------------ */

@@ -1,14 +1,64 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchDashboardStats } from '../lib/supabase'
+import {
+  fetchDashboardStats, fetchOpenPipelineJobs, fetchClosedJobs, fetchNewLeadsList, fetchJobsByStage,
+} from '../lib/supabase'
+import DrillDownModal from '../components/DrillDownModal'
 
 const money = (n) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
     .format(Number(n || 0))
 
+// Each drill-down knows how to fetch its own rows and what to show as the
+// modal title/subtitle/empty state. Keyed by `kind` so react-query caches
+// each list separately.
+const DRILLDOWNS = {
+  open: {
+    title: 'Open pipeline',
+    subtitle: 'Not yet completed, paid or canceled',
+    emptyMessage: 'Nothing open right now.',
+    fetch: fetchOpenPipelineJobs,
+  },
+  closed7: {
+    title: 'Jobs closed · 7 days',
+    subtitle: 'Moved to Completed or Paid',
+    emptyMessage: 'No jobs closed in the last 7 days.',
+    fetch: () => fetchClosedJobs(7),
+  },
+  closed30: {
+    title: 'Jobs closed · 30 days',
+    subtitle: 'Moved to Completed or Paid',
+    emptyMessage: 'No jobs closed in the last 30 days.',
+    fetch: () => fetchClosedJobs(30),
+  },
+  leads: {
+    title: 'New leads · 7 days',
+    subtitle: 'Contacts added this week',
+    emptyMessage: 'No new contacts this week.',
+    fetch: () => fetchNewLeadsList(7),
+  },
+}
+
 export default function Dashboard() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
     queryFn: fetchDashboardStats,
+  })
+  // { kind } for the four stat cards, or { kind: 'stage', stageId, stageName } for a per-stage row.
+  const [drillDown, setDrillDown] = useState(null)
+
+  const openDrillDown = (kind) => setDrillDown({ kind })
+  const openStageDrillDown = (stageId, stageName) => setDrillDown({ kind: 'stage', stageId, stageName })
+  const closeDrillDown = () => setDrillDown(null)
+
+  const config = drillDown?.kind === 'stage'
+    ? { title: `Jobs in ${drillDown.stageName}`, subtitle: null, emptyMessage: 'No jobs in this stage.', fetch: () => fetchJobsByStage(drillDown.stageId, drillDown.stageName) }
+    : drillDown ? DRILLDOWNS[drillDown.kind] : null
+
+  const drillQuery = useQuery({
+    queryKey: ['dashboardDrillDown', drillDown?.kind, drillDown?.stageId],
+    queryFn: config?.fetch,
+    enabled: !!drillDown,
   })
 
   return (
@@ -17,7 +67,7 @@ export default function Dashboard() {
         <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">
           Dashboard
         </h1>
-        <p className="text-sm text-muted">Your pipeline at a glance.</p>
+        <p className="text-sm text-muted">Your pipeline at a glance. Click a number to see what's behind it.</p>
       </header>
 
       {isLoading && <p className="text-sm text-muted">Loading…</p>}
@@ -27,13 +77,13 @@ export default function Dashboard() {
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="Open pipeline value" value={money(data.openValue)} mono accent
-              hint="Not yet completed, paid or canceled" />
+              hint="Not yet completed, paid or canceled" onClick={() => openDrillDown('open')} />
             <Stat label="Jobs closed · 7 days" value={data.closedThisWeek}
-              hint="Moved to Completed or Paid" />
+              hint="Moved to Completed or Paid" onClick={() => openDrillDown('closed7')} />
             <Stat label="Jobs closed · 30 days" value={data.closedThisMonth}
-              hint="Moved to Completed or Paid" />
+              hint="Moved to Completed or Paid" onClick={() => openDrillDown('closed30')} />
             <Stat label="New leads · 7 days" value={data.newLeadsWeek}
-              hint="Contacts added this week" />
+              hint="Contacts added this week" onClick={() => openDrillDown('leads')} />
           </div>
 
           <div className="mt-6 rounded-xl border border-line bg-surface p-5">
@@ -52,7 +102,13 @@ export default function Dashboard() {
                 {data.byStage.map((s) => {
                   const max = Math.max(...data.byStage.map((x) => x.count), 1)
                   return (
-                    <div key={s.name} className="flex items-center gap-3">
+                    <button
+                      key={s.name}
+                      type="button"
+                      onClick={() => openStageDrillDown(s.id, s.name)}
+                      disabled={s.count === 0}
+                      className="flex w-full items-center gap-3 rounded-md text-left transition-colors hover:bg-canvas disabled:cursor-default disabled:hover:bg-transparent"
+                    >
                       <span className="w-28 shrink-0 text-sm text-ink">{s.name}</span>
                       <div className="h-2 flex-1 rounded-full bg-canvas">
                         <div
@@ -61,7 +117,7 @@ export default function Dashboard() {
                         />
                       </div>
                       <span className="w-6 text-right text-sm font-medium text-ink">{s.count}</span>
-                    </div>
+                    </button>
                   )
                 })}
               </div>
@@ -69,13 +125,28 @@ export default function Dashboard() {
           </div>
         </>
       )}
+
+      <DrillDownModal
+        open={!!drillDown}
+        onClose={closeDrillDown}
+        title={config?.title}
+        subtitle={config?.subtitle}
+        emptyMessage={config?.emptyMessage}
+        rows={drillQuery.data}
+        isLoading={drillQuery.isLoading}
+        error={drillQuery.error}
+      />
     </div>
   )
 }
 
-function Stat({ label, value, mono, accent, hint }) {
+function Stat({ label, value, mono, accent, hint, onClick }) {
   return (
-    <div className="rounded-xl border border-line bg-surface p-5">
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-xl border border-line bg-surface p-5 text-left transition-colors hover:border-accent hover:bg-canvas"
+    >
       <div className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</div>
       <div
         className={`mt-2 text-3xl font-bold ${accent ? 'text-starboard' : 'text-ink'} ${
@@ -85,6 +156,6 @@ function Stat({ label, value, mono, accent, hint }) {
         {value}
       </div>
       {hint && <div className="mt-1 text-[11px] text-muted">{hint}</div>}
-    </div>
+    </button>
   )
 }
