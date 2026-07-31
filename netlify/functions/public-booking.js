@@ -93,7 +93,7 @@ async function availableSlots(dateStr) {
     .from('appointments')
     .select('start_at, end_at, status')
     .eq('org_id', ORG_ID)
-    .neq('status', 'canceled')
+    .neq('status', 'cancelled')
     .lte('start_at', dayEndUtc.toISOString())
     .gte('end_at', dayStartUtc.toISOString())
   if (error) return { error: error.message }
@@ -142,7 +142,7 @@ async function bookSlot(payload) {
     .from('appointments')
     .select('id')
     .eq('org_id', ORG_ID)
-    .neq('status', 'canceled')
+    .neq('status', 'cancelled')
     .lt('start_at', endAt.toISOString())
     .gt('end_at', startAt.toISOString())
   if (conflicts && conflicts.length >= CAPACITY) {

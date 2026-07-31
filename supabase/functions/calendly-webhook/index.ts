@@ -231,7 +231,7 @@ async function handleInviteeCanceled(body: any) {
     });
   }
 
-  if (appt.status === 'canceled') {
+  if (appt.status === 'cancelled') {
     return new Response(JSON.stringify({ ok: true, already_canceled: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -240,7 +240,7 @@ async function handleInviteeCanceled(body: any) {
 
   const { error: apptUpdateErr } = await supabase
     .from('appointments')
-    .update({ status: 'canceled' })
+    .update({ status: 'cancelled' })
     .eq('id', appt.id);
 
   if (apptUpdateErr) {
@@ -253,7 +253,7 @@ async function handleInviteeCanceled(body: any) {
   if (appt.opportunity_id) {
     const { error: oppUpdateErr } = await supabase
       .from('opportunities')
-      .update({ stage_id: CANCELED_STAGE_ID, status: 'canceled' })
+      .update({ stage_id: CANCELED_STAGE_ID, status: 'cancelled' })
       .eq('id', appt.opportunity_id);
 
     if (oppUpdateErr) {
