@@ -44,6 +44,18 @@ export async function fetchMyOrgId() {
   return data.org_id
 }
 
+// The signed-in user's own profile, incl. whether they're a platform admin
+// (gates the cross-org admin tools in the UI). Relies on RLS (id = auth.uid()).
+export async function fetchMyProfile() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, email, full_name, platform_admin')
+    .eq('id', (await supabase.auth.getUser()).data.user?.id)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
 export async function fetchServices() {
   const { data, error } = await supabase
     .from('services')
