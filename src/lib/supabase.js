@@ -464,11 +464,18 @@ export async function fetchConversations() {
 export async function fetchMessages(conversationId) {
   const { data, error } = await supabase
     .from('messages')
-    .select('id, direction, channel, body, from_addr, to_addr, ai_generated, created_at')
+    .select('id, direction, channel, body, from_addr, to_addr, ai_generated, status, created_at')
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: true })
   if (error) throw error
   return data
+}
+
+// Removes an AI-drafted reply that was sent (superseded by the real sent
+// message) or discarded by the dispatcher without ever going out.
+export async function deleteMessage(id) {
+  const { error } = await supabase.from('messages').delete().eq('id', id)
+  if (error) throw error
 }
 
 // Live-updates: fire the callback whenever a message row changes.

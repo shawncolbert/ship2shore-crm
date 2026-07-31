@@ -9,3 +9,7 @@
 # Poll Gmail every 10 minutes for new mail to/from known contacts
 [functions."gmail-sync"]
   schedule = "*/10 * * * *"
+
+# Draft (never send) a suggested reply for any conversation awaiting one
+[functions."ai-draft-reply"]
+  schedule = "*/10 * * * *"
