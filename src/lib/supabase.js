@@ -155,7 +155,7 @@ export async function fetchDefaultPipeline() {
 
   const { data: opps, error: oErr } = await supabase
     .from('opportunities')
-    .select('id, title, service_code, port, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, contacts(full_name, company)')
+    .select('id, title, service_code, port, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, payment_status, wave_invoice_id, contacts(full_name, company, email)')
     .eq('pipeline_id', pipeline.id)
   if (oErr) throw oErr
 
@@ -227,6 +227,24 @@ export async function updateOpportunity(id, patch) {
   const { data, error } = await supabase
     .from('opportunities').update(allowed).eq('id', id).select('*').single()
   if (error) throw error
+  return data
+}
+
+// "Send invoice" action on a pipeline card. Calls the wave-send-invoice Edge
+// Function (creates/reuses a Wave customer, creates + emails the invoice, and
+// stores wave_invoice_id + payment_status='sent' on the opportunity server-side).
+export async function sendWaveInvoice(opportunityId) {
+  const { data, error } = await supabase.functions.invoke('wave-send-invoice', {
+    body: { opportunity_id: opportunityId },
+  })
+  if (error) {
+    // FunctionsHttpError carries the JSON error body on error.context; surface
+    // Wave's actual message (e.g. "no email on file") instead of a generic one.
+    let message = error.message
+    try { message = (await error.context.json())?.error || message } catch { /* keep default */ }
+    throw new Error(message)
+  }
+  if (data?.error) throw new Error(data.error)
   return data
 }
 
