@@ -21,8 +21,18 @@ sends **immediately**, no draft or confirmation step. Options for methods
 you haven't set a handle for are greyed out.
 
 What happens on click:
-1. Builds a message with the amount due (the job's `value`), the method's
-   instructions, and your handle for it.
+1. Builds a styled HTML email with the amount due (the job's `value`) and a
+   method-specific payment widget:
+   - **Venmo / Cash App** — a clickable button that opens the app (or site)
+     with the amount pre-filled, using each platform's own pay link
+     (`venmo.com/u/<handle>?amount=<amt>`, `cash.app/$<handle>/<amt>`).
+     Neither has a public API, so this is the closest either gets to
+     one-tap — the customer still has to confirm the payment themselves.
+   - **Zelle / Apple Pay** — neither supports a pay link at all, so instead
+     of a misleading button, these render as a large, clearly readable card
+     showing the handle and amount for the customer to key in manually.
+   A plain-text version is sent alongside the HTML (multipart email), so it
+   still reads fine in text-only clients.
 2. Emails it to the contact via the existing `send-email` function (Gmail).
 3. Stamps `payment_requested_at` (now) and `payment_method_requested` (the
    method) on the opportunity — shown as a small badge on the card.
@@ -52,5 +62,6 @@ or failing loudly.
 - `payment_settings` table — your handles + default method (migration `0007`).
 - `opportunities.payment_requested_at` / `payment_method_requested` — set on every send, manual or automatic.
 - `src/pages/PaymentSettings.jsx` — the settings page.
-- `src/lib/paymentRequest.js` — shared method metadata + email template (also mirrored server-side in `stage-change-webhook` for the automation path, since a stage move happens server-side and can't call the browser-only `send-email` flow the card button uses).
+- `src/lib/paymentRequest.js` — shared method metadata + subject/plain-text/HTML email builder (also mirrored server-side in `stage-change-webhook` for the automation path, since a stage move happens server-side and can't call the browser-only `send-email` flow the card button uses).
+- `netlify/functions/_shared/google.js`'s `buildRaw()` — builds the multipart/alternative MIME message when an `html` body is passed; every other email in the app (inbox replies, automation emails, AI drafts) is unaffected and keeps sending plain text only, since `html` is optional and only `sendPaymentRequest` passes it.
 - `src/pages/Pipeline.jsx` — the $ button + dropdown on each card.

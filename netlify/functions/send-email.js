@@ -16,13 +16,13 @@ export const handler = async (event) => {
 
   let payload
   try { payload = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'Bad JSON' }) }
-  const { conversationId, contactId, to, subject, body } = payload
+  const { conversationId, contactId, to, subject, body, html } = payload
   if (!to || !body) return json(400, { error: 'Missing "to" or "body"' })
 
   const from = process.env.GMAIL_ADDRESS
   try {
     const at = await googleAccessToken()
-    const sent = await gmailSend(at, buildRaw({ from, to, subject: subject || '(no subject)', body }))
+    const sent = await gmailSend(at, buildRaw({ from, to, subject: subject || '(no subject)', body, html }))
 
     let convId = conversationId
     if (!convId) {

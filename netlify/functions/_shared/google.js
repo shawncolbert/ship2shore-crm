@@ -54,21 +54,49 @@ function encodeAddressHeader(value) {
   return s // bare address, already ASCII
 }
 
-export function buildRaw({ from, to, subject, body }) {
-  // Body is base64-encoded UTF-8 so any characters survive intact.
-  const b64body = Buffer.from(String(body ?? ''), 'utf8')
-    .toString('base64')
-    .replace(/(.{76})/g, '$1\r\n')
-  const msg = [
+const b64 = (s) => Buffer.from(String(s ?? ''), 'utf8').toString('base64').replace(/(.{76})/g, '$1\r\n')
+
+// `html` is optional — every existing caller that only passes `body` gets the
+// exact same single-part plain-text message as before. Passing `html` sends
+// a proper multipart/alternative message (plain-text fallback + styled
+// HTML), for messages like payment requests that want a real button/card
+// instead of a wall of text.
+export function buildRaw({ from, to, subject, body, html }) {
+  const headers = [
     `From: ${encodeAddressHeader(from)}`,
     `To: ${encodeAddressHeader(to)}`,
     `Subject: ${encodeHeaderWord(subject)}`,
     'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset="UTF-8"',
-    'Content-Transfer-Encoding: base64',
-    '',
-    b64body,
-  ].join('\r\n')
+  ]
+
+  let msg
+  if (html) {
+    const boundary = `s2s_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    msg = [
+      ...headers,
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      '',
+      `--${boundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      'Content-Transfer-Encoding: base64',
+      '',
+      b64(body),
+      `--${boundary}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      'Content-Transfer-Encoding: base64',
+      '',
+      b64(html),
+      `--${boundary}--`,
+    ].join('\r\n')
+  } else {
+    msg = [
+      ...headers,
+      'Content-Type: text/plain; charset="UTF-8"',
+      'Content-Transfer-Encoding: base64',
+      '',
+      b64(body),
+    ].join('\r\n')
+  }
   // msg is now pure ASCII (encoded headers + base64 body), so the final
   // base64url wrapping can't double-encode anything.
   return Buffer.from(msg, 'utf8').toString('base64')
