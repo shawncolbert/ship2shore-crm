@@ -15,6 +15,7 @@ import Documents from './pages/Documents'
 import Automations from './pages/Automations'
 import PaymentSettings from './pages/PaymentSettings'
 import AdminOrgs from './pages/AdminOrgs'
+import DeliveryOrderFix from './pages/DeliveryOrderFix'
 import LandingPages from './pages/LandingPages'
 import LandingPageEditor from './pages/LandingPageEditor'
 import PublicUpload from './pages/PublicUpload'
@@ -48,6 +49,7 @@ function App() {
                 <Route path="contacts/:id" element={<ContactDetail />} />
                 <Route path="pipeline" element={<Pipeline />} />
                 <Route path="documents" element={<Documents />} />
+                <Route path="do-fix" element={<DeliveryOrderFix />} />
                 <Route path="automations" element={<Automations />} />
                 <Route path="payment-settings" element={<PaymentSettings />} />
                 <Route path="landing-pages" element={<LandingPages />} />
