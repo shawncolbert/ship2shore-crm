@@ -77,7 +77,9 @@ export async function createContactWithBooking({ contact, booking = null }) {
     full_name: contact.full_name?.trim() || null,
     company: contact.company?.trim() || null,
     phone: contact.phone?.trim() || null,
-    email: contact.email?.trim() || null,
+    // Lowercased to match every other write path -- uq_contacts_org_email_lower
+    // makes mixed-case duplicates impossible, so normalise before insert.
+    email: contact.email?.trim().toLowerCase() || null,
     segment: contact.segment || null,
     source: 'manual',
   }
