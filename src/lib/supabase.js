@@ -649,3 +649,53 @@ export async function deleteAutomationRule(id) {
   const { error } = await supabase.from('automation_rules').delete().eq('id', id)
   if (error) throw error
 }
+
+/* ------------------------------------------------------------------ */
+/* Landing pages                                                       */
+/* ------------------------------------------------------------------ */
+
+export async function fetchLandingPages() {
+  const { data, error } = await supabase
+    .from('landing_pages')
+    .select('id, slug, title, published, updated_at')
+    .order('updated_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function fetchLandingPage(id) {
+  const { data, error } = await supabase
+    .from('landing_pages').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error('Landing page not found.')
+  return data
+}
+
+export async function createLandingPage({ slug, title, published, blocks }) {
+  const orgId = await fetchMyOrgId()
+  const { data, error } = await supabase
+    .from('landing_pages')
+    .insert({ org_id: orgId, slug, title, published: !!published, blocks: blocks || [] })
+    .select('*').single()
+  if (error) {
+    if (error.code === '23505') throw new Error('That slug is already taken — pick another.')
+    throw error
+  }
+  return data
+}
+
+export async function updateLandingPage(id, patch) {
+  const { data, error } = await supabase
+    .from('landing_pages').update(patch).eq('id', id).select('*').single()
+  if (error) {
+    if (error.code === '23505') throw new Error('That slug is already taken — pick another.')
+    throw error
+  }
+  if (!data) throw new Error('Could not save this page — permission denied.')
+  return data
+}
+
+export async function deleteLandingPage(id) {
+  const { error } = await supabase.from('landing_pages').delete().eq('id', id)
+  if (error) throw error
+}
