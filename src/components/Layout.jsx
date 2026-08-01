@@ -10,6 +10,7 @@ const nav = [
   { to: '/contacts', label: 'Contacts' },
   { to: '/pipeline', label: 'Pipeline' },
   { to: '/documents', label: 'Documents' },
+  { to: '/do-fix', label: 'DO Fix' },
   { to: '/automations', label: 'Automations' },
   { to: '/payment-settings', label: 'Payments' },
   { to: '/landing-pages', label: 'Landing Pages' },
