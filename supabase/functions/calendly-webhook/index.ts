@@ -75,7 +75,10 @@ function extractPhone(p: any): string | null {
 
 async function handleInviteeCreated(body: any) {
   const p = body.payload;
-  const email: string | null = p?.email || null;
+  // Normalised: Calendly returns whatever case the invitee typed, and this was
+  // stored raw while every other write path lowercases -- which is how the same
+  // person ended up with two contact rows.
+  const email: string | null = p?.email ? String(p.email).trim().toLowerCase() : null;
   const fullName: string = p?.name || 'Unknown';
   const phone = extractPhone(p);
   const eventUri: string | null = p?.event || p?.scheduled_event?.uri || null;
