@@ -47,6 +47,12 @@ export default function DeliveryOrderFix() {
   const [size, setSize] = useState(22)
   const [toast, setToast] = useState('')
   const [queuedName, setQueuedName] = useState('')
+  const [fileInfo, setFileInfo] = useState('')
+  // Bumped on every successful load. Without it, opening a second document
+  // leaves `loaded` true and `pageIndex` 0, React bails on the identical
+  // state, the repaint effect never re-runs and the canvas keeps the previous
+  // bitmap -- which reads as "I picked a file and nothing appeared".
+  const [docId, setDocId] = useState(0)
   const [zoom, setZoom] = useState(1)          // 1 = fit page width
   const queuedRef = useRef(null)
 
@@ -87,7 +93,7 @@ export default function DeliveryOrderFix() {
 
   useEffect(() => {
     if (loaded) paint(pageIndex)
-  }, [loaded, pageIndex, paint])
+  }, [loaded, pageIndex, docId, paint])
 
   // Edits are made on the visible canvas, then flushed back to the page store.
   const commit = useCallback(() => {
@@ -106,6 +112,7 @@ export default function DeliveryOrderFix() {
       return
     }
     setBusy('Opening document…')
+    setFileInfo(`${file.name || 'file'} · ${file.type || 'unknown type'} · ${(file.size / 1048576).toFixed(1)} MB`)
     pagesRef.current = []
     undoRef.current = []
     try {
@@ -121,7 +128,37 @@ export default function DeliveryOrderFix() {
           pagesRef.current.push(c)
         }
       } else {
-        await new Promise((resolve, reject) => {
+        const store = (bmp, w, h) => {
+          const MAX_PX = 16000000
+          let dw = w
+          let dh = h
+          if (w * h > MAX_PX) {
+            const k = Math.sqrt(MAX_PX / (w * h))
+            dw = Math.floor(w * k)
+            dh = Math.floor(h * k)
+          }
+          const c = document.createElement('canvas')
+          c.width = dw
+          c.height = dh
+          c.getContext('2d').drawImage(bmp, 0, 0, dw, dh)
+          pagesRef.current.push(c)
+        }
+
+        // createImageBitmap decodes formats <img> sometimes will not, and
+        // applies the EXIF rotation iPhone photos carry.
+        let decoded = false
+        if (typeof createImageBitmap === 'function') {
+          try {
+            const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' })
+            store(bmp, bmp.width, bmp.height)
+            bmp.close?.()
+            decoded = true
+          } catch {
+            decoded = false
+          }
+        }
+
+        if (!decoded) await new Promise((resolve, reject) => {
           const img = new Image()
           img.onload = () => {
             // iOS Safari refuses canvases much beyond ~16M pixels, and a
@@ -152,8 +189,10 @@ export default function DeliveryOrderFix() {
           img.src = URL.createObjectURL(file)
         })
       }
+      if (!pagesRef.current.length) throw new Error('That file produced no pages.')
       setPageCount(pagesRef.current.length)
       setPageIndex(0)
+      setDocId((n) => n + 1)
       setLoaded(true)
     } catch (e) {
       setError(e.message || String(e))
@@ -396,6 +435,7 @@ export default function DeliveryOrderFix() {
     setText('')
     setTool('erase')
     setZoom(1)
+    setFileInfo('')
     setQueuedName('')
     queuedRef.current = null
   }
@@ -459,6 +499,11 @@ export default function DeliveryOrderFix() {
           </p>
         )}
         {busy && <p className="mb-2 text-sm text-accent">🔄 {busy}</p>}
+        {/* Echo the picked file back. A blank preview with no explanation is
+            impossible to diagnose from the other end of a phone call. */}
+        {fileInfo && !busy && (
+          <p className="mb-2 truncate text-xs text-muted">📎 {fileInfo}</p>
+        )}
 
         {loaded && (
           <>
