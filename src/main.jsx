@@ -15,8 +15,11 @@ import Documents from './pages/Documents'
 import Automations from './pages/Automations'
 import PaymentSettings from './pages/PaymentSettings'
 import AdminOrgs from './pages/AdminOrgs'
+import LandingPages from './pages/LandingPages'
+import LandingPageEditor from './pages/LandingPageEditor'
 import PublicUpload from './pages/PublicUpload'
 import PublicBooking from './pages/PublicBooking'
+import LandingPagePublic from './pages/LandingPagePublic'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -31,6 +34,8 @@ function App() {
       <Route path="/u/:token" element={<PublicUpload />} />
       {/* Public native booking widget — no auth gate, additive to Calendly */}
       <Route path="/book" element={<PublicBooking />} />
+      {/* Public landing pages — no auth gate */}
+      <Route path="/pages/:slug" element={<LandingPagePublic />} />
       <Route
         path="/*"
         element={
@@ -45,6 +50,8 @@ function App() {
                 <Route path="documents" element={<Documents />} />
                 <Route path="automations" element={<Automations />} />
                 <Route path="payment-settings" element={<PaymentSettings />} />
+                <Route path="landing-pages" element={<LandingPages />} />
+                <Route path="landing-pages/:id" element={<LandingPageEditor />} />
                 <Route path="admin/orgs" element={<AdminOrgs />} />
               </Routes>
             </Layout>
