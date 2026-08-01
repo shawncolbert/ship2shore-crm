@@ -335,16 +335,40 @@ export default function DeliveryOrderFix() {
 
   const stamp = () => new Date().toISOString().slice(0, 10).replace(/-/g, '')
 
+  /* iOS ignores the <a download> attribute outright -- on iPhone the file
+     either opens in a viewer or nothing happens at all, so the corrected
+     document would never actually be saved. Hand it to the system share
+     sheet where that exists (Save to Files, Mail, AirDrop), and fall back to
+     the anchor on desktop. */
+  async function deliver(blob, filename) {
+    const file = new File([blob], filename, { type: blob.type })
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: filename })
+        flash('Shared — choose “Save to Files” to keep it')
+        return
+      } catch (err) {
+        if (err?.name === 'AbortError') return   // user dismissed the sheet
+        // anything else: fall through to the anchor
+      }
+    }
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 10000)
+    flash('Downloaded')
+  }
+
   function downloadPng() {
     commit()
-    pagesRef.current[pageIndex].toBlob((b) => {
-      const a = document.createElement('a')
-      a.href = URL.createObjectURL(b)
-      a.download = `Delivery_Order_Corrected_${stamp()}_p${pageIndex + 1}.png`
-      a.click()
-      URL.revokeObjectURL(a.href)
-      flash('PNG downloaded')
-    }, 'image/png')
+    pagesRef.current[pageIndex].toBlob(
+      (b) => deliver(b, `Delivery_Order_Corrected_${stamp()}_p${pageIndex + 1}.png`),
+      'image/png',
+    )
   }
 
   function downloadPdf() {
@@ -359,8 +383,7 @@ export default function DeliveryOrderFix() {
       else pdf.addPage([w, h], orient)
       pdf.addImage(c.toDataURL('image/jpeg', 0.94), 'JPEG', 0, 0, w, h)
     })
-    pdf.save(`Delivery_Order_Corrected_${stamp()}.pdf`)
-    flash('PDF downloaded')
+    deliver(pdf.output('blob'), `Delivery_Order_Corrected_${stamp()}.pdf`)
   }
 
   function reset() {
@@ -400,7 +423,7 @@ export default function DeliveryOrderFix() {
 
       <div className="rounded-xl border border-line bg-surface p-5">
         <label
-          className="mb-4 block cursor-pointer rounded-xl border-2 border-dashed border-line bg-canvas px-4 py-8 text-center transition-colors hover:border-accent"
+          className="relative mb-4 block cursor-pointer rounded-xl border-2 border-dashed border-line bg-canvas px-4 py-8 text-center transition-colors hover:border-accent"
           onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-accent') }}
           onDragLeave={(e) => e.currentTarget.classList.remove('border-accent')}
           onDrop={(e) => {
@@ -425,7 +448,7 @@ export default function DeliveryOrderFix() {
           <input
             type="file"
             accept="application/pdf,image/*"
-            className="absolute h-px w-px opacity-0"
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             onChange={(e) => { openFile(e.target.files[0]); e.target.value = '' }}
           />
         </label>
