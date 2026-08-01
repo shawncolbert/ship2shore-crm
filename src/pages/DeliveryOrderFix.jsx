@@ -46,12 +46,21 @@ export default function DeliveryOrderFix() {
   const [text, setText] = useState('')
   const [size, setSize] = useState(22)
   const [toast, setToast] = useState('')
+  const [queuedName, setQueuedName] = useState('')
+  const [zoom, setZoom] = useState(1)          // 1 = fit page width
+  const queuedRef = useRef(null)
 
   useEffect(() => {
     Promise.all([loadScript('/vendor/pdf.min.js'), loadScript('/vendor/jspdf.umd.min.js')])
       .then(() => {
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.js'
         setReady(true)
+        if (queuedRef.current) {
+          const f = queuedRef.current
+          queuedRef.current = null
+          setQueuedName('')
+          openFile(f)
+        }
       })
       .catch((e) => setError(e.message))
   }, [])
@@ -89,6 +98,13 @@ export default function DeliveryOrderFix() {
   async function openFile(file) {
     if (!file) return
     setError('')
+    // Picked before pdf.js finished downloading -- hold it rather than
+    // silently doing nothing.
+    if (!window.pdfjsLib || !window.jspdf) {
+      queuedRef.current = file
+      setQueuedName(file.name || 'file')
+      return
+    }
     setBusy('Opening document…')
     pagesRef.current = []
     undoRef.current = []
@@ -108,15 +124,31 @@ export default function DeliveryOrderFix() {
         await new Promise((resolve, reject) => {
           const img = new Image()
           img.onload = () => {
+            // iOS Safari refuses canvases much beyond ~16M pixels, and a
+            // modern phone camera clears that easily. Scale down to fit
+            // rather than handing back a blank canvas.
+            const MAX_PX = 16000000
+            let w = img.naturalWidth
+            let h = img.naturalHeight
+            const px = w * h
+            if (px > MAX_PX) {
+              const k = Math.sqrt(MAX_PX / px)
+              w = Math.floor(w * k)
+              h = Math.floor(h * k)
+            }
             const c = document.createElement('canvas')
-            c.width = img.naturalWidth
-            c.height = img.naturalHeight
-            c.getContext('2d').drawImage(img, 0, 0)
+            c.width = w
+            c.height = h
+            c.getContext('2d').drawImage(img, 0, 0, w, h)
             pagesRef.current.push(c)
             URL.revokeObjectURL(img.src)
             resolve()
           }
-          img.onerror = () => reject(new Error('That image could not be read.'))
+          img.onerror = () => reject(new Error(
+            /\.hei[cf]$/i.test(file.name || '')
+              ? 'This browser cannot open HEIC photos. On iPhone: Settings > Camera > Formats > Most Compatible, or share the photo as JPEG.'
+              : 'That image could not be read.'
+          ))
           img.src = URL.createObjectURL(file)
         })
       }
@@ -340,6 +372,9 @@ export default function DeliveryOrderFix() {
     setPending(null)
     setText('')
     setTool('erase')
+    setZoom(1)
+    setQueuedName('')
+    queuedRef.current = null
   }
 
   const toolBtn = (id, label) =>
@@ -376,19 +411,31 @@ export default function DeliveryOrderFix() {
         >
           <span className="mb-2 block text-3xl">📄</span>
           <p className="text-sm text-muted">
-            <span className="font-semibold text-accent">Tap to upload</span> or drag a PDF/image here
+            <span className="font-semibold text-accent">Tap to upload</span>
+            <span className="hidden sm:inline"> or drag a PDF/image here</span>
           </p>
+          <p className="mt-1 text-xs text-muted">PDF, photo, or scan — including a picture taken right now</p>
+          {/* accept is MIME-based, not extensions: iOS matches on MIME and an
+              extension list greys out Photos/Camera and excludes iPhone HEIC
+              shots entirely. Never disabled -- a file picked before the PDF
+              engine finishes downloading is queued instead, since on cellular
+              that download takes seconds and a dead-looking box reads as
+              broken. Positioned rather than display:none, which iOS Safari
+              has known failures triggering through a wrapping label. */}
           <input
             type="file"
-            accept=".pdf,.png,.jpg,.jpeg"
-            className="hidden"
-            disabled={!ready}
-            onChange={(e) => openFile(e.target.files[0])}
+            accept="application/pdf,image/*"
+            className="absolute h-px w-px opacity-0"
+            onChange={(e) => { openFile(e.target.files[0]); e.target.value = '' }}
           />
         </label>
 
-        {!ready && !error && <p className="text-sm text-muted">Loading PDF engine…</p>}
-        {busy && <p className="text-sm text-accent">🔄 {busy}</p>}
+        {!ready && !error && (
+          <p className="mb-2 text-sm text-muted">
+            ⏳ Loading PDF engine… {queuedName ? `“${queuedName}” will open as soon as it's ready.` : 'You can pick a file now.'}
+          </p>
+        )}
+        {busy && <p className="mb-2 text-sm text-accent">🔄 {busy}</p>}
 
         {loaded && (
           <>
@@ -454,7 +501,24 @@ export default function DeliveryOrderFix() {
               </div>
             )}
 
-            <div ref={wrapRef} className="relative mb-4 overflow-auto rounded-xl border border-line bg-canvas p-2">
+            {/* At fit-width a Letter page on a phone renders body text about
+                three pixels tall, which is impossible to erase accurately.
+                Zoom scrolls the wrapper instead of scaling the bitmap, so the
+                exported 300 DPI output is unaffected. */}
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Zoom</span>
+              {[1, 2, 3, 4].map((z) => (
+                <button
+                  key={z}
+                  onClick={() => setZoom(z)}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                    zoom === z ? 'border-accent bg-accent/10 text-ink' : 'border-line text-muted hover:border-accent'
+                  }`}
+                >{z === 1 ? 'Fit' : `${z}x`}</button>
+              ))}
+            </div>
+
+            <div ref={wrapRef} className="relative mb-4 overflow-auto rounded-xl border border-line bg-canvas p-2" style={{ maxHeight: '70vh' }}>
               <canvas
                 ref={canvasRef}
                 onMouseDown={onDown}
@@ -462,8 +526,14 @@ export default function DeliveryOrderFix() {
                 onTouchMove={onMove}
                 onTouchEnd={onUp}
                 onClick={onCanvasClick}
-                className="block h-auto w-full rounded"
-                style={{ cursor: 'crosshair', touchAction: 'none' }}
+                className="block h-auto max-w-none rounded"
+                style={{
+                  width: `${zoom * 100}%`,
+                  cursor: 'crosshair',
+                  // Only swallow native gestures while erasing; in Text mode the
+                  // page must still scroll and pinch-zoom normally on a phone.
+                  touchAction: tool === 'erase' ? 'none' : 'auto',
+                }}
               />
               <div ref={overlayRef} className="pointer-events-none absolute hidden border-2 border-accent bg-accent/20" />
             </div>
