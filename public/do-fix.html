@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<title>DO Fix — Ship2Shore Booking</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+/* Palette matches the Ship2Shore design system (same values as
+   ship2shore-invoice.html) so this drops into the dashboard unchanged. */
+:root{
+  --navy:#070f1e; --navy-mid:#0d1e38; --navy-card:#111f3a; --navy-light:#162540;
+  --aqua:#00d4e0; --aqua-dim:#0099a8;
+  --gold:#f0b840; --gold-dim:#c08820;
+  --white:#e8f0ff; --gray:#6080a8;
+  --border:rgba(0,212,224,0.18);
+  --success:#20d880; --danger:#ff4060; --warn:#ff9020;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--navy);color:var(--white);font-family:'DM Sans',sans-serif;line-height:1.55;padding:16px;padding-bottom:40px}
+
+h1{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;color:var(--white)}
+.sec-hdr{margin-bottom:16px}
+.sec-hdr p{font-size:13px;color:var(--gray);margin-top:4px}
+
+.card{background:var(--navy-card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px}
+.card-title{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:1.2px;color:var(--aqua);margin-bottom:12px}
+.field{margin-bottom:12px}
+.field-label{display:block;font-size:10px;color:var(--gray);font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px}
+.txt-input,.sel-input{width:100%;background:var(--navy);border:1px solid var(--border);border-radius:10px;padding:11px 12px;color:var(--white);font-family:'DM Sans',sans-serif;font-size:15px;outline:none}
+.txt-input:focus,.sel-input:focus{border-color:var(--aqua)}
+.divider{height:1px;background:var(--border);margin:14px 0}
+
+button{font-family:'DM Sans',sans-serif;cursor:pointer}
+.btn-p,.btn-g,.btn-ghost,.copy-btn{width:100%;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:600;margin-bottom:10px;display:block}
+.btn-p{background:var(--aqua);color:var(--navy)}
+.btn-g{background:var(--gold);color:var(--navy)}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--gray)}
+.copy-btn{background:var(--navy);border:1px solid var(--border);color:var(--white)}
+.copy-btn.copied{border-color:var(--success);color:var(--success)}
+.btn-p:disabled,.btn-g:disabled,.copy-btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* DO FIX — DELIVERY ORDER CORRECTION */
+.dofix-drop{border:2px dashed var(--border);border-radius:14px;background:var(--navy);padding:30px 16px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:14px;display:block}
+.dofix-drop:hover,.dofix-drop.drag-over{border-color:var(--aqua);background:rgba(0,212,224,0.05)}
+.dofix-drop .dofix-icon{font-size:32px;margin-bottom:8px;display:block}
+.dofix-drop p{font-size:13px;color:var(--gray);line-height:1.5}
+.dofix-drop p strong{color:var(--aqua)}
+.dofix-drop input[type=file]{display:none}
+
+.dofix-spinner{display:none;text-align:center;padding:20px;color:var(--aqua);font-size:13px}
+.dofix-spinner.show{display:block}
+
+/* Editor */
+.dofix-editor{display:none}
+.dofix-editor.show{display:block}
+
+.dofix-toolbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.dofix-tool{flex:1;min-width:88px;background:var(--navy);border:1px solid var(--border);border-radius:10px;padding:10px 8px;color:var(--gray);font-size:12px;font-weight:600;text-align:center}
+.dofix-tool.active{border-color:var(--aqua);color:var(--aqua);background:rgba(0,212,224,0.08)}
+
+.dofix-hint{font-size:12px;color:var(--gray);background:var(--navy);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+.dofix-hint b{color:var(--aqua)}
+
+.dofix-canvas-wrap{position:relative;background:var(--navy);border:1px solid var(--border);border-radius:12px;padding:8px;margin-bottom:12px;overflow:auto;-webkit-overflow-scrolling:touch}
+#dofixCanvas{display:block;width:100%;height:auto;border-radius:6px;cursor:crosshair;touch-action:none}
+#dofixOverlay{position:absolute;pointer-events:none;border:2px solid var(--aqua);background:rgba(0,212,224,0.15);display:none}
+
+.dofix-pagebar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+.dofix-pagebar button{background:var(--navy);border:1px solid var(--border);border-radius:8px;color:var(--white);padding:8px 14px;font-size:13px}
+.dofix-pagebar button:disabled{opacity:.35}
+.dofix-pagelbl{font-size:12px;color:var(--gray);font-weight:600}
+
+/* Text entry popover */
+.dofix-textbox{display:none;background:var(--navy);border:1px solid var(--aqua);border-radius:12px;padding:12px;margin-bottom:12px}
+.dofix-textbox.show{display:block}
+.dofix-textbox-row{display:flex;gap:8px;align-items:flex-end}
+.dofix-textbox-row .field{flex:1;margin-bottom:0}
+.dofix-size{width:88px}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--navy-card);border:1px solid var(--success);color:var(--success);padding:12px 18px;border-radius:12px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:all .25s;z-index:99}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<div class="sec-hdr">
+  <h1>📝 DELIVERY ORDER FIX</h1>
+  <p>Upload a delivery order, erase whatever's wrong, and type the correction in its place. Everything happens on this device — the document is never uploaded anywhere.</p>
+</div>
+
+<div class="card">
+  <div class="card-title">UPLOAD DELIVERY ORDER</div>
+  <label class="dofix-drop" id="dofixDrop">
+    <span class="dofix-icon">📄</span>
+    <p><strong>Tap to upload</strong> or drag a PDF/image here</p>
+    <input type="file" id="dofixFile" accept=".pdf,.png,.jpg,.jpeg"/>
+  </label>
+
+  <div class="dofix-spinner" id="dofixSpinner">🔄 Opening document…</div>
+
+  <div class="dofix-editor" id="dofixEditor">
+    <div class="dofix-pagebar" id="dofixPagebar">
+      <button id="dofixPrev">‹ Prev</button>
+      <span class="dofix-pagelbl" id="dofixPageLbl">Page 1 of 1</span>
+      <button id="dofixNext">Next ›</button>
+    </div>
+
+    <div class="dofix-toolbar">
+      <button class="dofix-tool active" id="toolErase">🧽 Erase</button>
+      <button class="dofix-tool" id="toolText">🔤 Text</button>
+      <button class="dofix-tool" id="toolUndo">↶ Undo</button>
+    </div>
+
+    <div class="dofix-hint" id="dofixHint"><b>Erase:</b> drag a box over the text you want gone. The background colour is sampled from just outside your box, so the patch blends in.</div>
+
+    <div class="dofix-textbox" id="dofixTextbox">
+      <div class="dofix-textbox-row">
+        <div class="field">
+          <label class="field-label">Replacement text</label>
+          <input class="txt-input" id="dofixTextVal" placeholder="Ship2Shore Booking"/>
+        </div>
+        <div class="field dofix-size">
+          <label class="field-label">Size</label>
+          <input class="txt-input" id="dofixTextSize" type="number" min="8" max="72" value="22"/>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <button class="btn-p" id="dofixPlaceBtn">Place text</button>
+      <button class="btn-ghost" id="dofixCancelText" style="margin-bottom:0">Cancel</button>
+    </div>
+
+    <div class="dofix-canvas-wrap" id="dofixCanvasWrap">
+      <canvas id="dofixCanvas"></canvas>
+      <div id="dofixOverlay"></div>
+    </div>
+  </div>
+</div>
+
+<button class="btn-p" id="dofixDownloadPdf" disabled>✅ DOWNLOAD CORRECTED PDF</button>
+<button class="btn-g" id="dofixDownloadPng" disabled>🖼️ DOWNLOAD PNG (CURRENT PAGE)</button>
+<button class="btn-ghost" id="dofixReset">🔄 START OVER</button>
+
+<div class="toast" id="dofixToast">Saved</div>
+
+<script src="/vendor/pdf.min.js"></script>
+<script src="/vendor/jspdf.umd.min.js"></script>
+<script>
+/* DO FIX — manual delivery-order corrector.
+   Deliberately manual only: you erase, you type. No OCR, no broker
+   detection, nothing guessed on your behalf. Runs entirely in the browser,
+   so a customer's delivery order never leaves the device -- and the PDF
+   libraries are vendored locally, so it still works with no signal at the
+   port. */
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.js';
+
+const RENDER_SCALE = 300 / 72;          // 300 DPI — what the port expects
+const TEXT_FILL    = 'rgb(28,28,28)';   // matches typical DO body ink
+
+const els = {
+  file: document.getElementById('dofixFile'),
+  drop: document.getElementById('dofixDrop'),
+  spinner: document.getElementById('dofixSpinner'),
+  editor: document.getElementById('dofixEditor'),
+  canvas: document.getElementById('dofixCanvas'),
+  wrap: document.getElementById('dofixCanvasWrap'),
+  overlay: document.getElementById('dofixOverlay'),
+  hint: document.getElementById('dofixHint'),
+  textbox: document.getElementById('dofixTextbox'),
+  textVal: document.getElementById('dofixTextVal'),
+  textSize: document.getElementById('dofixTextSize'),
+  pagebar: document.getElementById('dofixPagebar'),
+  pageLbl: document.getElementById('dofixPageLbl'),
+  toast: document.getElementById('dofixToast'),
+};
+
+let pages = [];        // one canvas per page, edited in place
+let pageIndex = 0;
+let tool = 'erase';
+let undoStack = [];    // {pageIndex, imageData}
+let pendingPoint = null;
+
+const ctx = () => els.canvas.getContext('2d', { willReadFrequently: true });
+
+function toast(msg){
+  els.toast.textContent = msg;
+  els.toast.classList.add('show');
+  setTimeout(() => els.toast.classList.remove('show'), 2200);
+}
+
+/* ---------- load ---------- */
+
+els.drop.addEventListener('dragover', e => { e.preventDefault(); els.drop.classList.add('drag-over'); });
+els.drop.addEventListener('dragleave', () => els.drop.classList.remove('drag-over'));
+els.drop.addEventListener('drop', e => {
+  e.preventDefault(); els.drop.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+els.file.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+async function loadFile(file){
+  els.spinner.classList.add('show');
+  els.editor.classList.remove('show');
+  pages = []; undoStack = []; pageIndex = 0;
+  try {
+    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+      await loadPdf(file);
+    } else {
+      await loadImage(file);
+    }
+    showPage(0);
+    els.editor.classList.add('show');
+    els.pagebar.style.display = pages.length > 1 ? 'flex' : 'none';
+    document.getElementById('dofixDownloadPdf').disabled = false;
+    document.getElementById('dofixDownloadPng').disabled = false;
+  } catch (err) {
+    alert('Could not open that file: ' + (err && err.message ? err.message : err));
+  } finally {
+    els.spinner.classList.remove('show');
+  }
+}
+
+async function loadPdf(file){
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const page = await pdf.getPage(n);
+    const vp = page.getViewport({ scale: RENDER_SCALE });
+    const c = document.createElement('canvas');
+    c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    pages.push(c);
+  }
+}
+
+function loadImage(file){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      pages.push(c);
+      URL.revokeObjectURL(img.src);
+      resolve();
+    };
+    img.onerror = () => reject(new Error('unreadable image'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function showPage(i){
+  pageIndex = i;
+  const src = pages[i];
+  els.canvas.width = src.width; els.canvas.height = src.height;
+  ctx().drawImage(src, 0, 0);
+  els.pageLbl.textContent = `Page ${i+1} of ${pages.length}`;
+  document.getElementById('dofixPrev').disabled = i === 0;
+  document.getElementById('dofixNext').disabled = i === pages.length - 1;
+}
+
+function commitPage(){
+  const c = pages[pageIndex];
+  c.getContext('2d').drawImage(els.canvas, 0, 0);
+}
+
+document.getElementById('dofixPrev').onclick = () => { commitPage(); showPage(pageIndex - 1); };
+document.getElementById('dofixNext').onclick = () => { commitPage(); showPage(pageIndex + 1); };
+
+/* ---------- tools ---------- */
+
+function setTool(t){
+  tool = t;
+  document.getElementById('toolErase').classList.toggle('active', t === 'erase');
+  document.getElementById('toolText').classList.toggle('active', t === 'text');
+  els.hint.innerHTML = t === 'erase'
+    ? '<b>Erase:</b> drag a box over the text you want gone. The background colour is sampled from just outside your box, so the patch blends in.'
+    : '<b>Text:</b> tap where the text should start — that point is the left edge of the baseline — then type it below and press Place.';
+  if (t !== 'text') hideTextbox();
+}
+document.getElementById('toolErase').onclick = () => setTool('erase');
+document.getElementById('toolText').onclick  = () => setTool('text');
+
+function pushUndo(){
+  const c = ctx();
+  undoStack.push({ pageIndex, data: c.getImageData(0, 0, els.canvas.width, els.canvas.height) });
+  if (undoStack.length > 20) undoStack.shift();
+}
+document.getElementById('toolUndo').onclick = () => {
+  const last = undoStack.pop();
+  if (!last) { toast('Nothing to undo'); return; }
+  if (last.pageIndex !== pageIndex) { commitPage(); showPage(last.pageIndex); }
+  ctx().putImageData(last.data, 0, 0);
+  commitPage();
+  toast('Undone');
+};
+
+/* Canvas coordinates from a mouse/touch event, accounting for the fact the
+   canvas is displayed scaled-down (300 DPI bitmap in a phone-width box). */
+function canvasPoint(e){
+  const r = els.canvas.getBoundingClientRect();
+  const src = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+  return {
+    x: Math.round((src.clientX - r.left) * (els.canvas.width  / r.width)),
+    y: Math.round((src.clientY - r.top)  * (els.canvas.height / r.height)),
+  };
+}
+
+/* ---------- erase (drag a box) ---------- */
+
+let dragStart = null;
+
+function onDown(e){
+  if (tool !== 'erase') return;
+  e.preventDefault();
+  dragStart = canvasPoint(e);
+}
+function onMove(e){
+  if (!dragStart) return;
+  e.preventDefault();
+  const p = canvasPoint(e);
+  const r = els.canvas.getBoundingClientRect();
+  const wr = els.wrap.getBoundingClientRect();
+  const sx = r.width / els.canvas.width, sy = r.height / els.canvas.height;
+  const x = Math.min(dragStart.x, p.x) * sx + (r.left - wr.left);
+  const y = Math.min(dragStart.y, p.y) * sy + (r.top - wr.top);
+  els.overlay.style.display = 'block';
+  els.overlay.style.left = x + 'px';
+  els.overlay.style.top = y + 'px';
+  els.overlay.style.width  = Math.abs(p.x - dragStart.x) * sx + 'px';
+  els.overlay.style.height = Math.abs(p.y - dragStart.y) * sy + 'px';
+}
+function onUp(e){
+  if (!dragStart) return;
+  e.preventDefault();
+  const p = canvasPoint(e);
+  els.overlay.style.display = 'none';
+  const box = {
+    x: Math.min(dragStart.x, p.x), y: Math.min(dragStart.y, p.y),
+    w: Math.abs(p.x - dragStart.x), h: Math.abs(p.y - dragStart.y),
+  };
+  dragStart = null;
+  if (box.w < 4 || box.h < 4) return;
+  eraseBox(box);
+}
+
+els.canvas.addEventListener('mousedown', onDown);
+window.addEventListener('mousemove', onMove);
+window.addEventListener('mouseup', onUp);
+els.canvas.addEventListener('touchstart', onDown, { passive:false });
+els.canvas.addEventListener('touchmove', onMove, { passive:false });
+els.canvas.addEventListener('touchend', onUp, { passive:false });
+
+/* Sample the page background from a ring just outside the selection, using
+   the most common light pixel rather than an average -- averaging would drag
+   in the very ink we're removing and leave a grey smear. */
+function sampleBackground(box){
+  const c = ctx();
+  const pad = 6;
+  const x0 = Math.max(0, box.x - pad), y0 = Math.max(0, box.y - pad);
+  const x1 = Math.min(els.canvas.width,  box.x + box.w + pad);
+  const y1 = Math.min(els.canvas.height, box.y + box.h + pad);
+  const strip = c.getImageData(x0, y0, x1 - x0, y1 - y0);
+  const d = strip.data;
+  const counts = new Map();
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114);
+    if (lum < 150) continue;                      // skip ink and rule lines
+    const key = (d[i] >> 3) + ',' + (d[i+1] >> 3) + ',' + (d[i+2] >> 3);
+    const e = counts.get(key);
+    if (e) { e.n++; } else { counts.set(key, { n:1, r:d[i], g:d[i+1], b:d[i+2] }); }
+  }
+  let best = null;
+  for (const v of counts.values()) if (!best || v.n > best.n) best = v;
+  return best ? `rgb(${best.r},${best.g},${best.b})` : '#ffffff';
+}
+
+/* Dark rows/columns crossing the selection are table rules. Wiping a box that
+   overlaps one would leave a broken border on a document the port inspects,
+   so they are detected first and redrawn afterwards. */
+function findRules(box){
+  const c = ctx();
+  const rules = { rows: [], cols: [] };
+  const probe = 3;
+  const lum = (d, i) => d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114;
+
+  // Strips are fetched in one call each -- a per-pixel getImageData loop would
+  // be thousands of calls on a 300 DPI page and visibly stall the phone.
+  const leftX  = Math.max(0, box.x - probe);
+  const rightX = Math.min(els.canvas.width - 1, box.x + box.w + probe);
+  const colL = c.getImageData(leftX,  box.y, 1, box.h).data;
+  const colR = c.getImageData(rightX, box.y, 1, box.h).data;
+  for (let i = 0; i < box.h; i++) {
+    const o = i * 4;
+    if (lum(colL, o) < 150 && lum(colR, o) < 150) {
+      rules.rows.push({ y: box.y + i, color:`rgb(${colL[o]},${colL[o+1]},${colL[o+2]})` });
+    }
+  }
+
+  const topY = Math.max(0, box.y - probe);
+  const botY = Math.min(els.canvas.height - 1, box.y + box.h + probe);
+  const rowT = c.getImageData(box.x, topY, box.w, 1).data;
+  const rowB = c.getImageData(box.x, botY, box.w, 1).data;
+  for (let i = 0; i < box.w; i++) {
+    const o = i * 4;
+    if (lum(rowT, o) < 150 && lum(rowB, o) < 150) {
+      rules.cols.push({ x: box.x + i, color:`rgb(${rowT[o]},${rowT[o+1]},${rowT[o+2]})` });
+    }
+  }
+  return rules;
+}
+
+function eraseBox(box){
+  pushUndo();
+  const c = ctx();
+  const bg = sampleBackground(box);
+  const rules = findRules(box);
+
+  c.fillStyle = bg;
+  c.fillRect(box.x, box.y, box.w, box.h);
+
+  for (const r of rules.rows) { c.fillStyle = r.color; c.fillRect(box.x, r.y, box.w, 1); }
+  for (const r of rules.cols) { c.fillStyle = r.color; c.fillRect(r.x, box.y, 1, box.h); }
+
+  commitPage();
+  toast('Erased');
+}
+
+/* ---------- text ---------- */
+
+els.canvas.addEventListener('click', e => {
+  if (tool !== 'text') return;
+  pendingPoint = canvasPoint(e);
+  els.textbox.classList.add('show');
+  els.textVal.focus();
+});
+
+function hideTextbox(){ els.textbox.classList.remove('show'); pendingPoint = null; }
+document.getElementById('dofixCancelText').onclick = hideTextbox;
+
+document.getElementById('dofixPlaceBtn').onclick = () => {
+  const val = els.textVal.value.trim();
+  if (!val) { toast('Type the replacement text first'); return; }
+  if (!pendingPoint) { toast('Tap the page where the text should go'); return; }
+  pushUndo();
+  const c = ctx();
+  // Size is entered in points at 300 DPI, matching the surrounding form text.
+  const px = Number(els.textSize.value || 22) * RENDER_SCALE;
+  c.fillStyle = TEXT_FILL;
+  c.textBaseline = 'alphabetic';
+  c.font = `bold ${px}px "DejaVu Sans Condensed","Arial Narrow",Arial,sans-serif`;
+  c.fillText(val, pendingPoint.x, pendingPoint.y);
+  commitPage();
+  hideTextbox();
+  els.textVal.value = '';
+  toast('Text placed');
+};
+
+/* ---------- export ---------- */
+
+function stamp(){
+  const d = new Date();
+  return d.toISOString().slice(0,10).replace(/-/g,'');
+}
+
+document.getElementById('dofixDownloadPng').onclick = () => {
+  commitPage();
+  pages[pageIndex].toBlob(b => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = `Delivery_Order_Corrected_${stamp()}_p${pageIndex+1}.png`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('PNG downloaded');
+  }, 'image/png');
+};
+
+document.getElementById('dofixDownloadPdf').onclick = () => {
+  commitPage();
+  const { jsPDF } = window.jspdf;
+  let pdf = null;
+  pages.forEach((c, i) => {
+    const orient = c.width > c.height ? 'l' : 'p';
+    if (i === 0) pdf = new jsPDF({ orientation: orient, unit: 'pt', format: [c.width * 0.24, c.height * 0.24] });
+    else pdf.addPage([c.width * 0.24, c.height * 0.24], orient);
+    pdf.addImage(c.toDataURL('image/jpeg', 0.94), 'JPEG', 0, 0, c.width * 0.24, c.height * 0.24);
+  });
+  pdf.save(`Delivery_Order_Corrected_${stamp()}.pdf`);
+  toast('PDF downloaded');
+};
+
+document.getElementById('dofixReset').onclick = () => {
+  pages = []; undoStack = []; pageIndex = 0; pendingPoint = null;
+  els.editor.classList.remove('show');
+  els.file.value = '';
+  document.getElementById('dofixDownloadPdf').disabled = true;
+  document.getElementById('dofixDownloadPng').disabled = true;
+  hideTextbox();
+  setTool('erase');
+};
+
+setTool('erase');
+</script>
+</body>
+</html>
