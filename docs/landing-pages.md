@@ -1,27 +1,41 @@
 # Landing page builder
 
-Simple, form-based marketing/service pages you can create without a
-separate website tool — org-scoped from day one for white-label, and
-publicly rendered with no login required.
+Marketing/service pages you can create without a separate website tool —
+org-scoped from day one for white-label, and publicly rendered with no
+login required. The editor is a **real visual canvas**: what you see while
+building is exactly what ships, not a form with fields off to the side.
 
 ## Creating a page
 
-Sidebar → **Landing Pages** → **+ New page**. Set a title (the slug
-auto-fills from it, editable) and add content blocks:
+Sidebar → **Landing Pages** → **+ New page**. The canvas opens styled
+exactly like the live page (dark header, white card). Hover between any two
+blocks (or above the first / below the last) to reveal a **+** — click it to
+insert a block right there, from seven types:
 
-- **Heading** — a large title line.
-- **Paragraph** — body text.
-- **Image** — an image URL + alt text.
-- **Call-to-action button** — links to either:
+- **Heading** / **Paragraph** — click directly on the text to edit it in place.
+- **Image** — click to add a URL + alt text; shows the real image once set.
+- **Video** — paste a normal YouTube/Vimeo watch link; it's converted to an
+  embeddable player automatically.
+- **Button** (CTA) — renders as the actual amber button, label editable
+  inline, linking to either:
   - the native booking page (`/book`), or
   - an inline lead-capture form (name/email/phone/message) that creates a
     **contact + opportunity**, landing in that org's default pipeline's
     first real stage — same records the rest of the pipeline uses, so a
     landing-page lead shows up on the board exactly like any other job.
+- **Divider** / **Spacer** — a rule line, or adjustable vertical space (S/M/L).
 
-Reorder blocks with ↑/↓ (no drag-and-drop in v1, per the ask). A page stays
-a **draft** — invisible to the public — until you flip it to **Published**
-and hit Save.
+Hover any block for its controls: a drag handle (⠿) to reorder by dragging,
+plus ↑/↓ and ✕ as a reliable fallback. A page stays a **draft** — invisible
+to the public — until you flip it to **Published** and hit Save.
+
+This is a scoped v1 toward a fuller ClickFunnels/GrooveFunnels-style builder
+(per your explicit direction: canvas editing first, internal tool only for
+now, built outward in stages). It's still block-based, not freeform
+drag-anywhere-on-a-grid positioning — that's a much larger lift (storing
+x/y/width/height per element, resize handles, responsive behavior) and is a
+natural next slice once this one's been used for a while. Multi-step funnel
+sequences (opt-in → thank-you → upsell) are a separate future slice too.
 
 ## Where it's live
 
@@ -59,11 +73,18 @@ the same convention `Dashboard.jsx` already uses for "real" stages.
 ## Where things live
 
 - `supabase/migrations/0009_landing_pages.sql` — the `landing_pages` table
-  (org-scoped RLS, globally-unique `slug`, `blocks` as a JSONB array).
+  (org-scoped RLS, globally-unique `slug`, `blocks` as a JSONB array). No
+  migration needed for the new block types (video/divider/spacer) — jsonb
+  doesn't require a schema change.
 - `netlify/functions/public-landing-page.js` — public `get` (render) and
   `submit_lead` (lead-capture CTA) actions.
+- `src/lib/landingBlocks.js` — shared block-type metadata + the YouTube/Vimeo
+  embed-URL conversion, used identically by the editor and the public
+  renderer so a video looks the same in both places.
 - `src/pages/LandingPages.jsx` — the list page.
-- `src/pages/LandingPageEditor.jsx` — the block-based editor (create + edit).
+- `src/pages/LandingPageEditor.jsx` — the canvas editor (create + edit):
+  drag-and-drop reordering (native HTML5 DnD, no new dependency), inline
+  editing, insert-anywhere.
 - `src/pages/LandingPagePublic.jsx` — the public renderer at `/pages/:slug`.
 - `src/lib/supabase.js` — `fetchLandingPages`, `fetchLandingPage`,
   `createLandingPage`, `updateLandingPage`, `deleteLandingPage`.
