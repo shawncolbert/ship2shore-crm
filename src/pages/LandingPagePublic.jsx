@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { toEmbedUrl, SPACER_SIZES } from '../lib/landingBlocks'
 
 async function callLandingPageApi(payload) {
   const res = await fetch('/.netlify/functions/public-landing-page', {
@@ -60,8 +61,20 @@ function Block({ block, slug }) {
       return block.url ? (
         <img src={block.url} alt={block.alt || ''} className="mb-4 w-full rounded-xl object-cover" />
       ) : null
+    case 'video': {
+      const embedUrl = toEmbedUrl(block.url)
+      return embedUrl ? (
+        <div className="mb-4 overflow-hidden rounded-xl" style={{ aspectRatio: '16 / 9' }}>
+          <iframe src={embedUrl} className="h-full w-full" allowFullScreen title="Video" />
+        </div>
+      ) : null
+    }
     case 'cta':
       return <CtaBlock block={block} slug={slug} />
+    case 'divider':
+      return <hr className="mb-4 border-gray-200" />
+    case 'spacer':
+      return <div style={{ height: SPACER_SIZES[block.size] || SPACER_SIZES.md }} />
     default:
       return null
   }
