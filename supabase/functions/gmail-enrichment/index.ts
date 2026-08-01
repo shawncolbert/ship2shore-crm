@@ -106,12 +106,20 @@ Deno.serve(async (_req: Request) => {
     if (!email || !email.includes("@")) { skipped++; continue; }
     if (email === tokenRow.email.toLowerCase()) { skipped++; continue; } // skip self
 
-    const { data: existing } = await supabase
+    // NOTE: this used .maybeSingle(), which returns an ERROR (not null) when
+    // more than one row matches -- and that error was being destructured away.
+    // So any contact that already had duplicates (e.g. one from Calendly and
+    // one from the Zoho import) looked "not found" on every single run and got
+    // re-inserted every 10 minutes, forever. Take the oldest match instead and
+    // let duplicates be harmless.
+    const { data: existingRows } = await supabase
       .from("contacts")
       .select("id, full_name, company")
       .eq("org_id", ORG_ID)
       .eq("email", email)
-      .maybeSingle();
+      .order("created_at", { ascending: true })
+      .limit(1);
+    const existing = existingRows?.[0] || null;
 
     const company = guessCompany(email);
 
