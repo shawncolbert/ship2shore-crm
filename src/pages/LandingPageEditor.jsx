@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { fetchLandingPage, createLandingPage, updateLandingPage } from '../lib/supabase'
 import { BLOCK_TYPES, newBlock, toEmbedUrl, SPACER_SIZES } from '../lib/landingBlocks'
+import LandingBlockView from '../components/LandingBlockView'
 
 const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
 const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
@@ -150,37 +151,33 @@ export default function LandingPageEditor() {
         </div>
       )}
 
-      {/* Canvas — styled exactly like the public page, so this IS the live preview */}
+      {/* Canvas — renders through the same component as the public page, so
+          this IS the live preview rather than a lookalike that drifts. */}
       <div className="flex-1 overflow-auto bg-[#f3f4f6] px-4 py-8 sm:px-8">
-        <div className="mx-auto max-w-2xl overflow-hidden rounded-2xl bg-white shadow-sm">
-          <div className="bg-[#1a1a1a] px-6 py-5 sm:px-10">
-            <span className="text-xs font-bold uppercase tracking-[0.14em] text-[#e8a317]">Ship2Shore</span>
-          </div>
-          <div className="px-6 py-8 sm:px-10 sm:py-12">
-            <InsertPoint onInsert={(type) => insertBlockAt(0, type)} />
-            {blocks.map((block, i) => (
-              <div key={block.id}>
-                <BlockCanvasItem
-                  block={block}
-                  index={i}
-                  count={blocks.length}
-                  dragging={draggedIndex === i}
-                  dropTarget={dragOverIndex === i}
-                  onChange={(patch) => updateBlock(block.id, patch)}
-                  onRemove={() => removeBlock(block.id)}
-                  onMove={(dir) => moveBlock(i, dir)}
-                  onDragStart={() => onDragStart(i)}
-                  onDragOver={(e) => onDragOverBlock(e, i)}
-                  onDrop={() => onDrop(i)}
-                  onDragEnd={onDragEnd}
-                />
-                <InsertPoint onInsert={(type) => insertBlockAt(i + 1, type)} />
-              </div>
-            ))}
-            {blocks.length === 0 && (
-              <p className="py-6 text-center text-sm text-muted">Click + above to add your first block.</p>
-            )}
-          </div>
+        <div className="mx-auto max-w-3xl overflow-hidden rounded-2xl bg-white pb-8 shadow-sm">
+          <InsertPoint onInsert={(type) => insertBlockAt(0, type)} />
+          {blocks.map((block, i) => (
+            <div key={block.id}>
+              <BlockCanvasItem
+                block={block}
+                index={i}
+                count={blocks.length}
+                dragging={draggedIndex === i}
+                dropTarget={dragOverIndex === i}
+                onChange={(patch) => updateBlock(block.id, patch)}
+                onRemove={() => removeBlock(block.id)}
+                onMove={(dir) => moveBlock(i, dir)}
+                onDragStart={() => onDragStart(i)}
+                onDragOver={(e) => onDragOverBlock(e, i)}
+                onDrop={() => onDrop(i)}
+                onDragEnd={onDragEnd}
+              />
+              <InsertPoint onInsert={(type) => insertBlockAt(i + 1, type)} />
+            </div>
+          ))}
+          {blocks.length === 0 && (
+            <p className="py-6 text-center text-sm text-muted">Click + above to add your first block.</p>
+          )}
         </div>
       </div>
     </div>
@@ -220,10 +217,15 @@ function InsertPoint({ onInsert }) {
   )
 }
 
-function Controls({ index, count, onRemove, onMove, onDragStart, onDragEnd, typeLabel }) {
+function Controls({ index, count, onRemove, onMove, onDragStart, onDragEnd, typeLabel, onEdit }) {
   return (
-    <div className="pointer-events-none absolute -top-3 right-0 flex items-center gap-1 opacity-0 transition-opacity group-hover/block:pointer-events-auto group-hover/block:opacity-100">
+    <div className="pointer-events-none absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover/block:pointer-events-auto group-hover/block:opacity-100">
       <span className="rounded-full bg-ink px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">{typeLabel}</span>
+      {onEdit && (
+        <button className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-ink" onClick={onEdit} title="Edit this section">
+          Edit
+        </button>
+      )}
       <span
         draggable
         onDragStart={onDragStart}
@@ -257,54 +259,189 @@ function AutoTextarea({ value, onChange, placeholder, className }) {
   )
 }
 
+// Blocks whose layout is too structural to edit in place (a hero's type sits
+// over a photograph; a service grid is three cards). They render exactly as
+// they will ship, with a panel underneath for the copy -- so what you tune is
+// always shown against the real design.
+const PANEL_EDITED = new Set(['hero', 'features', 'stats', 'testimonial', 'contact'])
+
+// Inline-edited blocks live in the prose column, so they need the same gutter
+// the public renderer gives them.
+const Gutter = ({ children }) => <div className="mx-auto max-w-3xl px-6 sm:px-8">{children}</div>
+
 function BlockCanvasItem({ block, index, count, dragging, dropTarget, onChange, onRemove, onMove, onDragStart, onDragOver, onDrop, onDragEnd }) {
   const typeLabel = BLOCK_TYPES.find((t) => t.value === block.type)?.label || block.type
+  const [panelOpen, setPanelOpen] = useState(false)
+
   return (
     <div
       onDragOver={onDragOver}
       onDrop={onDrop}
-      className={`group/block relative rounded-lg outline-dashed outline-1 outline-transparent transition hover:outline-accent/40 ${
+      className={`group/block relative outline-dashed outline-1 outline-transparent transition hover:outline-accent/40 ${
         dragging ? 'opacity-40' : ''
       } ${dropTarget ? 'outline-accent' : ''}`}
     >
-      <Controls index={index} count={count} onRemove={onRemove} onMove={onMove} onDragStart={onDragStart} onDragEnd={onDragEnd} typeLabel={typeLabel} />
+      <Controls index={index} count={count} onRemove={onRemove} onMove={onMove} onDragStart={onDragStart} onDragEnd={onDragEnd} typeLabel={typeLabel}
+        onEdit={PANEL_EDITED.has(block.type) ? () => setPanelOpen((o) => !o) : null} />
+
+      {PANEL_EDITED.has(block.type) && (
+        <>
+          <LandingBlockView block={block} />
+          {panelOpen && <BlockPanel block={block} onChange={onChange} onClose={() => setPanelOpen(false)} />}
+        </>
+      )}
 
       {block.type === 'heading' && (
-        <input
-          value={block.text}
-          onChange={(e) => onChange({ text: e.target.value })}
-          placeholder="Click to add a heading"
-          className="mb-4 w-full bg-transparent text-2xl font-bold text-gray-900 outline-none placeholder:text-gray-300 sm:text-3xl"
-        />
+        <Gutter>
+          <input
+            value={block.text}
+            onChange={(e) => onChange({ text: e.target.value })}
+            placeholder="Click to add a heading"
+            className="mb-4 mt-2 w-full bg-transparent text-2xl font-bold text-gray-900 outline-none placeholder:text-gray-300 sm:text-3xl"
+          />
+        </Gutter>
       )}
 
       {block.type === 'paragraph' && (
-        <AutoTextarea
-          value={block.text}
-          onChange={(text) => onChange({ text })}
-          placeholder="Click to add body text"
-          className="mb-4 text-base leading-relaxed text-gray-700"
-        />
+        <Gutter>
+          <AutoTextarea
+            value={block.text}
+            onChange={(text) => onChange({ text })}
+            placeholder="Click to add body text"
+            className="mb-4 text-base leading-relaxed text-gray-700"
+          />
+        </Gutter>
       )}
 
-      {block.type === 'image' && <ImageBlockEditor block={block} onChange={onChange} />}
-      {block.type === 'video' && <VideoBlockEditor block={block} onChange={onChange} />}
-      {block.type === 'cta' && <CtaBlockEditor block={block} onChange={onChange} />}
+      {block.type === 'image' && <Gutter><ImageBlockEditor block={block} onChange={onChange} /></Gutter>}
+      {block.type === 'video' && <Gutter><VideoBlockEditor block={block} onChange={onChange} /></Gutter>}
+      {block.type === 'cta' && <Gutter><CtaBlockEditor block={block} onChange={onChange} /></Gutter>}
 
-      {block.type === 'divider' && <hr className="my-4 border-gray-200" />}
+      {block.type === 'divider' && <Gutter><hr className="my-4 border-gray-200" /></Gutter>}
 
       {block.type === 'spacer' && (
-        <div className="mb-2 flex items-center justify-center gap-2 rounded-md border border-dashed border-gray-300 bg-gray-50 text-[11px] text-gray-400"
-          style={{ height: SPACER_SIZES[block.size] || SPACER_SIZES.md }}>
-          Spacer
-          <span className="flex gap-1">
-            {Object.keys(SPACER_SIZES).map((s) => (
-              <button key={s} onClick={() => onChange({ size: s })}
-                className={`rounded px-1.5 py-0.5 uppercase ${block.size === s ? 'bg-accent text-ink' : 'bg-white text-gray-400 ring-1 ring-inset ring-gray-200'}`}>
-                {s}
-              </button>
-            ))}
-          </span>
+        <Gutter>
+          <div className="mb-2 flex items-center justify-center gap-2 rounded-md border border-dashed border-gray-300 bg-gray-50 text-[11px] text-gray-400"
+            style={{ height: SPACER_SIZES[block.size] || SPACER_SIZES.md }}>
+            Spacer
+            <span className="flex gap-1">
+              {Object.keys(SPACER_SIZES).map((s) => (
+                <button key={s} onClick={() => onChange({ size: s })}
+                  className={`rounded px-1.5 py-0.5 uppercase ${block.size === s ? 'bg-accent text-ink' : 'bg-white text-gray-400 ring-1 ring-inset ring-gray-200'}`}>
+                  {s}
+                </button>
+              ))}
+            </span>
+          </div>
+        </Gutter>
+      )}
+    </div>
+  )
+}
+
+/* Field panel for the structural blocks. Sits directly under the block it
+   edits so the effect of a change is visible without scrolling. */
+function BlockPanel({ block, onChange, onClose }) {
+  const setItem = (i, patch) => {
+    const items = (block.items || []).map((it, j) => (j === i ? { ...it, ...patch } : it))
+    onChange({ items })
+  }
+  const addItem = (blank) => onChange({ items: [...(block.items || []), blank] })
+  const removeItem = (i) => onChange({ items: (block.items || []).filter((_, j) => j !== i) })
+
+  const Field = ({ name, k, ph, area }) => (
+    <div>
+      <label className={label}>{name}</label>
+      {area ? (
+        <textarea rows={2} className={input} value={block[k] || ''} onChange={(e) => onChange({ [k]: e.target.value })} placeholder={ph} />
+      ) : (
+        <input className={input} value={block[k] || ''} onChange={(e) => onChange({ [k]: e.target.value })} placeholder={ph} />
+      )}
+    </div>
+  )
+
+  return (
+    <div className="border-y-2 border-accent bg-canvas p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Edit this section</span>
+        <button onClick={onClose} className="text-xs font-medium text-ink hover:text-accent">Done</button>
+      </div>
+
+      {block.type === 'hero' && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field name="Eyebrow (small line above)" k="eyebrow" ph="Mobile & Shop Welding" />
+          <Field name="Headline" k="heading" ph="Sparky's Arc Welding" />
+          <div className="sm:col-span-2"><Field name="Subheading" k="subheading" ph="What you do, where, and why you're worth calling." area /></div>
+          <Field name="Button label" k="ctaLabel" ph="Get a Free Quote" />
+          <div>
+            <label className={label}>Button goes to</label>
+            <select className={input} value={block.ctaTarget || 'lead_form'} onChange={(e) => onChange({ ctaTarget: e.target.value })}>
+              <option value="lead_form">Lead-capture form</option>
+              <option value="booking">Booking page (/book)</option>
+            </select>
+          </div>
+          <div className="sm:col-span-2"><Field name="Background image URL" k="image" ph="https://.../photo.jpg" /></div>
+          <p className="text-xs text-muted sm:col-span-2">
+            Leave the image blank for a clean dark hero. A photo of the customer's own work will always beat stock.
+          </p>
+        </div>
+      )}
+
+      {block.type === 'features' && (
+        <div className="space-y-3">
+          <Field name="Section title" k="title" ph="What We Do" />
+          {(block.items || []).map((item, i) => (
+            <div key={i} className="grid gap-2 rounded-lg border border-line bg-surface p-3 sm:grid-cols-[4rem_1fr]">
+              <div>
+                <label className={label}>Icon</label>
+                <input className={input} value={item.icon || ''} onChange={(e) => setItem(i, { icon: e.target.value })} placeholder="🔧" />
+              </div>
+              <div className="space-y-2">
+                <input className={input} value={item.title || ''} onChange={(e) => setItem(i, { title: e.target.value })} placeholder="Service name" />
+                <textarea rows={2} className={input} value={item.text || ''} onChange={(e) => setItem(i, { text: e.target.value })} placeholder="One or two lines about it." />
+                <button onClick={() => removeItem(i)} className="text-xs font-medium text-port hover:underline">Remove</button>
+              </div>
+            </div>
+          ))}
+          <button onClick={() => addItem({ icon: '✅', title: '', text: '' })} className={btn}>+ Add service</button>
+        </div>
+      )}
+
+      {block.type === 'stats' && (
+        <div className="space-y-3">
+          <p className="text-xs text-muted">
+            These are claims about a real business — fill them in with the customer's actual numbers rather than leaving the brackets.
+          </p>
+          {(block.items || []).map((item, i) => (
+            <div key={i} className="grid gap-2 sm:grid-cols-2">
+              <input className={input} value={item.value || ''} onChange={(e) => setItem(i, { value: e.target.value })} placeholder="12" />
+              <div className="flex gap-2">
+                <input className={input} value={item.label || ''} onChange={(e) => setItem(i, { label: e.target.value })} placeholder="Years in business" />
+                <button onClick={() => removeItem(i)} className="shrink-0 text-xs font-medium text-port hover:underline">Remove</button>
+              </div>
+            </div>
+          ))}
+          <button onClick={() => addItem({ value: '', label: '' })} className={btn}>+ Add stat</button>
+        </div>
+      )}
+
+      {block.type === 'testimonial' && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2"><Field name="Quote" k="quote" ph="Paste a real review from a customer." area /></div>
+          <Field name="Who said it" k="author" ph="Dana R." />
+          <Field name="Their role / context" k="role" ph="Homeowner" />
+          <p className="text-xs text-muted sm:col-span-2">
+            Use a review the customer actually received. A made-up testimonial is a fake review.
+          </p>
+        </div>
+      )}
+
+      {block.type === 'contact' && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field name="Business name" k="business" ph="Sparky's Arc Welding" />
+          <Field name="Phone" k="phone" ph="(910) 555-0142" />
+          <Field name="Email" k="email" ph="shop@example.com" />
+          <Field name="Service area" k="area" ph="Serving Wilmington and surrounding areas" />
         </div>
       )}
     </div>
