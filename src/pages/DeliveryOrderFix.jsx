@@ -33,7 +33,9 @@ export default function DeliveryOrderFix() {
   const overlayRef = useRef(null)
   const pagesRef = useRef([])         // one offscreen canvas per page
   const undoRef = useRef([])
+  const redoRef = useRef([])
   const dragRef = useRef(null)
+  const strokingRef = useRef(null)   // active freehand stroke
 
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState('')
@@ -57,6 +59,14 @@ export default function DeliveryOrderFix() {
   // bitmap -- which reads as "I picked a file and nothing appeared".
   const [docId, setDocId] = useState(0)
   const [bigStep, setBigStep] = useState(false)
+  const [signOpen, setSignOpen] = useState(false)
+  // Saved signature persists between documents -- it is drawn once and reused,
+  // and never leaves this device.
+  const [signature, setSignature] = useState(() => {
+    try { return localStorage.getItem('s2s_do_signature') || '' } catch { return '' }
+  })
+  const [stamp2, setStamp2] = useState(null)   // { img, x, y, w, h } placed signature
+  const stampImgRef = useRef(null)
   const [zoom, setZoom] = useState(1)          // 1 = fit page width
   const queuedRef = useRef(null)
 
@@ -114,9 +124,24 @@ export default function DeliveryOrderFix() {
     g.strokeRect(draft.x - 6, draft.y - h, w + 12, h + 12)
   }, [pageIndex, draft, text, size, paint])
 
+  /* A placed signature is positioned the same way text is: live and movable
+     until Place is pressed, with the outline stripped before committing. */
+  const renderStamp = useCallback(() => {
+    paint(pageIndex)
+    const g = canvasRef.current?.getContext('2d')
+    const img = stampImgRef.current
+    if (!g || !stamp2 || !img) return
+    g.drawImage(img, stamp2.x, stamp2.y, stamp2.w, stamp2.h)
+    g.strokeStyle = 'rgba(232,163,23,0.9)'
+    g.lineWidth = 3
+    g.strokeRect(stamp2.x - 4, stamp2.y - 4, stamp2.w + 8, stamp2.h + 8)
+  }, [pageIndex, stamp2, paint])
+
   useEffect(() => {
-    if (loaded) renderView()
-  }, [loaded, docId, renderView])
+    if (!loaded) return
+    if (stamp2) renderStamp()
+    else renderView()
+  }, [loaded, docId, renderView, renderStamp, stamp2])
 
   // Edits are made on the visible canvas, then flushed back to the page store.
   const commit = useCallback(() => {
@@ -235,6 +260,7 @@ export default function DeliveryOrderFix() {
       data: src.getContext('2d').getImageData(0, 0, src.width, src.height),
     })
     if (undoRef.current.length > 20) undoRef.current.shift()
+    redoRef.current = []          // a fresh edit invalidates the redo trail
   }
 
   function undo() {
@@ -242,11 +268,29 @@ export default function DeliveryOrderFix() {
     if (!last) return flash('Nothing to undo')
     const src = pagesRef.current[last.page]
     if (!src) return
-    if (last.page === pageIndex) commit()
+    redoRef.current.push({
+      page: last.page,
+      data: src.getContext('2d').getImageData(0, 0, src.width, src.height),
+    })
     src.getContext('2d').putImageData(last.data, 0, 0)
     if (last.page !== pageIndex) setPageIndex(last.page)
     else paint(last.page)
     flash('Undone')
+  }
+
+  function redo() {
+    const next = redoRef.current.pop()
+    if (!next) return flash('Nothing to redo')
+    const src = pagesRef.current[next.page]
+    if (!src) return
+    undoRef.current.push({
+      page: next.page,
+      data: src.getContext('2d').getImageData(0, 0, src.width, src.height),
+    })
+    src.getContext('2d').putImageData(next.data, 0, 0)
+    if (next.page !== pageIndex) setPageIndex(next.page)
+    else paint(next.page)
+    flash('Redone')
   }
 
   // Canvas coords from a pointer event -- the bitmap is 300 DPI but displayed
@@ -333,16 +377,79 @@ export default function DeliveryOrderFix() {
     flash('Erased')
   }
 
+  const DRAW_TOOLS = ['pen', 'highlight', 'rect']
+
+  function strokeStyleFor(t) {
+    // Highlighter is translucent and multiplies, so the form text stays legible
+    // underneath instead of being painted over.
+    if (t === 'highlight') return { color: 'rgba(255,214,0,0.38)', width: 46, composite: 'multiply' }
+    if (t === 'rect') return { color: 'rgb(210,30,45)', width: 7, composite: 'source-over' }
+    return { color: 'rgb(28,28,28)', width: 8, composite: 'source-over' }
+  }
+
   function onDown(e) {
-    if (tool !== 'erase' || !loaded) return
+    if (!loaded) return
+    if (tool !== 'erase' && !DRAW_TOOLS.includes(tool)) return
     e.preventDefault()
-    dragRef.current = point(e)
+    const p = point(e)
+    dragRef.current = p
+
+    if (tool === 'pen' || tool === 'highlight') {
+      pushUndo()
+      strokingRef.current = { last: p, points: [p] }
+    }
   }
 
   function onMove(e) {
     if (!dragRef.current) return
     e.preventDefault()
     const p = point(e)
+
+    // Freehand: draw as the finger moves so the stroke appears live.
+    if (strokingRef.current) {
+      const st = strokeStyleFor(tool)
+      strokingRef.current.points.push(p)
+
+      if (tool === 'highlight') {
+        /* Repaint the clean page and lay the whole stroke down as ONE path.
+           Stroking segment-by-segment made each round cap multiply over the
+           previous one, so the highlight came out as a string of darker beads
+           instead of an even band. */
+        paint(pageIndex)
+        const g = ctx()
+        const pts = strokingRef.current.points
+        g.save()
+        g.globalCompositeOperation = st.composite
+        g.strokeStyle = st.color
+        g.lineWidth = st.width
+        g.lineCap = 'round'
+        g.lineJoin = 'round'
+        g.beginPath()
+        g.moveTo(pts[0].x, pts[0].y)
+        for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y)
+        g.stroke()
+        g.restore()
+        strokingRef.current.last = p
+        return
+      }
+
+      const g = ctx()
+      g.save()
+      g.globalCompositeOperation = st.composite
+      g.strokeStyle = st.color
+      g.lineWidth = st.width
+      g.lineCap = 'round'
+      g.lineJoin = 'round'
+      g.beginPath()
+      g.moveTo(strokingRef.current.last.x, strokingRef.current.last.y)
+      g.lineTo(p.x, p.y)
+      g.stroke()
+      g.restore()
+      strokingRef.current.last = p
+      return
+    }
+
+    // Erase and rectangle both preview as a marquee before committing.
     const c = canvasRef.current
     const r = c.getBoundingClientRect()
     const wr = wrapRef.current.getBoundingClientRect()
@@ -359,6 +466,14 @@ export default function DeliveryOrderFix() {
   function onUp(e) {
     if (!dragRef.current) return
     e.preventDefault()
+
+    if (strokingRef.current) {
+      strokingRef.current = null
+      dragRef.current = null
+      commit()
+      return
+    }
+
     const p = point(e)
     const start = dragRef.current
     dragRef.current = null
@@ -368,6 +483,21 @@ export default function DeliveryOrderFix() {
       w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y),
     }
     if (box.w < 4 || box.h < 4) return
+
+    if (tool === 'rect') {
+      pushUndo()
+      const g = ctx()
+      const st = strokeStyleFor('rect')
+      g.save()
+      g.strokeStyle = st.color
+      g.lineWidth = st.width
+      g.strokeRect(box.x, box.y, box.w, box.h)
+      g.restore()
+      commit()
+      flash('Box drawn')
+      return
+    }
+
     eraseBox(box)
   }
 
@@ -409,9 +539,53 @@ export default function DeliveryOrderFix() {
     flash('Text placed')
   }
 
+  function beginStamp(dataUrl) {
+    const img = new Image()
+    img.onload = () => {
+      stampImgRef.current = img
+      const c = canvasRef.current
+      // Land it at a readable default width relative to the page, not the
+      // signature pad's own pixel size.
+      const w = Math.round((c?.width || 2550) * 0.28)
+      const h = Math.round((w * img.height) / img.width)
+      setStamp2({ x: Math.round((c?.width || 2550) * 0.12), y: Math.round((c?.height || 3300) * 0.6), w, h })
+    }
+    img.src = dataUrl
+  }
+
+  function placeStamp() {
+    if (!stamp2 || !stampImgRef.current) return
+    pushUndo()
+    paint(pageIndex)                      // clean page, no positioning outline
+    ctx().drawImage(stampImgRef.current, stamp2.x, stamp2.y, stamp2.w, stamp2.h)
+    commit()
+    setStamp2(null)
+    flash('Signature placed')
+  }
+
+  const nudgeStamp = (dx, dy) =>
+    setStamp2((v) => (v ? { ...v, x: v.x + dx, y: v.y + dy } : v))
+
+  const resizeStamp = (factor) =>
+    setStamp2((v) => (v ? { ...v, w: Math.round(v.w * factor), h: Math.round(v.h * factor) } : v))
+
+  function quickInsert(kind) {
+    if (!loaded) return flash('Open a document first')
+    const c = canvasRef.current
+    const value = kind === 'date'
+      ? new Date().toLocaleDateString('en-US')
+      : kind === 'check' ? '\u2713' : '\u2717'
+    setTool('text')
+    setText(value)
+    setSize(kind === 'date' ? 22 : 30)
+    setDraft({ x: Math.round(c.width * 0.2), y: Math.round(c.height * 0.5) })
+    flash('Tap the page or nudge to position')
+  }
+
   function cancelDraft() {
     setDraft(null)
     setText('')
+    setStamp2(null)
   }
 
   const textFont = (pt) => `bold ${Number(pt || 22) * RENDER_SCALE}px "DejaVu Sans Condensed","Arial Narrow",Arial,sans-serif`
@@ -488,6 +662,7 @@ export default function DeliveryOrderFix() {
   // sit on a printed baseline; 40 for crossing a cell quickly.
   const step = bigStep ? 40 : 10
   const nudgeBtn = 'flex h-11 w-11 items-center justify-center rounded-lg border border-line bg-surface text-base font-bold text-ink active:bg-accent/20'
+  const miniBtn = 'rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-muted hover:border-accent hover:text-ink'
 
   const toolBtn = (id, label) =>
     `flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
@@ -572,19 +747,36 @@ export default function DeliveryOrderFix() {
               </div>
             )}
 
-            <div className="mb-3 flex gap-2">
+            <div className="mb-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
               <button className={toolBtn('erase')} onClick={() => { setTool('erase'); cancelDraft() }}>🧽 Erase</button>
-              <button className={toolBtn('text')} onClick={() => setTool('text')}>🔤 Text</button>
+              <button className={toolBtn('text')} onClick={() => { setTool('text'); setStamp2(null) }}>🔤 Text</button>
+              <button className={toolBtn('pen')} onClick={() => { setTool('pen'); cancelDraft() }}>✏️ Draw</button>
+              <button className={toolBtn('highlight')} onClick={() => { setTool('highlight'); cancelDraft() }}>🖍 Mark</button>
+              <button className={toolBtn('rect')} onClick={() => { setTool('rect'); cancelDraft() }}>▭ Box</button>
               <button
-                className="flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-muted hover:border-accent hover:text-ink"
-                onClick={undo}
-              >↶ Undo</button>
+                className={toolBtn('sign')}
+                onClick={() => { cancelDraft(); signature ? beginStamp(signature) : setSignOpen(true) }}
+              >✍️ Sign</button>
+            </div>
+
+            <div className="mb-3 flex flex-wrap gap-2">
+              <button className={miniBtn} onClick={() => quickInsert('date')}>📅 Date</button>
+              <button className={miniBtn} onClick={() => quickInsert('check')}>✓ Check</button>
+              <button className={miniBtn} onClick={() => quickInsert('cross')}>✗ Cross</button>
+              <button className={miniBtn} onClick={undo}>↶ Undo</button>
+              <button className={miniBtn} onClick={redo}>↷ Redo</button>
+              {signature && (
+                <button className={miniBtn} onClick={() => setSignOpen(true)}>✍️ Redo signature</button>
+              )}
             </div>
 
             <p className="mb-3 rounded-lg border border-line bg-canvas px-3 py-2 text-xs text-muted">
-              {tool === 'erase'
-                ? <><span className="font-semibold text-ink">Erase:</span> drag a box over the text you want gone. The background is sampled from just outside your box, and any table borders you cross are redrawn.</>
-                : <><span className="font-semibold text-ink">Text:</span> tap where the text should go, type it, then nudge it into place with the arrows. Nothing is written onto the document until you press Place.</>}
+              {tool === 'erase' && <><span className="font-semibold text-ink">Erase:</span> drag a box over what you want gone. The background is sampled from just outside your box, and any table borders you cross are redrawn.</>}
+              {tool === 'text' && <><span className="font-semibold text-ink">Text:</span> tap where it should go, type it, then nudge it into place with the arrows. Nothing is written onto the document until you press Place.</>}
+              {tool === 'pen' && <><span className="font-semibold text-ink">Draw:</span> drag to draw freehand.</>}
+              {tool === 'highlight' && <><span className="font-semibold text-ink">Mark:</span> drag to highlight. The text underneath stays readable.</>}
+              {tool === 'rect' && <><span className="font-semibold text-ink">Box:</span> drag to outline an area in red.</>}
+              {tool === 'sign' && <><span className="font-semibold text-ink">Sign:</span> position with the arrows, resize, then press Place.</>}
             </p>
 
             {draft && (
@@ -641,6 +833,31 @@ export default function DeliveryOrderFix() {
               </div>
             )}
 
+            {stamp2 && (
+              <div className="mb-3 rounded-lg border border-accent bg-canvas p-3">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted">Position signature</div>
+                <div className="flex items-center justify-center gap-2">
+                  <button className={nudgeBtn} onClick={() => nudgeStamp(-step, 0)} aria-label="Sig left">←</button>
+                  <div className="flex flex-col gap-2">
+                    <button className={nudgeBtn} onClick={() => nudgeStamp(0, -step)} aria-label="Sig up">↑</button>
+                    <button className={nudgeBtn} onClick={() => nudgeStamp(0, step)} aria-label="Sig down">↓</button>
+                  </div>
+                  <button className={nudgeBtn} onClick={() => nudgeStamp(step, 0)} aria-label="Sig right">→</button>
+                  <span className="mx-1 h-8 w-px bg-line" />
+                  <button className={nudgeBtn} onClick={() => resizeStamp(0.85)} aria-label="Smaller">−</button>
+                  <button className={nudgeBtn} onClick={() => resizeStamp(1.18)} aria-label="Bigger">+</button>
+                </div>
+                <label className="mt-2 flex items-center justify-center gap-1 text-[10px] font-medium text-muted">
+                  <input type="checkbox" checked={bigStep} onChange={(e) => setBigStep(e.target.checked)} />
+                  Bigger steps
+                </label>
+                <div className="mt-3 flex justify-end gap-2">
+                  <button className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:text-ink" onClick={() => setStamp2(null)}>Cancel</button>
+                  <button className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600" onClick={placeStamp}>Place signature</button>
+                </div>
+              </div>
+            )}
+
             {/* At fit-width a Letter page on a phone renders body text about
                 three pixels tall, which is impossible to erase accurately.
                 Zoom scrolls the wrapper instead of scaling the bitmap, so the
@@ -693,11 +910,118 @@ export default function DeliveryOrderFix() {
         )}
       </div>
 
+      {signOpen && (
+        <SignaturePad
+          onCancel={() => setSignOpen(false)}
+          onSave={(dataUrl) => {
+            setSignature(dataUrl)
+            try { localStorage.setItem('s2s_do_signature', dataUrl) } catch { /* private mode */ }
+            setSignOpen(false)
+            setTool('sign')
+            beginStamp(dataUrl)
+          }}
+        />
+      )}
+
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-lg border border-starboard bg-surface px-4 py-2 text-sm font-semibold text-starboard shadow-lg">
           {toast}
         </div>
       )}
+    </div>
+  )
+}
+
+/* Draw-once signature pad. Kept on-device: the image is stored in
+   localStorage and never uploaded, same as the documents themselves. */
+function SignaturePad({ onSave, onCancel }) {
+  const ref = useRef(null)
+  const drawing = useRef(false)
+  const dirty = useRef(false)
+
+  const pos = (e) => {
+    const c = ref.current
+    const r = c.getBoundingClientRect()
+    const s = e.touches?.[0] || e.changedTouches?.[0] || e
+    return { x: (s.clientX - r.left) * (c.width / r.width), y: (s.clientY - r.top) * (c.height / r.height) }
+  }
+
+  const start = (e) => {
+    e.preventDefault()
+    drawing.current = true
+    const g = ref.current.getContext('2d')
+    const p = pos(e)
+    g.strokeStyle = '#111'
+    g.lineWidth = 5
+    g.lineCap = 'round'
+    g.lineJoin = 'round'
+    g.beginPath()
+    g.moveTo(p.x, p.y)
+  }
+  const move = (e) => {
+    if (!drawing.current) return
+    e.preventDefault()
+    const g = ref.current.getContext('2d')
+    const p = pos(e)
+    g.lineTo(p.x, p.y)
+    g.stroke()
+    dirty.current = true
+  }
+  const end = (e) => { if (drawing.current) { e.preventDefault(); drawing.current = false } }
+
+  const clear = () => {
+    const c = ref.current
+    c.getContext('2d').clearRect(0, 0, c.width, c.height)
+    dirty.current = false
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
+      <div className="relative w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-xl">
+        <h2 className="font-[family-name:var(--font-display)] text-lg font-bold text-ink">Draw your signature</h2>
+        <p className="mb-3 text-xs text-muted">Use your finger or mouse. It's saved on this device for next time.</p>
+        <canvas
+          ref={ref}
+          width={640}
+          height={240}
+          onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
+          onTouchStart={start} onTouchMove={move} onTouchEnd={end}
+          className="w-full rounded-xl border-2 border-dashed border-line bg-canvas"
+          style={{ touchAction: 'none' }}
+        />
+        <div className="mt-3 flex justify-between gap-2">
+          <button className="rounded-lg px-3 py-2 text-xs font-medium text-muted hover:text-ink" onClick={clear}>Clear</button>
+          <div className="flex gap-2">
+            <button className="rounded-lg px-3 py-2 text-xs font-medium text-muted hover:text-ink" onClick={onCancel}>Cancel</button>
+            <button
+              className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-ink hover:bg-accent-600"
+              onClick={() => {
+                if (!dirty.current) return
+                // Trim to the ink so the placed signature has no dead margin.
+                const c = ref.current
+                const d = c.getContext('2d').getImageData(0, 0, c.width, c.height)
+                let minX = c.width, minY = c.height, maxX = -1, maxY = -1
+                for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+                  if (d.data[(y * c.width + x) * 4 + 3] > 20) {
+                    if (x < minX) minX = x
+                    if (x > maxX) maxX = x
+                    if (y < minY) minY = y
+                    if (y > maxY) maxY = y
+                  }
+                }
+                if (maxX < 0) return
+                const pad = 8
+                const out = document.createElement('canvas')
+                out.width = maxX - minX + pad * 2
+                out.height = maxY - minY + pad * 2
+                out.getContext('2d').drawImage(c, minX - pad, minY - pad, out.width, out.height, 0, 0, out.width, out.height)
+                onSave(out.toDataURL('image/png'))
+              }}
+            >Use signature</button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
