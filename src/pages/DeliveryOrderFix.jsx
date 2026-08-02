@@ -42,7 +42,10 @@ export default function DeliveryOrderFix() {
   const [pageIndex, setPageIndex] = useState(0)
   const [pageCount, setPageCount] = useState(0)
   const [tool, setTool] = useState('erase')
-  const [pending, setPending] = useState(null)   // click point for text
+  // The text stays a live, movable object until Place is pressed, so it can be
+  // nudged into alignment first. Burning it in on the first tap meant a
+  // millimetre out was undo-and-retype.
+  const [draft, setDraft] = useState(null)      // { x, y } baseline-left, canvas px
   const [text, setText] = useState('')
   const [size, setSize] = useState(22)
   const [toast, setToast] = useState('')
@@ -53,6 +56,7 @@ export default function DeliveryOrderFix() {
   // state, the repaint effect never re-runs and the canvas keeps the previous
   // bitmap -- which reads as "I picked a file and nothing appeared".
   const [docId, setDocId] = useState(0)
+  const [bigStep, setBigStep] = useState(false)
   const [zoom, setZoom] = useState(1)          // 1 = fit page width
   const queuedRef = useRef(null)
 
@@ -91,9 +95,28 @@ export default function DeliveryOrderFix() {
     c.getContext('2d').drawImage(src, 0, 0)
   }, [])
 
+  /* Draw the clean page, then the uncommitted draft on top. Using the same
+     fillText call the final bake uses means the preview is not an
+     approximation -- it is the result. */
+  const renderView = useCallback(() => {
+    paint(pageIndex)
+    const g = canvasRef.current?.getContext('2d')
+    if (!g || !draft || !text.trim()) return
+    g.fillStyle = TEXT_FILL
+    g.textBaseline = 'alphabetic'
+    g.font = `bold ${Number(size || 22) * RENDER_SCALE}px "DejaVu Sans Condensed","Arial Narrow",Arial,sans-serif`
+    g.fillText(text, draft.x, draft.y)
+    // Faint guide so the text is findable at Fit zoom; never committed.
+    const w = g.measureText(text).width
+    const h = Number(size || 22) * RENDER_SCALE
+    g.strokeStyle = 'rgba(232,163,23,0.9)'
+    g.lineWidth = 3
+    g.strokeRect(draft.x - 6, draft.y - h, w + 12, h + 12)
+  }, [pageIndex, draft, text, size, paint])
+
   useEffect(() => {
-    if (loaded) paint(pageIndex)
-  }, [loaded, pageIndex, docId, paint])
+    if (loaded) renderView()
+  }, [loaded, docId, renderView])
 
   // Edits are made on the visible canvas, then flushed back to the page store.
   const commit = useCallback(() => {
@@ -201,9 +224,16 @@ export default function DeliveryOrderFix() {
     }
   }
 
+  /* Snapshot the committed page rather than the visible canvas: while a text
+     draft is being positioned the canvas shows an uncommitted preview, and
+     capturing that would bake the preview into the undo history. */
   function pushUndo() {
-    const c = canvasRef.current
-    undoRef.current.push({ page: pageIndex, data: ctx().getImageData(0, 0, c.width, c.height) })
+    const src = pagesRef.current[pageIndex]
+    if (!src) return
+    undoRef.current.push({
+      page: pageIndex,
+      data: src.getContext('2d').getImageData(0, 0, src.width, src.height),
+    })
     if (undoRef.current.length > 20) undoRef.current.shift()
   }
 
@@ -354,23 +384,37 @@ export default function DeliveryOrderFix() {
 
   function onCanvasClick(e) {
     if (tool !== 'text' || !loaded) return
-    setPending(point(e))
+    setDraft(point(e))
   }
+
+  // Nudge in canvas pixels; at 300 DPI 10px is about a hundredth of an inch,
+  // fine enough to line up with a printed row but visible on a phone.
+  const nudge = (dx, dy) =>
+    setDraft((d) => (d ? { x: d.x + dx, y: d.y + dy } : d))
 
   function placeText() {
     if (!text.trim()) return flash('Type the replacement text first')
-    if (!pending) return flash('Tap the page where the text should go')
+    if (!draft) return flash('Tap the page where the text should go')
     pushUndo()
+    // Redraw without the positioning outline, then commit that exact bitmap.
+    paint(pageIndex)
     const g = ctx()
     g.fillStyle = TEXT_FILL
     g.textBaseline = 'alphabetic'
     g.font = `bold ${Number(size || 22) * RENDER_SCALE}px "DejaVu Sans Condensed","Arial Narrow",Arial,sans-serif`
-    g.fillText(text, pending.x, pending.y)
+    g.fillText(text, draft.x, draft.y)
     commit()
-    setPending(null)
+    setDraft(null)
     setText('')
     flash('Text placed')
   }
+
+  function cancelDraft() {
+    setDraft(null)
+    setText('')
+  }
+
+  const textFont = (pt) => `bold ${Number(pt || 22) * RENDER_SCALE}px "DejaVu Sans Condensed","Arial Narrow",Arial,sans-serif`
 
   const stamp = () => new Date().toISOString().slice(0, 10).replace(/-/g, '')
 
@@ -431,7 +475,7 @@ export default function DeliveryOrderFix() {
     setLoaded(false)
     setPageCount(0)
     setPageIndex(0)
-    setPending(null)
+    setDraft(null)
     setText('')
     setTool('erase')
     setZoom(1)
@@ -439,6 +483,11 @@ export default function DeliveryOrderFix() {
     setQueuedName('')
     queuedRef.current = null
   }
+
+  // 10 canvas px at 300 DPI is about a hundredth of an inch -- fine enough to
+  // sit on a printed baseline; 40 for crossing a cell quickly.
+  const step = bigStep ? 40 : 10
+  const nudgeBtn = 'flex h-11 w-11 items-center justify-center rounded-lg border border-line bg-surface text-base font-bold text-ink active:bg-accent/20'
 
   const toolBtn = (id, label) =>
     `flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
@@ -512,19 +561,19 @@ export default function DeliveryOrderFix() {
                 <button
                   className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink disabled:opacity-40"
                   disabled={pageIndex === 0}
-                  onClick={() => { commit(); setPageIndex(pageIndex - 1) }}
+                  onClick={() => { cancelDraft(); commit(); setPageIndex(pageIndex - 1) }}
                 >‹ Prev</button>
                 <span className="text-xs font-medium text-muted">Page {pageIndex + 1} of {pageCount}</span>
                 <button
                   className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink disabled:opacity-40"
                   disabled={pageIndex === pageCount - 1}
-                  onClick={() => { commit(); setPageIndex(pageIndex + 1) }}
+                  onClick={() => { cancelDraft(); commit(); setPageIndex(pageIndex + 1) }}
                 >Next ›</button>
               </div>
             )}
 
             <div className="mb-3 flex gap-2">
-              <button className={toolBtn('erase')} onClick={() => { setTool('erase'); setPending(null) }}>🧽 Erase</button>
+              <button className={toolBtn('erase')} onClick={() => { setTool('erase'); cancelDraft() }}>🧽 Erase</button>
               <button className={toolBtn('text')} onClick={() => setTool('text')}>🔤 Text</button>
               <button
                 className="flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-muted hover:border-accent hover:text-ink"
@@ -535,10 +584,10 @@ export default function DeliveryOrderFix() {
             <p className="mb-3 rounded-lg border border-line bg-canvas px-3 py-2 text-xs text-muted">
               {tool === 'erase'
                 ? <><span className="font-semibold text-ink">Erase:</span> drag a box over the text you want gone. The background is sampled from just outside your box, and any table borders you cross are redrawn.</>
-                : <><span className="font-semibold text-ink">Text:</span> tap where the text should start — that point is the left edge of the baseline — then type it below and press Place.</>}
+                : <><span className="font-semibold text-ink">Text:</span> tap where the text should go, type it, then nudge it into place with the arrows. Nothing is written onto the document until you press Place.</>}
             </p>
 
-            {pending && (
+            {draft && (
               <div className="mb-3 rounded-lg border border-accent bg-canvas p-3">
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
@@ -562,8 +611,31 @@ export default function DeliveryOrderFix() {
                     />
                   </div>
                 </div>
+
+                {/* Fine positioning. Tapping the page moves it roughly; these
+                    line it up with the printed row. Big hit areas because this
+                    is used one-handed on a phone. */}
+                <div className="mt-3">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Nudge into place</span>
+                    <label className="flex items-center gap-1 text-[10px] font-medium text-muted">
+                      <input type="checkbox" checked={bigStep} onChange={(e) => setBigStep(e.target.checked)} />
+                      Bigger steps
+                    </label>
+                  </div>
+                  <div className="flex items-center justify-center gap-2">
+                    <button className={nudgeBtn} onClick={() => nudge(-step, 0)} aria-label="Move left">←</button>
+                    <div className="flex flex-col gap-2">
+                      <button className={nudgeBtn} onClick={() => nudge(0, -step)} aria-label="Move up">↑</button>
+                      <button className={nudgeBtn} onClick={() => nudge(0, step)} aria-label="Move down">↓</button>
+                    </div>
+                    <button className={nudgeBtn} onClick={() => nudge(step, 0)} aria-label="Move right">→</button>
+                  </div>
+                  <p className="mt-2 text-center text-[11px] text-muted">…or tap the page again to move it there</p>
+                </div>
+
                 <div className="mt-3 flex justify-end gap-2">
-                  <button className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:text-ink" onClick={() => setPending(null)}>Cancel</button>
+                  <button className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:text-ink" onClick={cancelDraft}>Cancel</button>
                   <button className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600" onClick={placeText}>Place text</button>
                 </div>
               </div>
