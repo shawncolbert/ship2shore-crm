@@ -1,31 +1,68 @@
 /* Prebuilt landing-page templates.
  *
- * Each one is a complete, ready-to-send page with real trade-appropriate copy
- * -- pick it, fill in the customer's details, publish. The point is that a
- * client page takes two minutes, not an afternoon of writing from scratch.
+ * Each one is a complete, designed page -- photographic hero, service grid,
+ * proof, call to action, contact bar -- with real trade-appropriate copy.
+ * Pick it, fill in the customer's details, publish.
  *
  * Tokens in {{double braces}} are replaced at creation time from the details
  * form, so the page never ships with a placeholder still showing. Anything the
  * form can't fill is left as a visible [BRACKETED PROMPT] so it's obvious what
  * still needs a human -- silent blanks are worse than loud ones.
  *
+ * Two categories are deliberately left as prompts rather than prefilled:
+ * headline numbers (years in business, jobs completed) and customer
+ * testimonials. Those are claims about a real business and a real person's
+ * words. Inventing them would put fabricated credentials and fake reviews on
+ * a page the customer publishes under their own name, so the template asks
+ * for them instead of guessing.
+ *
  * These live in code rather than the database on purpose: they are always
  * available to every org, can't be deleted by accident, and a fix to one
  * benefits every future page.
  */
 
+// Hero photography, generated for these templates. The renderer treats the
+// image as a layer over a brand gradient and hides it on error, so a page
+// whose image fails to load degrades to a clean dark hero rather than
+// breaking. Swap any of these for the customer's own photography -- their
+// real work will always outperform stock.
+const IMG = 'https://d8j0ntlcm91z4.cloudfront.net/user_3Em41yWm3qImtZanUNHBaB0IPjN/'
+const HERO = {
+  photography: `${IMG}hf_20260802_070841_31aed9c0-52d1-481a-9a05-78b56fa9598c_min.webp`,
+  welding: `${IMG}hf_20260802_070847_527c1317-666a-4fa6-949d-082ffc46d22c_min.webp`,
+  realEstate: `${IMG}hf_20260802_070850_1cc22eed-fd7a-4b77-8c3e-b6789c5bc411_min.webp`,
+  mortgage: `${IMG}hf_20260802_070855_a7a6c47a-2236-473e-a34c-9d3f3e4d88b9_min.webp`,
+  social: `${IMG}hf_20260802_071020_31fd4178-d1d5-40e9-8f6c-b48e3c29c4e2_min.webp`,
+  plumbing: `${IMG}hf_20260802_071025_08a218f4-0223-4c4a-abb8-d37edf71de83_min.webp`,
+  hvac: `${IMG}hf_20260802_071029_860ed1f1-3772-4ec9-8b72-f1cb21a843c8_min.webp`,
+  detailing: `${IMG}hf_20260802_071038_20828713-0164-4792-85aa-32b3f508d012_min.webp`,
+  landscaping: `${IMG}hf_20260802_071042_03c8ad3c-da4f-4531-80c4-24e88e85261e_min.webp`,
+  logistics: `${IMG}hf_20260802_071114_91a29b4f-ea7d-423b-ad7a-3600cf72a736_min.webp`,
+}
+
 const b = (type, extra) => ({ type, ...extra })
 
-// Shared closer: services list -> divider -> call to action.
-const closer = (ctaLabel, target = 'lead_form') => [
-  b('divider', {}),
+const hero = (image, eyebrow, heading, subheading, ctaLabel) =>
+  b('hero', { image, eyebrow, heading, subheading, ctaLabel, ctaTarget: 'lead_form' })
+
+const features = (title, items) => b('features', { title, items })
+
+// Headline numbers are claims about a real business, so they ship as prompts.
+const stats = (a, c, d) => b('stats', { items: [a, c, d] })
+
+// Never prefilled with invented praise -- a fabricated review is a fake review.
+const proof = (role) => b('testimonial', {
+  quote: '[PASTE A REAL REVIEW FROM ONE OF YOUR CUSTOMERS HERE]',
+  author: '[CUSTOMER NAME]',
+  role,
+})
+
+const closer = (ctaLabel, blurb) => [
   b('heading', { text: 'Get a Free Quote' }),
-  b('paragraph', {
-    text: 'Tell us what you need and we\'ll get back to you the same day. No obligation, no pressure.',
-  }),
-  b('cta', { label: ctaLabel, target }),
+  b('paragraph', { text: blurb }),
+  b('cta', { label: ctaLabel, target: 'lead_form' }),
   b('spacer', { size: 'sm' }),
-  b('paragraph', { text: '{{business}}  ·  {{phone}}  ·  Serving {{city}} and surrounding areas' }),
+  b('contact', { business: '{{business}}', phone: '{{phone}}', email: '{{email}}', area: 'Serving {{city}} and surrounding areas' }),
 ]
 
 export const LANDING_TEMPLATES = [
@@ -35,20 +72,26 @@ export const LANDING_TEMPLATES = [
     tagline: 'Portrait, event and commercial photographers',
     accent: '📷',
     blocks: [
-      b('heading', { text: '{{business}} — Photography That Actually Looks Like You' }),
-      b('paragraph', {
-        text: 'Portraits, events and commercial work in {{city}}. Natural light, honest editing, and galleries delivered in days — not months.',
-      }),
-      b('image', { url: '', alt: 'Featured photograph' }),
-      b('heading', { text: 'What I Shoot' }),
-      b('paragraph', {
-        text: '• Portraits — headshots, seniors, families, personal branding\n• Events — weddings, receptions, corporate functions, parties\n• Commercial — product, real estate interiors, team and staff photos\n• Content days — a half-day of images for your website and socials',
-      }),
+      hero(HERO.photography, 'Photography in {{city}}',
+        '{{business}}',
+        'Portraits, events and commercial work. Natural light, honest editing, and galleries delivered in days — not months.',
+        'Book a Session'),
+      stats(
+        { value: '[##]', label: 'Years shooting' },
+        { value: '7 days', label: 'Gallery turnaround' },
+        { value: '[###]', label: 'Sessions delivered' },
+      ),
+      features('What I Shoot', [
+        { icon: '👤', title: 'Portraits', text: 'Headshots, seniors, families and personal branding — relaxed sessions that actually look like you.' },
+        { icon: '🎉', title: 'Events', text: 'Weddings, receptions, corporate functions and parties, covered start to finish.' },
+        { icon: '🏷️', title: 'Commercial', text: 'Product, real estate interiors, and team photos built for your website and socials.' },
+      ]),
       b('heading', { text: 'How It Works' }),
       b('paragraph', {
         text: '1. We talk through what you need and where you want to shoot.\n2. Session day — most run 60 to 90 minutes and are genuinely relaxed.\n3. Your private online gallery arrives within 7 days, fully edited.\n4. Download anything you like, any size, print-ready.',
       }),
-      ...closer('Book a Session'),
+      proof('Portrait client'),
+      ...closer('Book a Session', 'Tell me what you have in mind and I\'ll get back to you the same day with availability and pricing.'),
     ],
   },
 
@@ -58,20 +101,26 @@ export const LANDING_TEMPLATES = [
     tagline: 'Mobile welding, structural and custom fab shops',
     accent: '🔥',
     blocks: [
-      b('heading', { text: '{{business}} — Mobile Welding & Custom Fabrication' }),
+      hero(HERO.welding, 'Mobile & Shop Welding',
+        '{{business}}',
+        'Certified welding in {{city}}. We come to you with a fully equipped rig, or you bring it to the shop. Structural, ornamental and repair work — done right the first time.',
+        'Get a Free Quote'),
+      stats(
+        { value: '[##]', label: 'Years in the trade' },
+        { value: '24 hr', label: 'Quote turnaround' },
+        { value: '[CERT]', label: 'Certifications held' },
+      ),
+      features('What We Weld', [
+        { icon: '🚚', title: 'Mobile Repair', text: 'On-site welding for equipment, trailers, gates and structures that can\'t move. Fully equipped truck.' },
+        { icon: '🏗️', title: 'Structural', text: 'Beams, columns, stairs and railings — fabricated and installed to spec.' },
+        { icon: '⚒️', title: 'Custom Fab', text: 'Ornamental iron, racks, brackets, one-off parts. Bring a sketch or a broken original.' },
+      ]),
+      b('heading', { text: 'Materials & Processes' }),
       b('paragraph', {
-        text: 'Certified welding in {{city}}. We come to you with a fully equipped rig, or you bring it to the shop. Structural, ornamental and repair work — done right the first time.',
+        text: '• MIG, TIG and stick welding\n• Steel, stainless and aluminum\n• Cutting, bending and fitting\n• Emergency and after-hours repair available',
       }),
-      b('image', { url: '', alt: 'Welding work in progress' }),
-      b('heading', { text: 'Services' }),
-      b('paragraph', {
-        text: '• Mobile welding — on-site repairs, no towing needed\n• Structural — beams, columns, stairs, mezzanines, handrail\n• Custom fabrication — gates, railings, racks, brackets, trailer work\n• Aluminum & stainless — TIG work, food-grade and marine\n• Emergency repair — equipment down? Call, we\'ll prioritize it',
-      }),
-      b('heading', { text: 'Why Shops Call Us Back' }),
-      b('paragraph', {
-        text: '• Certified welders, not a guy with a machine\n• Clean welds that pass inspection\n• We show up when we say we will\n• Straight pricing quoted before we strike an arc',
-      }),
-      ...closer('Request a Quote'),
+      proof('Shop owner'),
+      ...closer('Get a Free Quote', 'Send a photo of the job and we\'ll come back with a number — usually the same day. No obligation.'),
     ],
   },
 
@@ -81,20 +130,26 @@ export const LANDING_TEMPLATES = [
     tagline: 'Agents, brokers and listing teams',
     accent: '🏡',
     blocks: [
-      b('heading', { text: '{{business}} — Buying or Selling in {{city}}' }),
+      hero(HERO.realEstate, 'Buying & Selling in {{city}}',
+        '{{business}}',
+        'Straight answers, real numbers, and an agent who picks up the phone. Whether it\'s your first home or your fifth investment property, you\'ll know exactly where you stand at every step.',
+        'Get a Free Home Valuation'),
+      stats(
+        { value: '[##]', label: 'Years licensed' },
+        { value: '[###]', label: 'Homes closed' },
+        { value: '[##]', label: 'Avg days on market' },
+      ),
+      features('How I Help', [
+        { icon: '🔑', title: 'Buyers', text: 'Off-market leads, honest walkthroughs, and negotiation that protects your budget — not the deal.' },
+        { icon: '📈', title: 'Sellers', text: 'Pricing backed by real comps, professional photography, and a marketing plan you can actually see.' },
+        { icon: '🏘️', title: 'Investors', text: 'Cash-flow analysis, rental comps, and honest talk about which properties aren\'t worth it.' },
+      ]),
+      b('heading', { text: 'What You Can Expect' }),
       b('paragraph', {
-        text: 'Straight answers, real numbers, and an agent who picks up the phone. Whether it\'s your first home or your fifth investment property, you\'ll know exactly where you stand at every step.',
+        text: '1. A no-pressure conversation about what you actually want.\n2. A written plan with real numbers — pricing, timeline, costs.\n3. Weekly updates, whether there\'s news or not.\n4. Someone in your corner through closing and after.',
       }),
-      b('image', { url: '', alt: 'Featured property' }),
-      b('heading', { text: 'For Sellers' }),
-      b('paragraph', {
-        text: '• Free, no-obligation home valuation based on real comparable sales\n• Professional photography and staging guidance included\n• Listed across MLS, Zillow, Realtor.com and social\n• Weekly updates — you\'ll never wonder what\'s happening',
-      }),
-      b('heading', { text: 'For Buyers' }),
-      b('paragraph', {
-        text: '• Early access to listings before they hit the public sites\n• Honest assessments — I\'ll tell you when a house is a bad deal\n• Lender and inspector referrals I\'d use myself\n• Negotiation that protects your money, not the timeline',
-      }),
-      ...closer('Get a Free Home Valuation'),
+      proof('Recent client'),
+      ...closer('Get a Free Home Valuation', 'Curious what your home is worth, or what you can afford? Ask and I\'ll send real numbers — no sales pitch attached.'),
     ],
   },
 
@@ -104,22 +159,27 @@ export const LANDING_TEMPLATES = [
     tagline: 'Loan officers and mortgage brokers',
     accent: '🏦',
     blocks: [
-      b('heading', { text: '{{business}} — Home Loans Without the Runaround' }),
+      hero(HERO.mortgage, 'Home Loans in {{city}}',
+        '{{business}}',
+        'Pre-approval in 24 hours. Real rates, explained in plain English, from someone who answers the phone after 5pm.',
+        'Get Pre-Approved'),
+      stats(
+        { value: '24 hr', label: 'Pre-approval' },
+        { value: '[##]', label: 'Years lending' },
+        { value: '[###]', label: 'Families funded' },
+      ),
+      features('Loan Programs', [
+        { icon: '🏠', title: 'Conventional & FHA', text: 'Low down payment options for first-time buyers, plus standard conventional financing.' },
+        { icon: '🎖️', title: 'VA & USDA', text: 'Zero-down programs for veterans and eligible rural properties.' },
+        { icon: '🔄', title: 'Refinance', text: 'Rate-and-term, cash-out, and honest math on whether refinancing is worth it for you.' },
+      ]),
+      b('heading', { text: 'The Process' }),
       b('paragraph', {
-        text: 'Pre-approval in 24 hours. Real rates, explained in plain English, from someone who answers the phone after 5pm.',
+        text: '1. A 15-minute call — income, credit, goals. No hard pull.\n2. Pre-approval letter, usually within 24 hours.\n3. Shop with confidence; sellers take you seriously.\n4. We handle underwriting and keep you posted through closing.',
       }),
-      b('heading', { text: 'Loan Programs' }),
-      b('paragraph', {
-        text: '• Conventional — as little as 3% down for qualified buyers\n• FHA — lower credit thresholds, 3.5% down\n• VA — $0 down for veterans and active duty\n• Jumbo — financing above conforming limits\n• Refinance — lower your rate, shorten your term, or pull cash out',
-      }),
-      b('heading', { text: 'What You\'ll Need' }),
-      b('paragraph', {
-        text: '• Two most recent pay stubs\n• Two years of W-2s or tax returns\n• Two months of bank statements\n• Photo ID\n\nThat\'s usually it to get started. We\'ll tell you early if something else is needed — no surprises a week before closing.',
-      }),
-      b('paragraph', {
-        text: '[ADD YOUR NMLS NUMBER HERE — required on lending pages] · Equal Housing Lender',
-      }),
-      ...closer('Get Pre-Approved'),
+      proof('First-time buyer'),
+      b('paragraph', { text: '[ADD YOUR NMLS NUMBER HERE — required on lending pages]' }),
+      ...closer('Get Pre-Approved', 'Send your details and I\'ll come back with what you qualify for and what it actually costs per month.'),
     ],
   },
 
@@ -129,19 +189,24 @@ export const LANDING_TEMPLATES = [
     tagline: 'Social managers, UGC creators and content studios',
     accent: '📱',
     blocks: [
-      b('heading', { text: '{{business}} — Social Media That Brings In Customers' }),
-      b('paragraph', {
-        text: 'Not just posting. Content built to get your business found, followed and called — handled end to end so you can run the business instead of the feed.',
-      }),
-      b('heading', { text: 'What\'s Included' }),
-      b('paragraph', {
-        text: '• Content calendar planned a month ahead, approved by you\n• Short-form video — Reels, TikTok, Shorts — filmed and edited\n• Photo and graphic posts on brand\n• Captions, hashtags and posting at the right times\n• Comment and DM monitoring so leads don\'t sit unanswered\n• Monthly report on what actually moved the needle',
-      }),
+      hero(HERO.social, 'Content That Converts',
+        '{{business}}',
+        'Not just posting. Content built to get your business found, followed and called — handled end to end so you can run the business instead of the feed.',
+        'Book a Strategy Call'),
+      stats(
+        { value: '[##]', label: 'Brands served' },
+        { value: '[##]x', label: 'Avg reach lift' },
+        { value: '[##] hr', label: 'Saved per week' },
+      ),
+      features('What We Handle', [
+        { icon: '🎬', title: 'Content Production', text: 'Short-form video, photo and graphics shot and edited on a schedule you can count on.' },
+        { icon: '📅', title: 'Posting & Scheduling', text: 'Consistent publishing across Instagram, TikTok, Facebook and Google Business.' },
+        { icon: '📊', title: 'Reporting', text: 'A plain-English monthly summary of what worked, what didn\'t, and what we\'re changing.' },
+      ]),
       b('heading', { text: 'Packages' }),
-      b('paragraph', {
-        text: 'Starter — 8 posts/month, 1 platform\nGrowth — 16 posts/month, 2 platforms, 4 short videos\nFull Service — daily posting, all platforms, video, ads management\n\n[ADJUST PACKAGES AND ADD YOUR PRICING]',
-      }),
-      ...closer('Book a Free Strategy Call'),
+      b('paragraph', { text: '[ADJUST PACKAGES AND ADD YOUR PRICING]\n\n• Starter — 8 posts a month, 1 content day per quarter\n• Growth — 16 posts a month, monthly content day, monthly reporting\n• Full service — everything above plus ads management and community replies' }),
+      proof('Local business owner'),
+      ...closer('Book a Strategy Call', 'Tell us about your business and we\'ll come back with a content plan and a price — no retainer talk until you\'ve seen it.'),
     ],
   },
 
@@ -151,19 +216,26 @@ export const LANDING_TEMPLATES = [
     tagline: 'Residential and commercial plumbers',
     accent: '🔧',
     blocks: [
-      b('heading', { text: '{{business}} — Licensed Plumbers in {{city}}' }),
+      hero(HERO.plumbing, 'Licensed Plumbers in {{city}}',
+        '{{business}}',
+        'Same-day service on most calls. Upfront pricing before we start — you approve the number, then we do the work. No hourly meter running while you watch.',
+        'Request Service'),
+      stats(
+        { value: 'Same day', label: 'Most service calls' },
+        { value: '[##]', label: 'Years licensed' },
+        { value: '24/7', label: 'Emergency line' },
+      ),
+      features('What We Fix', [
+        { icon: '🚿', title: 'Repairs', text: 'Leaks, clogs, running toilets, low pressure, burst pipes — diagnosed and fixed the same visit where possible.' },
+        { icon: '🔥', title: 'Water Heaters', text: 'Repair, replacement and tankless conversions, including haul-away of the old unit.' },
+        { icon: '🏗️', title: 'Repipe & Install', text: 'Whole-home repipes, fixture installs, and rough-in for remodels and additions.' },
+      ]),
+      b('heading', { text: 'How Pricing Works' }),
       b('paragraph', {
-        text: 'Same-day service on most calls. Upfront pricing before we start — you approve the number, then we do the work. No hourly meter running while you watch.',
+        text: '1. We diagnose the problem and show you what we found.\n2. You get a flat price for the fix, in writing, before any work starts.\n3. You approve it — or you don\'t, and you owe nothing beyond the trip fee.\n4. We clean up after ourselves. Every time.',
       }),
-      b('heading', { text: 'What We Handle' }),
-      b('paragraph', {
-        text: '• Emergency leaks and burst pipes — 24/7\n• Drain cleaning and hydro-jetting\n• Water heaters — repair, replacement, tankless conversion\n• Toilets, faucets, garbage disposals, fixtures\n• Sewer line camera inspection and repair\n• Repiping and remodel rough-in',
-      }),
-      b('heading', { text: 'Why Homeowners Call Us' }),
-      b('paragraph', {
-        text: '• Licensed, bonded and insured\n• Flat-rate pricing quoted before work begins\n• We put down drop cloths and clean up after ourselves\n• Workmanship warranty on every job',
-      }),
-      ...closer('Request Service'),
+      proof('Homeowner'),
+      ...closer('Request Service', 'Tell us what\'s going on and we\'ll get you on the schedule — usually today or tomorrow.'),
     ],
   },
 
@@ -173,19 +245,24 @@ export const LANDING_TEMPLATES = [
     tagline: 'Heating, cooling and air quality contractors',
     accent: '❄️',
     blocks: [
-      b('heading', { text: '{{business}} — Heating & Air Conditioning in {{city}}' }),
-      b('paragraph', {
-        text: 'AC out in the heat? We do same-day diagnostics and carry the common parts on the truck, so most repairs finish on the first visit.',
-      }),
-      b('heading', { text: 'Services' }),
-      b('paragraph', {
-        text: '• AC repair and installation\n• Furnace and heat pump service\n• Preventive maintenance plans — two visits a year, priority scheduling\n• Ductwork inspection, sealing and replacement\n• Indoor air quality — filtration, UV, humidity control\n• Thermostat upgrades and smart-home integration',
-      }),
-      b('heading', { text: 'Maintenance Plan' }),
-      b('paragraph', {
-        text: 'Spring and fall tune-ups, priority scheduling ahead of non-members, and a discount on any repair. Catching a failing capacitor in March costs a fraction of an emergency call in August.\n\n[ADD YOUR PLAN PRICING]',
-      }),
-      ...closer('Schedule Service'),
+      hero(HERO.hvac, 'Heating & Air in {{city}}',
+        '{{business}}',
+        'AC out in the heat? We do same-day diagnostics and carry the common parts on the truck, so most repairs are finished on the first visit.',
+        'Schedule Service'),
+      stats(
+        { value: 'Same day', label: 'Diagnostics' },
+        { value: '[##]', label: 'Years in business' },
+        { value: '[##] yr', label: 'Install warranty' },
+      ),
+      features('Services', [
+        { icon: '🛠️', title: 'Repair', text: 'Diagnostics on any brand, with common parts stocked on the truck for first-visit fixes.' },
+        { icon: '📦', title: 'Installation', text: 'Right-sized systems with a load calculation — not a guess based on what was there before.' },
+        { icon: '🌬️', title: 'Air Quality', text: 'Filtration, humidity control and duct sealing for homes that never quite feel right.' },
+      ]),
+      b('heading', { text: 'Maintenance Plans' }),
+      b('paragraph', { text: '[ADD YOUR PLAN PRICING]\n\nTwo visits a year — heating before winter, cooling before summer. Members get priority scheduling and a discount on repairs.' }),
+      proof('Homeowner'),
+      ...closer('Schedule Service', 'Tell us what your system is doing and we\'ll get a tech out — same day when we can.'),
     ],
   },
 
@@ -195,20 +272,24 @@ export const LANDING_TEMPLATES = [
     tagline: 'Mobile detailers and on-site mechanics',
     accent: '🚗',
     blocks: [
-      b('heading', { text: '{{business}} — We Come to You' }),
-      b('paragraph', {
-        text: 'Mobile detailing and service throughout {{city}}. We bring water, power and everything else — you keep your day. Driveway, office lot, jobsite, doesn\'t matter.',
-      }),
-      b('image', { url: '', alt: 'Finished detail' }),
-      b('heading', { text: 'Detailing Packages' }),
-      b('paragraph', {
-        text: 'Express — exterior wash, wheels, tires, windows, quick interior vacuum\nFull Detail — clay bar, machine polish, full interior shampoo, leather conditioning\nCeramic Coating — multi-year paint protection, gloss and easy washing\nEngine Bay — degreased, dressed, photo-ready\n\n[ADD YOUR PRICING PER VEHICLE SIZE]',
-      }),
-      b('heading', { text: 'Mobile Mechanic Services' }),
-      b('paragraph', {
-        text: '• Oil changes and scheduled maintenance\n• Brakes, rotors and pads\n• Batteries, alternators and starters\n• Diagnostics — check engine light scanned and explained\n• Pre-purchase inspection before you buy a used car',
-      }),
-      ...closer('Book Mobile Service'),
+      hero(HERO.detailing, 'We Come to You',
+        '{{business}}',
+        'Mobile detailing and service throughout {{city}}. We bring water, power and everything else — you keep your day. Book at home or at the office.',
+        'Book My Detail'),
+      stats(
+        { value: '100%', label: 'Mobile service' },
+        { value: '[##]', label: 'Years detailing' },
+        { value: '[###]', label: 'Vehicles done' },
+      ),
+      features('Packages', [
+        { icon: '✨', title: 'Maintenance Wash', text: 'Hand wash, wheels, tires and interior vacuum — the every-few-weeks reset.' },
+        { icon: '💎', title: 'Full Detail', text: 'Clay bar, machine polish, interior shampoo and leather conditioning. Paint that looks new again.' },
+        { icon: '🛡️', title: 'Paint Protection', text: 'Ceramic coating and sealant with real durability — not a spray wax that lasts a week.' },
+      ]),
+      b('heading', { text: 'Pricing' }),
+      b('paragraph', { text: '[ADD YOUR PRICING PER VEHICLE SIZE]\n\nPricing varies by vehicle size and condition. Send a photo and we\'ll quote it exactly.' }),
+      proof('Repeat customer'),
+      ...closer('Book My Detail', 'Send your vehicle and where you\'re parked, and we\'ll come back with a price and the next open slot.'),
     ],
   },
 
@@ -218,42 +299,55 @@ export const LANDING_TEMPLATES = [
     tagline: 'Lawn care, maintenance and hardscape crews',
     accent: '🌿',
     blocks: [
-      b('heading', { text: '{{business}} — Landscaping & Lawn Care in {{city}}' }),
+      hero(HERO.landscaping, 'Landscaping & Lawn Care in {{city}}',
+        '{{business}}',
+        'Weekly maintenance that actually shows up, and design work that makes the whole property look intentional. Same crew every visit.',
+        'Get a Free Estimate'),
+      stats(
+        { value: 'Weekly', label: 'Reliable service' },
+        { value: '[##]', label: 'Years serving {{city}}' },
+        { value: '[###]', label: 'Properties maintained' },
+      ),
+      features('What We Do', [
+        { icon: '🌱', title: 'Lawn Maintenance', text: 'Mowing, edging, blowing and trimming on a set weekly or biweekly schedule.' },
+        { icon: '🌸', title: 'Beds & Planting', text: 'Mulch, seasonal color, shrub shaping and cleanups that reset the whole yard.' },
+        { icon: '🧱', title: 'Hardscape', text: 'Patios, walkways, retaining walls and borders built to last through the seasons.' },
+      ]),
+      b('heading', { text: 'How We Work' }),
       b('paragraph', {
-        text: 'Weekly maintenance that actually shows up, and design work that makes the neighbors ask who did it.',
+        text: '1. We walk the property with you and listen to what bothers you about it.\n2. You get a written estimate — per visit and per season.\n3. Same crew every visit, so nobody has to be re-taught your property.\n4. We text when we\'re on the way and when we\'re done.',
       }),
-      b('image', { url: '', alt: 'Completed landscaping project' }),
-      b('heading', { text: 'Maintenance' }),
-      b('paragraph', {
-        text: '• Weekly or bi-weekly mowing, edging and blowing\n• Hedge and shrub trimming\n• Seasonal cleanups — leaves, storm debris, bed refresh\n• Fertilization and weed control programs\n• Irrigation repair and timer adjustment',
-      }),
-      b('heading', { text: 'Design & Install' }),
-      b('paragraph', {
-        text: '• Sod, seed and full lawn renovation\n• Planting — trees, shrubs, seasonal color\n• Mulch, rock and bed edging\n• Hardscape — pavers, patios, retaining walls, walkways\n• Drainage correction and grading\n• Landscape lighting',
-      }),
-      ...closer('Get a Free Estimate'),
+      proof('Property owner'),
+      ...closer('Get a Free Estimate', 'Tell us the address and what you\'re after — we\'ll walk it and send a written estimate.'),
     ],
   },
 
   {
     id: 'customs-logistics',
-    name: 'Customs Broker / Logistics',
-    tagline: 'Brokers, freight forwarders and port services',
-    accent: '⚓',
+    name: 'Customs / Logistics',
+    tagline: 'Freight forwarders, brokers and port services',
+    accent: '🚢',
     blocks: [
-      b('heading', { text: '{{business}} — Customs Clearance & Port Logistics' }),
-      b('paragraph', {
-        text: 'Your cargo cleared, released and moving. We handle the filings, the holds and the port so your freight doesn\'t sit accruing demurrage while paperwork gets sorted out.',
-      }),
-      b('heading', { text: 'Services' }),
-      b('paragraph', {
-        text: '• Customs entry filing and clearance\n• ISF (10+2) filing before vessel departure\n• Duty, tariff and classification guidance\n• Bond arrangement — single entry and continuous\n• Exam and hold coordination with CBP\n• Delivery order correction and consignee changes\n• Drayage and final-mile delivery',
-      }),
+      hero(HERO.logistics, 'Port & Freight Services',
+        '{{business}}',
+        'Customs clearance, drayage and port services out of {{city}}. We know the terminals, the paperwork and the people — so your freight moves instead of sitting.',
+        'Request Clearance Support'),
+      stats(
+        { value: '[##]', label: 'Years at the port' },
+        { value: '[###]', label: 'Shipments cleared' },
+        { value: '24/7', label: 'Dispatch' },
+      ),
+      features('Services', [
+        { icon: '📋', title: 'Customs Clearance', text: 'Entry filing, classification and duty handling — with the documentation right the first time.' },
+        { icon: '🚛', title: 'Drayage & Trucking', text: 'Container pulls, hotshot runs and full load-and-unload from terminal to door.' },
+        { icon: '🪪', title: 'TWIC Escort', text: 'Licensed escort for drivers and vendors without a TWIC card, in and out of secure areas.' },
+      ]),
       b('heading', { text: 'Why It Matters' }),
       b('paragraph', {
-        text: 'Every day a container sits past its last free date costs money. Most delays trace back to one of four things: customs not cleared, no original bill of lading on file, freight unpaid, or the wrong party named on the delivery order. We check all four before scheduling a pickup — not after.',
+        text: '• Demurrage and per-diem start fast — we move before the clock does.\n• One point of contact, not a ticket queue.\n• Real-time status, not "we\'ll check and call you back".\n• Licensed, bonded and insured.',
       }),
-      ...closer('Request Clearance Support'),
+      proof('Freight client'),
+      ...closer('Request Clearance Support', 'Send your BOL or container number and we\'ll tell you exactly what it takes to move it.'),
     ],
   },
 ]
@@ -262,6 +356,9 @@ export const LANDING_TEMPLATES = [
    the form falls back to a visible bracketed prompt rather than an empty gap,
    so an unfinished page is obvious at a glance instead of shipping with a
    dangling "Serving  and surrounding areas". */
+const FILLABLE = ['text', 'label', 'alt', 'url', 'heading', 'subheading', 'eyebrow', 'ctaLabel',
+  'title', 'quote', 'author', 'role', 'business', 'phone', 'email', 'area', 'value']
+
 export function applyTemplate(template, details) {
   const map = {
     business: details.business?.trim() || '[YOUR BUSINESS NAME]',
@@ -272,11 +369,15 @@ export function applyTemplate(template, details) {
   const fill = (v) =>
     typeof v === 'string' ? v.replace(/\{\{(\w+)\}\}/g, (m, k) => (k in map ? map[k] : m)) : v
 
-  return template.blocks.map((blk) => {
-    const out = { id: crypto.randomUUID(), ...blk }
-    for (const key of ['text', 'label', 'alt', 'url']) {
+  const fillFields = (obj) => {
+    const out = { ...obj }
+    for (const key of FILLABLE) {
       if (typeof out[key] === 'string') out[key] = fill(out[key])
     }
+    // Nested rows -- features cards and stat tiles carry their own copy.
+    if (Array.isArray(out.items)) out.items = out.items.map(fillFields)
     return out
-  })
+  }
+
+  return template.blocks.map((blk) => fillFields({ id: crypto.randomUUID(), ...blk }))
 }

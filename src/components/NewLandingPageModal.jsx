@@ -24,10 +24,18 @@ const humanize = (text) =>
   text.replace(/\{\{(\w+)\}\}/g, (m, k) => PREVIEW_TOKENS[k] ?? m)
 
 function previewLines(template) {
+  const hero = template.blocks.find((b) => b.type === 'hero')
+  if (hero) return [hero.eyebrow, hero.subheading].filter(Boolean).map(humanize)
   return template.blocks
     .filter((b) => (b.type === 'heading' || b.type === 'paragraph') && b.text)
     .slice(0, 2)
     .map((b) => humanize(b.text.split('\n')[0]))
+}
+
+// The card shows the template's real hero photograph, so you're picking a look
+// rather than a name.
+function previewImage(template) {
+  return template.blocks.find((b) => b.type === 'hero')?.image || ''
 }
 
 export default function NewLandingPageModal({ onClose, onCreated }) {
@@ -117,21 +125,30 @@ export default function NewLandingPageModal({ onClose, onCreated }) {
               <button
                 key={t.id}
                 onClick={() => choose(t)}
-                className="group flex flex-col rounded-xl border border-line bg-canvas p-4 text-left transition hover:border-accent hover:bg-surface hover:shadow-sm"
+                className="group flex flex-col overflow-hidden rounded-xl border border-line bg-canvas text-left transition hover:border-accent hover:bg-surface hover:shadow-md"
               >
-                <span className="text-2xl" aria-hidden="true">{t.accent}</span>
-                <span className="mt-2 font-semibold text-ink group-hover:text-accent">{t.name}</span>
-                <span className="text-xs text-muted">{t.tagline}</span>
-                <span className="mt-3 space-y-1 border-t border-line pt-3 text-[11px] leading-snug text-muted">
-                  {previewLines(t).map((line, i) => (
-                    <span key={i} className="line-clamp-2 block">{line}</span>
-                  ))}
+                <span className="relative block h-28 w-full overflow-hidden bg-ink">
+                  {previewImage(t) && (
+                    <img src={previewImage(t)} alt="" aria-hidden="true"
+                      onError={(e) => { e.currentTarget.style.display = 'none' }}
+                      className="h-full w-full object-cover opacity-70 transition group-hover:opacity-90" />
+                  )}
+                  <span className="absolute bottom-2 left-3 text-2xl drop-shadow" aria-hidden="true">{t.accent}</span>
+                </span>
+                <span className="flex flex-1 flex-col p-4">
+                  <span className="font-semibold text-ink group-hover:text-accent">{t.name}</span>
+                  <span className="text-xs text-muted">{t.tagline}</span>
+                  <span className="mt-3 space-y-1 border-t border-line pt-3 text-[11px] leading-snug text-muted">
+                    {previewLines(t).map((line, i) => (
+                      <span key={i} className="line-clamp-2 block">{line}</span>
+                    ))}
+                  </span>
                 </span>
               </button>
             ))}
             <button
               onClick={() => choose(false)}
-              className="group flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-line p-4 text-center transition hover:border-accent"
+              className="group flex min-h-[12rem] flex-col items-center justify-center rounded-xl border-2 border-dashed border-line p-4 text-center transition hover:border-accent"
             >
               <span className="text-2xl" aria-hidden="true">➕</span>
               <span className="mt-2 font-semibold text-ink group-hover:text-accent">Blank page</span>
