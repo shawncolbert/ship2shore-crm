@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { fetchLandingPages, deleteLandingPage } from '../lib/supabase'
+import NewLandingPageModal from '../components/NewLandingPageModal'
+import { LANDING_TEMPLATES } from '../lib/landingTemplates'
 
 const card = 'rounded-xl border border-line bg-surface p-5'
 const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600'
@@ -9,6 +12,7 @@ const fmt = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short',
 
 export default function LandingPages() {
   const qc = useQueryClient()
+  const [picking, setPicking] = useState(false)
   const { data: pages, isLoading, error } = useQuery({ queryKey: ['landingPages'], queryFn: fetchLandingPages })
 
   const remove = async (id, title) => {
@@ -23,16 +27,29 @@ export default function LandingPages() {
         <div>
           <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Landing pages</h1>
           <p className="max-w-2xl text-sm text-muted">
-            Marketing/service pages, publicly rendered at <code>/pages/&lt;slug&gt;</code> — no login required to view.
+            Pick a prebuilt template, drop in the customer's details, publish. Pages render publicly at{' '}
+            <code>/pages/&lt;slug&gt;</code> — no login required to view.
           </p>
         </div>
-        <Link to="/landing-pages/new" className={btnAccent}>+ New page</Link>
+        <button onClick={() => setPicking(true)} className={btnAccent}>+ New page</button>
       </header>
+
+      {picking && (
+        <NewLandingPageModal
+          onClose={() => setPicking(false)}
+          onCreated={() => qc.invalidateQueries({ queryKey: ['landingPages'] })}
+        />
+      )}
 
       {isLoading && <p className="text-sm text-muted">Loading…</p>}
       {error && <p className="text-sm text-port">Couldn't load landing pages.</p>}
       {!isLoading && !error && pages?.length === 0 && (
-        <div className={card}><p className="text-sm text-muted">No landing pages yet.</p></div>
+        <div className={card}>
+          <p className="text-sm text-muted">
+            No landing pages yet. Hit <strong className="text-ink">+ New page</strong> and pick a template —
+            there are {LANDING_TEMPLATES.length} ready to go with the copy already written.
+          </p>
+        </div>
       )}
 
       <div className="space-y-2">
