@@ -1,4 +1,4 @@
-import { supabase } from './_shared/supabase.js'
+import { admin } from './_shared/supabaseAdmin.js'
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -13,7 +13,7 @@ export const handler = async (event) => {
 
   try {
     // Get funnel to find org
-    const { data: funnel, error: funnelErr } = await supabase
+    const { data: funnel, error: funnelErr } = await admin
       .from('funnels')
       .select('id, org_id')
       .eq('id', funnelId)
@@ -26,7 +26,7 @@ export const handler = async (event) => {
     // Check if contact exists by email
     let contact = null
     if (data.email) {
-      const { data: existing } = await supabase
+      const { data: existing } = await admin
         .from('contacts')
         .select('id')
         .eq('org_id', orgId)
@@ -37,7 +37,7 @@ export const handler = async (event) => {
 
     // Create or update contact
     if (!contact && data.full_name && data.email) {
-      const { data: newContact, error: contactErr } = await supabase
+      const { data: newContact, error: contactErr } = await admin
         .from('contacts')
         .insert({
           org_id: orgId,
@@ -57,14 +57,14 @@ export const handler = async (event) => {
     // Create opportunity
     if (contact) {
       // Get default pipeline and first stage
-      const { data: pipeline } = await supabase
+      const { data: pipeline } = await admin
         .from('pipelines')
         .select('id')
         .eq('org_id', orgId)
         .eq('is_default', true)
         .single()
 
-      const { data: firstStage } = await supabase
+      const { data: firstStage } = await admin
         .from('stages')
         .select('id')
         .eq('pipeline_id', pipeline?.id)
@@ -72,7 +72,7 @@ export const handler = async (event) => {
         .limit(1)
         .single()
 
-      const { error: oppErr } = await supabase
+      const { error: oppErr } = await admin
         .from('opportunities')
         .insert({
           org_id: orgId,
@@ -90,7 +90,7 @@ export const handler = async (event) => {
     }
 
     // Log submission
-    const { error: logErr } = await supabase
+    const { error: logErr } = await admin
       .from('funnel_submissions')
       .insert({
         funnel_id: funnelId,
