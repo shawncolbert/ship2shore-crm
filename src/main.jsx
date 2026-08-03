@@ -22,6 +22,8 @@ import PublicUpload from './pages/PublicUpload'
 import PublicBooking from './pages/PublicBooking'
 import LandingPagePublic from './pages/LandingPagePublic'
 import Calendar from './pages/Calendar'
+import Funnels from './pages/Funnels'
+import PublicFunnel from './pages/PublicFunnel'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -38,6 +40,8 @@ function App() {
       <Route path="/book" element={<PublicBooking />} />
       {/* Public landing pages — no auth gate */}
       <Route path="/pages/:slug" element={<LandingPagePublic />} />
+      {/* Public funnels — no auth gate */}
+      <Route path="/funnel/:slug" element={<PublicFunnel />} />
       <Route
         path="/*"
         element={
@@ -56,6 +60,7 @@ function App() {
                 <Route path="payment-settings" element={<PaymentSettings />} />
                 <Route path="landing-pages" element={<LandingPages />} />
                 <Route path="landing-pages/:id" element={<LandingPageEditor />} />
+                <Route path="funnels" element={<Funnels />} />
                 <Route path="admin/orgs" element={<AdminOrgs />} />
               </Routes>
             </Layout>

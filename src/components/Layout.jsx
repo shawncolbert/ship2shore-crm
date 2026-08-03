@@ -15,6 +15,7 @@ const nav = [
   { to: '/automations', label: 'Automations' },
   { to: '/payment-settings', label: 'Payments' },
   { to: '/landing-pages', label: 'Landing Pages' },
+  { to: '/funnels', label: 'Funnels' },
 ]
 
 function Brand() {
