@@ -24,6 +24,7 @@ import LandingPagePublic from './pages/LandingPagePublic'
 import Calendar from './pages/Calendar'
 import Funnels from './pages/Funnels'
 import PublicFunnel from './pages/PublicFunnel'
+import SocialPosts from './pages/SocialPosts'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -61,6 +62,7 @@ function App() {
                 <Route path="landing-pages" element={<LandingPages />} />
                 <Route path="landing-pages/:id" element={<LandingPageEditor />} />
                 <Route path="funnels" element={<Funnels />} />
+                <Route path="social-posts" element={<SocialPosts />} />
                 <Route path="admin/orgs" element={<AdminOrgs />} />
               </Routes>
             </Layout>
