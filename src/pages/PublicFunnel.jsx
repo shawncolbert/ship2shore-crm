@@ -91,8 +91,8 @@ export default function PublicFunnel() {
               {step.description && <p className="mt-1 text-xs text-muted">{step.description}</p>}
             </div>
 
-            {/* Simple fields - just show key input fields for demo */}
-            {['full_name', 'email', 'phone', 'service_type', 'budget'].map((field) => (
+            {/* Render fields defined in the step */}
+            {step.fields?.map((field) => (
               <div key={field}>
                 <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
                   {field.replace(/_/g, ' ')}

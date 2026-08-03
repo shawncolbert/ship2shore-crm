@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 
@@ -12,6 +12,7 @@ export default function Funnels() {
   const qc = useQueryClient()
   const [showNew, setShowNew] = useState(false)
   const [editingId, setEditingId] = useState(null)
+  const [publishing, setPublishing] = useState(null)
 
   const { data: funnels, isLoading } = useQuery({
     queryKey: ['funnels'],
@@ -25,6 +26,24 @@ export default function Funnels() {
       return json_data.funnels || []
     },
   })
+
+  const handlePublish = async (funnel) => {
+    setPublishing(funnel.id)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/.netlify/functions/funnels-publish', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({ funnelId: funnel.id, published: !funnel.published }),
+      })
+      if (res.ok) qc.invalidateQueries({ queryKey: ['funnels'] })
+    } finally {
+      setPublishing(null)
+    }
+  }
 
   if (isLoading) return <div className="p-8 text-sm text-muted">Loading…</div>
 
@@ -51,7 +70,7 @@ export default function Funnels() {
         {funnels?.length === 0 && <p className="text-sm text-muted">No funnels yet. Create one to get started.</p>}
         {funnels?.map((funnel) => (
           <div key={funnel.id} className="flex items-center justify-between rounded-lg border border-line bg-surface p-4">
-            <div>
+            <div className="flex-1">
               <div className="font-medium text-ink">{funnel.name}</div>
               {funnel.description && <div className="mt-0.5 text-xs text-muted">{funnel.description}</div>}
               <div className="mt-1.5 flex gap-3">
@@ -67,12 +86,21 @@ export default function Funnels() {
                 )}
               </div>
             </div>
-            <button
-              onClick={() => setEditingId(editingId === funnel.id ? null : funnel.id)}
-              className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:border-accent"
-            >
-              {editingId === funnel.id ? 'Hide' : 'Edit'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handlePublish(funnel)}
+                disabled={publishing === funnel.id}
+                className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:border-accent disabled:opacity-50"
+              >
+                {funnel.published ? 'Unpublish' : 'Publish'}
+              </button>
+              <button
+                onClick={() => setEditingId(editingId === funnel.id ? null : funnel.id)}
+                className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:border-accent"
+              >
+                {editingId === funnel.id ? 'Hide' : 'Edit'}
+              </button>
+            </div>
           </div>
         ))}
       </div>
