@@ -1,4 +1,4 @@
-import { supabase } from './_shared/supabase.js'
+import { admin, userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -9,32 +9,27 @@ const json = (statusCode, body) => ({
 export const handler = async (event) => {
   try {
     const token = (event.headers.authorization || event.headers.Authorization || '').replace(/^Bearer /, '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return json(401, { error: 'Unauthorized' })
+    const user = await userFromToken(token)
+    if (!user) return json(401, { error: 'Unauthorized' })
 
-    const { data: membership } = await supabase
-      .from('memberships')
-      .select('org_id')
-      .eq('profile_id', user.id)
-      .single()
-
-    if (!membership) return json(403, { error: 'No org membership' })
+    const orgId = await orgForUser(user.id)
+    if (!orgId) return json(403, { error: 'No org membership' })
 
     const { postId } = JSON.parse(event.body || '{}')
 
     if (!postId) return json(400, { error: 'Post ID is required' })
 
-    const { data: post } = await supabase
+    const { data: post } = await admin
       .from('social_posts')
       .select('org_id')
       .eq('id', postId)
       .single()
 
-    if (!post || post.org_id !== membership.org_id) {
+    if (!post || post.org_id !== orgId) {
       return json(403, { error: 'Unauthorized' })
     }
 
-    const { error: delErr } = await supabase
+    const { error: delErr } = await admin
       .from('social_posts')
       .delete()
       .eq('id', postId)
