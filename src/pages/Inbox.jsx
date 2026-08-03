@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchConversations, fetchMessages, subscribeMessages, sendEmail, deleteMessage,
+  fetchConversations, fetchMessages, subscribeMessages, sendEmail,
 } from '../lib/supabase'
 
 const fmtTime = (d) =>
@@ -107,34 +107,20 @@ function Thread({ conversation, onBack }) {
     queryFn: () => fetchMessages(conversation.id),
   })
 
-  // The AI drafter only ever leaves one pending draft per conversation (see
-  // ai-draft-reply.js), sitting at the end of the thread since nothing
-  // newer has happened yet.
-  const draft = messages?.find((m) => m.status === 'draft')
-  const sentMessages = messages?.filter((m) => m.status !== 'draft')
-
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
-
-  const subjectFor = () =>
-    messages?.findLast?.((m) => m.channel === 'email')?.subject ||
-    `Ship2Shore - ${conversation.contacts?.full_name || ''}`.trim()
-
-  const onDraftSent = () => {
-    qc.invalidateQueries({ queryKey: ['messages', conversation.id] })
-    qc.invalidateQueries({ queryKey: ['conversations'] })
-  }
 
   const send = async () => {
     if (!body.trim()) return
     setSending(true); setErr('')
     try {
+      const lastSubject = messages?.findLast?.((m) => m.channel === 'email')?.subject
       await sendEmail({
         conversationId: conversation.id,
         contactId: conversation.contact_id,
         to: conversation.contacts?.email,
-        subject: subjectFor(),
+        subject: lastSubject || `Ship2Shore - ${conversation.contacts?.full_name || ''}`.trim(),
         body,
       })
       setBody('')
@@ -168,7 +154,7 @@ function Thread({ conversation, onBack }) {
       <div className="flex-1 space-y-3 overflow-auto bg-canvas px-5 py-4">
         {isLoading && <p className="text-sm text-muted">Loading…</p>}
         {messages?.length === 0 && <p className="text-sm text-muted">No messages in this thread yet.</p>}
-        {sentMessages?.map((m) => {
+        {messages?.map((m) => {
           const out = m.direction === 'outbound'
           return (
             <div key={m.id} className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
@@ -183,15 +169,6 @@ function Thread({ conversation, onBack }) {
             </div>
           )
         })}
-        {draft && (
-          <AiDraftCard
-            message={draft}
-            conversation={conversation}
-            subject={subjectFor()}
-            onSent={onDraftSent}
-            onDiscarded={onDraftSent}
-          />
-        )}
         <div ref={endRef} />
       </div>
 
@@ -212,79 +189,6 @@ function Thread({ conversation, onBack }) {
             className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
           >
             {sending ? 'Sending…' : 'Send'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// A drafted-but-unsent AI reply. Nothing here ever reaches the customer
-// without a human clicking Send -- editing the text in place is the "Edit"
-// step, since there's nothing to toggle into: it's already an editable box.
-function AiDraftCard({ message, conversation, subject, onSent, onDiscarded }) {
-  const [text, setText] = useState(message.body)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-
-  const handleSend = async () => {
-    if (!text.trim()) return
-    setBusy(true); setErr('')
-    try {
-      await sendEmail({
-        conversationId: conversation.id,
-        contactId: conversation.contact_id,
-        to: conversation.contacts?.email,
-        subject,
-        body: text,
-      })
-      await deleteMessage(message.id)
-      onSent()
-    } catch (e) {
-      setErr(e.message)
-      setBusy(false)
-    }
-  }
-
-  const handleDiscard = async () => {
-    setBusy(true); setErr('')
-    try {
-      await deleteMessage(message.id)
-      onDiscarded()
-    } catch (e) {
-      setErr(e.message)
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="flex justify-end">
-      <div className="max-w-[85%] rounded-2xl border-2 border-dashed border-accent/50 bg-accent/10 px-4 py-3 text-sm">
-        <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink">
-          <span aria-hidden="true">✨</span> AI draft — not sent yet
-        </div>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={Math.min(10, Math.max(3, text.split('\n').length))}
-          disabled={busy}
-          className="w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-        />
-        {err && <p className="mt-1.5 text-xs text-port">{err}</p>}
-        <div className="mt-2 flex items-center justify-end gap-2">
-          <button
-            onClick={handleDiscard}
-            disabled={busy}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:bg-canvas hover:text-ink disabled:opacity-50"
-          >
-            Discard
-          </button>
-          <button
-            onClick={handleSend}
-            disabled={busy || !text.trim()}
-            className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
-          >
-            {busy ? 'Sending…' : 'Send'}
           </button>
         </div>
       </div>

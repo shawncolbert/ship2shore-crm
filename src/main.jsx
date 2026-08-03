@@ -21,6 +21,7 @@ import LandingPageEditor from './pages/LandingPageEditor'
 import PublicUpload from './pages/PublicUpload'
 import PublicBooking from './pages/PublicBooking'
 import LandingPagePublic from './pages/LandingPagePublic'
+import Calendar from './pages/Calendar'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -48,6 +49,7 @@ function App() {
                 <Route path="contacts" element={<Contacts />} />
                 <Route path="contacts/:id" element={<ContactDetail />} />
                 <Route path="pipeline" element={<Pipeline />} />
+                <Route path="calendar" element={<Calendar />} />
                 <Route path="documents" element={<Documents />} />
                 <Route path="do-fix" element={<DeliveryOrderFix />} />
                 <Route path="automations" element={<Automations />} />

@@ -9,6 +9,7 @@ const nav = [
   { to: '/inbox', label: 'Inbox' },
   { to: '/contacts', label: 'Contacts' },
   { to: '/pipeline', label: 'Pipeline' },
+  { to: '/calendar', label: 'Calendar' },
   { to: '/documents', label: 'Documents' },
   { to: '/do-fix', label: 'DO Fix' },
   { to: '/automations', label: 'Automations' },
