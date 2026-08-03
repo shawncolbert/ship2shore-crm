@@ -32,3 +32,8 @@ export async function createOrg({ name, slug, logoUrl, primaryColor, customDomai
 export async function inviteUser({ orgId, email, fullName, role }) {
   return authedFetch('admin-invite-user', { orgId, email, fullName, role })
 }
+
+export async function fetchOrgStats() {
+  const { stats } = await authedFetch('admin-org-stats')
+  return stats
+}

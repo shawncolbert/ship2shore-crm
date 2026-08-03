@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchOrgs, createOrg, inviteUser } from '../lib/admin'
+import { fetchOrgs, createOrg, inviteUser, fetchOrgStats } from '../lib/admin'
 import { fetchMyProfile } from '../lib/supabase'
 
 const ROLES = [
@@ -18,11 +18,19 @@ export default function AdminOrgs() {
     queryFn: fetchOrgs,
     enabled: !!profile?.platform_admin,
   })
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ['adminOrgStats'],
+    queryFn: fetchOrgStats,
+    enabled: !!profile?.platform_admin,
+  })
 
   const [showNewOrg, setShowNewOrg] = useState(false)
   const [inviteFor, setInviteFor] = useState(null) // org id currently showing an invite form
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['adminOrgs'] })
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['adminOrgs'] })
+    qc.invalidateQueries({ queryKey: ['adminOrgStats'] })
+  }
 
   if (profileLoading) return <div className="p-8 text-sm text-muted">Loading…</div>
   if (!profile?.platform_admin) {
@@ -59,23 +67,42 @@ export default function AdminOrgs() {
         <NewOrgForm onClose={() => setShowNewOrg(false)} onCreated={invalidate} />
       )}
 
+      {statsLoading && <p className="text-sm text-muted">Loading stats…</p>}
+
       <div className="space-y-4">
-        {orgs?.map((org) => (
-          <div key={org.id} className="rounded-xl border border-line bg-surface p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="font-semibold text-ink">{org.name}</div>
-                <div className="text-xs text-muted">
-                  {[org.slug, org.custom_domain].filter(Boolean).join(' · ') || 'No slug or custom domain set'}
+        {orgs?.map((org) => {
+          const orgStat = stats?.find((s) => s.orgId === org.id)
+          const createdDate = orgStat?.createdAt ? new Date(orgStat.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+          return (
+            <div key={org.id} className="rounded-xl border border-line bg-surface p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="font-semibold text-ink">{org.name}</div>
+                  <div className="mt-1 text-xs text-muted">
+                    {[org.slug, org.custom_domain].filter(Boolean).join(' · ') || 'No slug or custom domain set'}
+                  </div>
+                  <div className="mt-2 grid gap-4 sm:grid-cols-3">
+                    <div className="rounded-lg bg-canvas/50 px-3 py-2">
+                      <div className="text-xs font-medium text-muted">Created</div>
+                      <div className="text-sm font-semibold text-ink">{createdDate}</div>
+                    </div>
+                    <div className="rounded-lg bg-canvas/50 px-3 py-2">
+                      <div className="text-xs font-medium text-muted">Contacts</div>
+                      <div className="text-sm font-semibold text-ink">{orgStat?.contactCount || 0}</div>
+                    </div>
+                    <div className="rounded-lg bg-canvas/50 px-3 py-2">
+                      <div className="text-xs font-medium text-muted">Open Opportunities</div>
+                      <div className="text-sm font-semibold text-ink">{orgStat?.openOpportunitiesCount || 0}</div>
+                    </div>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setInviteFor(inviteFor === org.id ? null : org.id)}
+                  className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:border-accent"
+                >
+                  Invite user
+                </button>
               </div>
-              <button
-                onClick={() => setInviteFor(inviteFor === org.id ? null : org.id)}
-                className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:border-accent"
-              >
-                Invite user
-              </button>
-            </div>
 
             <div className="mt-3 space-y-1">
               {org.members?.length === 0 && <p className="text-xs text-muted">No members yet.</p>}
@@ -89,11 +116,12 @@ export default function AdminOrgs() {
               ))}
             </div>
 
-            {inviteFor === org.id && (
-              <InviteForm orgId={org.id} onClose={() => setInviteFor(null)} onInvited={invalidate} />
-            )}
-          </div>
-        ))}
+              {inviteFor === org.id && (
+                <InviteForm orgId={org.id} onClose={() => setInviteFor(null)} onInvited={invalidate} />
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
