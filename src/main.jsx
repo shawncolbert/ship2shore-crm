@@ -11,6 +11,7 @@ import ContactDetail from './pages/ContactDetail'
 import Pipeline from './pages/Pipeline'
 import Dashboard from './pages/Dashboard'
 import Inbox from './pages/Inbox'
+import Calendar from './pages/Calendar'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -32,6 +33,7 @@ function App() {
                 <Route path="contacts" element={<Contacts />} />
                 <Route path="contacts/:id" element={<ContactDetail />} />
                 <Route path="pipeline" element={<Pipeline />} />
+                <Route path="calendar" element={<Calendar />} />
               </Routes>
             </Layout>
           </ProtectedRoute>
