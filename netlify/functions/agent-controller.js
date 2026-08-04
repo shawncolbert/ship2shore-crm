@@ -120,6 +120,39 @@ const AGENT_TOOLS = [
       properties: {},
     },
   },
+  {
+    name: 'update_opportunity',
+    description: 'Update any field on an opportunity/deal card (title, value, payment status, notes, etc.)',
+    input_schema: {
+      type: 'object',
+      properties: {
+        opportunity_id: { type: 'string', description: 'ID of the opportunity' },
+        title: { type: 'string', description: 'Deal title/name' },
+        value: { type: 'number', description: 'Deal value in USD' },
+        stage: {
+          type: 'string',
+          enum: ['lead', 'qualified', 'proposal', 'negotiation', 'closed_won', 'closed_lost'],
+          description: 'Pipeline stage',
+        },
+      },
+      required: ['opportunity_id'],
+    },
+  },
+  {
+    name: 'update_contact',
+    description: 'Update contact details (name, email, phone, company)',
+    input_schema: {
+      type: 'object',
+      properties: {
+        contact_id: { type: 'string', description: 'ID of the contact' },
+        full_name: { type: 'string', description: 'Full name' },
+        email: { type: 'string', description: 'Email address' },
+        phone: { type: 'string', description: 'Phone number' },
+        company: { type: 'string', description: 'Company name' },
+      },
+      required: ['contact_id'],
+    },
+  },
 ]
 
 async function executeTool(toolName, input, orgId) {
@@ -274,6 +307,62 @@ async function executeTool(toolName, input, orgId) {
           deals: openOpportunities.map(opp => ({ id: opp.id, title: opp.title, value: opp.value })),
         },
         clientEvent: null,
+      }
+    }
+
+    case 'update_opportunity': {
+      const updateData = {}
+      if (input.title) updateData.title = input.title
+      if (input.value !== undefined) updateData.value = input.value
+      if (input.stage) {
+        const stageId = (await getStageByName(orgId, input.stage))?.id
+        if (stageId) updateData.stage_id = stageId
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        throw new Error('No fields to update')
+      }
+
+      const { data: updated, error } = await admin
+        .from('opportunities')
+        .update(updateData)
+        .eq('id', input.opportunity_id)
+        .eq('org_id', orgId)
+        .select()
+        .single()
+
+      if (error) throw new Error(error.message)
+
+      return {
+        result: updated,
+        clientEvent: { type: 'OPPORTUNITY_UPDATED', data: updated },
+      }
+    }
+
+    case 'update_contact': {
+      const updateData = {}
+      if (input.full_name) updateData.full_name = input.full_name
+      if (input.email) updateData.email = input.email
+      if (input.phone) updateData.phone = input.phone
+      if (input.company) updateData.company = input.company
+
+      if (Object.keys(updateData).length === 0) {
+        throw new Error('No fields to update')
+      }
+
+      const { data: updated, error } = await admin
+        .from('contacts')
+        .update(updateData)
+        .eq('id', input.contact_id)
+        .eq('org_id', orgId)
+        .select()
+        .single()
+
+      if (error) throw new Error(error.message)
+
+      return {
+        result: updated,
+        clientEvent: { type: 'CONTACT_UPDATED', data: updated },
       }
     }
 
