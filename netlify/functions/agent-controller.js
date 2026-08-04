@@ -919,8 +919,8 @@ When user says "Create a new booking" or provides customer name + email + servic
 2. WAIT for contact.id response
 3. THEN call: create_opportunity(contact_id="from step 1", title="Customer Name - Services", deal_value=total_value_provided, stage="lead")
 4. ONLY AFTER opportunity created, IF prompt mentions emails:
-   - "delivery order request" → send_email(message_type="delivery_order_request")
-   - "payment link request" → send_email(message_type="payment_link_request")
+   - "delivery order request" → send_email(customer_email="from prompt", customer_name="from prompt", message_type="delivery_order_request", booking_details="service details")
+   - "payment link request" → send_email(customer_email="from prompt", customer_name="from prompt", message_type="payment_link_request", booking_amount=total_value_from_prompt, booking_details="service details")
 5. CONFIRM: "✓ Booking created for [name] - $[amount] added to pipeline"
 
 DO NOT calculate prices. DO NOT call generate_quote for bookings. Use ONLY the total value provided in the user prompt.
