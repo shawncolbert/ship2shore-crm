@@ -266,7 +266,12 @@ ${messageParts.length > 0 ? `\nAlso, please: ${messageParts.join(' and ')}` : ''
                 <p className="text-xs text-muted">{selectedContact.email}</p>
               </div>
               <button
-                onClick={() => setSelectedContact(null)}
+                onClick={() => {
+                  setSelectedContact(null)
+                  setSearchQuery('')
+                  setNewContactName('')
+                  setNewContactEmail('')
+                }}
                 className="text-muted hover:text-ink"
               >
                 ✕
@@ -289,6 +294,8 @@ ${messageParts.length > 0 ? `\nAlso, please: ${messageParts.join(' and ')}` : ''
                       onClick={() => {
                         setSelectedContact(contact)
                         setSearchQuery('')
+                        setNewContactName('')
+                        setNewContactEmail('')
                       }}
                       className="w-full text-left px-3 py-2 hover:bg-accent hover:bg-opacity-10 border-b border-line last:border-b-0 text-sm"
                     >
