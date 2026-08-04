@@ -296,6 +296,23 @@ const AGENT_TOOLS = [
       properties: {},
     },
   },
+  {
+    name: 'edit_deal_value',
+    description: 'Edit the value/price of a pipeline deal. Can set exact amount or adjust by percentage.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        opportunity_id: { type: 'string', description: 'ID of the deal/opportunity to edit' },
+        new_value: { type: 'number', description: 'New exact value in USD (e.g., 5000 for $5,000)' },
+        adjust_by_percent: { type: 'number', description: 'Alternative: adjust current value by percent (e.g., 10 for +10%, -15 for -15%)' },
+      },
+      required: ['opportunity_id'],
+      oneOf: [
+        { required: ['opportunity_id', 'new_value'] },
+        { required: ['opportunity_id', 'adjust_by_percent'] },
+      ],
+    },
+  },
 ]
 
 async function executeTool(toolName, input, orgId) {
@@ -694,6 +711,76 @@ async function executeTool(toolName, input, orgId) {
       }
     }
 
+    case 'edit_deal_value': {
+      if (!input.opportunity_id) throw new Error('opportunity_id is required')
+
+      // Get current opportunity to show before/after
+      const { data: current, error: fetchErr } = await admin
+        .from('opportunities')
+        .select('id, title, value, contact_id')
+        .eq('id', input.opportunity_id)
+        .eq('org_id', orgId)
+        .single()
+
+      if (fetchErr) throw new Error(`Opportunity not found: ${fetchErr.message}`)
+      if (!current) throw new Error('Opportunity not found or not accessible')
+
+      let newValue
+      if (input.new_value !== undefined) {
+        // Set exact value
+        newValue = input.new_value
+      } else if (input.adjust_by_percent !== undefined) {
+        // Adjust by percentage
+        const adjustment = (current.value || 0) * (input.adjust_by_percent / 100)
+        newValue = Math.round((current.value || 0) + adjustment)
+      } else {
+        throw new Error('Either new_value or adjust_by_percent must be provided')
+      }
+
+      // Validate new value
+      if (newValue < 0) throw new Error('Deal value cannot be negative')
+
+      // Update the opportunity
+      const { data: updated, error: updateErr } = await admin
+        .from('opportunities')
+        .update({ value: newValue })
+        .eq('id', input.opportunity_id)
+        .eq('org_id', orgId)
+        .select()
+        .single()
+
+      if (updateErr) throw new Error(`Failed to update deal: ${updateErr.message}`)
+
+      // Get contact name for better feedback
+      let contactName = null
+      if (current.contact_id) {
+        const { data: contact } = await admin
+          .from('contacts')
+          .select('full_name')
+          .eq('id', current.contact_id)
+          .single()
+        contactName = contact?.full_name
+      }
+
+      const oldValue = current.value || 0
+      const difference = newValue - oldValue
+      const percentChange = oldValue > 0 ? ((difference / oldValue) * 100).toFixed(1) : 0
+
+      return {
+        result: {
+          opportunityId: input.opportunity_id,
+          contactName,
+          dealTitle: current.title,
+          oldValue,
+          newValue,
+          difference,
+          percentChange: `${percentChange}%`,
+          updated,
+        },
+        clientEvent: { type: 'OPPORTUNITY_UPDATED', data: updated },
+      }
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`)
   }
@@ -803,7 +890,35 @@ ALWAYS:
 2. Clarify if military/PCS (applies $80 instead of $95 for escort)
 3. List applicable surcharges
 4. Show complete breakdown
-5. Offer to add to specific job in pipeline`,
+5. Offer to add to specific job in pipeline
+
+EDITING DEAL VALUES:
+Use edit_deal_value to update pipeline deal amounts. Two methods:
+1. Set exact value: "Change Sarah's deal to $5,000"
+   - edit_deal_value(opportunity_id, new_value=5000)
+   - Shows: Old: $3,000 → New: $5,000 (+66.7%)
+
+2. Adjust by percentage: "Increase John's deal by 15%"
+   - edit_deal_value(opportunity_id, adjust_by_percent=15)
+   - Shows: Old: $4,000 → New: $4,600 (+15%)
+
+3. Can also decrease: "Reduce Sarah's deal by 10%"
+   - edit_deal_value(opportunity_id, adjust_by_percent=-10)
+   - Shows: Old: $5,000 → New: $4,500 (-10%)
+
+WORKFLOW FOR EDITING:
+1. If user mentions a name (e.g., "Sarah's deal"), search for the contact
+2. Get their opportunities using get_contact_opportunities
+3. Get the opportunity_id
+4. Call edit_deal_value with new amount or percentage
+5. Confirm: "✓ Updated Sarah's deal: $3,000 → $5,000 (+66.7%)"
+
+The tool shows:
+- Contact name
+- Deal title
+- Old value → New value
+- Dollar difference
+- Percent change`,
         tools: AGENT_TOOLS,
         messages,
       })
