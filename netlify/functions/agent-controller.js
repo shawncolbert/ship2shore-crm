@@ -955,12 +955,19 @@ EXAMPLES:
 - "2 semi containers, non-operating situation in Riverside" → generate_quote(zone='Riverside/San Bernardino', service='semi_container', quantity=2, surcharges=['non-operating'])
   Result: $325×2=$650 + $200 non-operating = $850
 
-ALWAYS:
+ALWAYS FOR QUOTES:
 1. Ask for zone/location if not provided
 2. Clarify if military/PCS (applies $80 instead of $95 for escort)
 3. List applicable surcharges
 4. Show complete breakdown
 5. Offer to add to specific job in pipeline
+
+WHEN YOU SEE "Create a new booking":
+1. IMMEDIATELY call create_contact if customer is new (use full_name and email from prompt)
+2. THEN call create_opportunity with the contact_id and booking details (use total value as deal_value)
+3. IF prompt mentions "Send delivery order request" → call send_email with delivery_order_request
+4. IF prompt mentions "Send payment link request" → call send_email with payment_link_request
+5. Confirm booking complete with contact name, deal value, and services added
 
 EDITING DEAL VALUES:
 Use edit_deal_value to update pipeline deal amounts. Two methods:
@@ -991,25 +998,36 @@ The tool shows:
 - Percent change
 
 SENDING CUSTOMER EMAILS:
-Use send_email to send messages to customers. Two message types:
+Use send_email tool to send messages to customers. Two message types:
 
 1. Delivery Order Request (send first):
-   - send_email(customer_email, customer_name, "delivery_order_request", booking_details)
+   - send_email(customer_email="email@example.com", customer_name="John Doe", message_type="delivery_order_request", booking_details="1x TWIC Escort in LA Local - $95")
    - Asks customer for POA and delivery order details
    - SEND THIS FIRST before asking for payment
 
 2. Payment Link Request (send after cleared):
-   - send_email(customer_email, customer_name, "payment_link_request", booking_amount, booking_details)
+   - send_email(customer_email="email@example.com", customer_name="John Doe", message_type="payment_link_request", booking_amount=95, booking_details="1x TWIC Escort in LA Local")
    - Requests payment once vehicle is cleared
    - ONLY send this after confirmation from user that car is cleared
 
-WORKFLOW FOR BOOKING:
-1. Create contact (if needed) with create_contact
-2. Create opportunity with create_opportunity
-3. If send_email instructions in prompt:
-   - First send delivery_order_request if user requested it
-   - Then send payment_link_request if user requested it
-4. Confirm booking is complete`,
+WORKFLOW FOR BOOKING (CRITICAL - ALWAYS DO THIS):
+Step 1: Create contact
+   - call create_contact(full_name="customer name from prompt", email="email from prompt")
+   - Wait for response with contact.id
+
+Step 2: Create opportunity
+   - call create_opportunity(contact_id="use id from step 1", title="Customer Name - Service Type", deal_value=total value, stage="lead")
+   - Wait for response with opportunity.id
+
+Step 3: Send emails if requested in prompt
+   - If prompt says "Send delivery order request email":
+     call send_email(customer_email="from prompt", customer_name="from prompt", message_type="delivery_order_request", booking_details="services and total")
+   - If prompt says "Send payment link request email":
+     call send_email(customer_email="from prompt", customer_name="from prompt", message_type="payment_link_request", booking_amount=total, booking_details="services")
+
+Step 4: Confirm
+   - Reply "✓ Booking created for [name] - Deal: [title] - $[amount] added to pipeline"
+   - Include which emails were sent`,
         tools: AGENT_TOOLS,
         messages,
       })
