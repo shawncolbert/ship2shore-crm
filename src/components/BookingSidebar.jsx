@@ -33,12 +33,17 @@ export default function BookingSidebar({ open, onClose }) {
   const [quantity, setQuantity] = useState(1)
   const [zone, setZone] = useState('LA Local')
   const [isMilitary, setIsMilitary] = useState(false)
+  const [escortPriceTier, setEscortPriceTier] = useState(95)
   const [selectedSurcharges, setSelectedSurcharges] = useState([])
   const [lineItems, setLineItems] = useState([])
   const [newContactName, setNewContactName] = useState('')
   const [newContactEmail, setNewContactEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [messagesToSend, setMessagesToSend] = useState({
+    deliveryOrder: true,
+    paymentLink: false,
+  })
 
   const { data: contacts = [] } = useQuery({
     queryKey: ['contacts'],
@@ -57,7 +62,7 @@ export default function BookingSidebar({ open, onClose }) {
 
     let basePrice = 0
     if (serviceType === 'twic_escort') {
-      basePrice = (isMilitary ? service.military : service.base) * quantity
+      basePrice = escortPriceTier * quantity
     } else if (serviceType === 'hotshot') {
       basePrice = service.flat * quantity
     } else if (serviceType === 'semi_container') {
@@ -88,6 +93,7 @@ export default function BookingSidebar({ open, onClose }) {
       quantity,
       zone,
       isMilitary,
+      escortPriceTier: serviceType === 'twic_escort' ? escortPriceTier : null,
       surcharges: [...selectedSurcharges],
       total,
     }
@@ -122,14 +128,42 @@ export default function BookingSidebar({ open, onClose }) {
 
     try {
       // Create booking via AI agent
-      const prompt = `Create a new booking with these details:
-Customer: ${selectedContact?.full_name || newContactName}
-Email: ${selectedContact?.email || newContactEmail}
-Services: ${lineItems.map(item => `${item.quantity}x ${item.serviceName}`).join(', ')}
-Total Value: $${getGrandTotal()}
-Zone: ${zone}
+      const customerName = selectedContact?.full_name || newContactName
+      const customerEmail = selectedContact?.email || newContactEmail
+      const totalValue = getGrandTotal()
 
-Create the contact if needed and add to pipeline with total value $${getGrandTotal()}.`
+      const messageParts = []
+      if (messagesToSend.deliveryOrder) {
+        messageParts.push('Send delivery order request email asking for POA and delivery details')
+      }
+      if (messagesToSend.paymentLink) {
+        messageParts.push('Send payment link request email')
+      }
+
+      // Build detailed line items for the agent
+      const lineItemsDetail = lineItems.map(item => {
+        const details = [
+          `${item.quantity}x ${item.serviceName}`,
+          `Zone: ${item.zone}`,
+          `$${item.total} total`
+        ]
+        if (item.escortPriceTier) details.push(`@ $${item.escortPriceTier}/vehicle`)
+        if (item.surcharges.length > 0) details.push(`Surcharges: ${item.surcharges.join(', ')}`)
+        return details.join(' | ')
+      }).join('\n')
+
+      const prompt = `Create a new booking with these details:
+
+Customer: ${customerName}
+Email: ${customerEmail}
+
+Line Items:
+${lineItemsDetail}
+
+Total Value: $${totalValue}
+
+Please create a contact for this customer and add a booking to the pipeline with total value $${totalValue}.
+${messageParts.length > 0 ? `\nAlso, please: ${messageParts.join(' and ')}` : ''}`
 
       const { data: { session } } = await supabase.auth.getSession()
 
@@ -149,13 +183,26 @@ Create the contact if needed and add to pipeline with total value $${getGrandTot
 
       if (!res.ok) {
         setError(`Failed to create booking: ${data.error}`)
+        setLoading(false)
+        return
+      }
+
+      // Check if agent actually performed the booking
+      const reply = data.reply || ''
+      const hasError = reply.toLowerCase().includes('error') ||
+                       reply.toLowerCase().includes('failed') ||
+                       reply.toLowerCase().includes('unable')
+
+      if (hasError) {
+        setError(`Booking could not be created: ${reply}`)
+        setLoading(false)
         return
       }
 
       // Refresh relevant queries
-      qc.invalidateQueries({ queryKey: ['contacts'] })
-      qc.invalidateQueries({ queryKey: ['opportunities'] })
-      qc.invalidateQueries({ queryKey: ['pipeline'] })
+      await qc.invalidateQueries({ queryKey: ['contacts'] })
+      await qc.invalidateQueries({ queryKey: ['opportunities'] })
+      await qc.invalidateQueries({ queryKey: ['pipeline'] })
 
       // Reset form
       setServiceType('twic_escort')
@@ -164,16 +211,19 @@ Create the contact if needed and add to pipeline with total value $${getGrandTot
       setQuantity(1)
       setZone('LA Local')
       setIsMilitary(false)
+      setEscortPriceTier(95)
       setSelectedSurcharges([])
       setLineItems([])
       setNewContactName('')
       setNewContactEmail('')
+      setMessagesToSend({ deliveryOrder: true, paymentLink: false })
+      setError('')
 
-      alert('✓ Booking created and added to pipeline!')
+      alert(`✓ ${customerName} - $${totalValue} added to pipeline!`)
       onClose()
     } catch (err) {
-      setError(`Error: ${err.message}`)
-    } finally {
+      console.error('❌ Booking creation error:', err)
+      setError(`Error creating booking: ${err.message}`)
       setLoading(false)
     }
   }
@@ -322,8 +372,50 @@ Create the contact if needed and add to pipeline with total value $${getGrandTot
               onChange={(e) => setIsMilitary(e.target.checked)}
               className="rounded"
             />
-            <span className="text-sm text-ink">Military/PCS ($80/vehicle)</span>
+            <span className="text-sm text-ink">Military/PCS (special rate)</span>
           </label>
+        )}
+
+        {/* Escort Price Tier (for Escort) */}
+        {serviceType === 'twic_escort' && (
+          <div>
+            <label className="block text-sm font-semibold text-ink mb-2">Price per Vehicle</label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="escortPrice"
+                  value="75"
+                  checked={escortPriceTier === 75}
+                  onChange={() => setEscortPriceTier(75)}
+                  className="rounded"
+                />
+                <span className="text-sm text-ink">$75 (Existing customers)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="escortPrice"
+                  value="85"
+                  checked={escortPriceTier === 85}
+                  onChange={() => setEscortPriceTier(85)}
+                  className="rounded"
+                />
+                <span className="text-sm text-ink">$85 (New customers)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="escortPrice"
+                  value="95"
+                  checked={escortPriceTier === 95}
+                  onChange={() => setEscortPriceTier(95)}
+                  className="rounded"
+                />
+                <span className="text-sm text-ink">$95 (Premium)</span>
+              </label>
+            </div>
+          </div>
         )}
 
         {/* Surcharges */}
@@ -371,7 +463,7 @@ Create the contact if needed and add to pipeline with total value $${getGrandTot
                     <p className="font-medium text-ink">{item.serviceName}</p>
                     <p className="text-xs text-muted">
                       {item.quantity}x {item.zone}
-                      {item.isMilitary && ' (Military)'}
+                      {item.escortPriceTier && ` @ $${item.escortPriceTier}`}
                     </p>
                     {item.surcharges.length > 0 && (
                       <p className="text-xs text-muted">{item.surcharges.join(', ')}</p>
@@ -393,6 +485,33 @@ Create the contact if needed and add to pipeline with total value $${getGrandTot
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-ink">Total Value:</span>
                 <span className="text-2xl font-bold text-accent">${getGrandTotal()}</span>
+              </div>
+            </div>
+
+            {/* Messages to Send */}
+            <div className="mt-4 pt-4 border-t border-line">
+              <label className="block text-sm font-semibold text-ink mb-3">Send to Customer:</label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={messagesToSend.deliveryOrder}
+                    onChange={(e) => setMessagesToSend({ ...messagesToSend, deliveryOrder: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-ink">📋 Delivery Order Request</span>
+                  <span className="text-xs text-muted">(asks for POA)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={messagesToSend.paymentLink}
+                    onChange={(e) => setMessagesToSend({ ...messagesToSend, paymentLink: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-ink">💳 Payment Link Request</span>
+                  <span className="text-xs text-muted">(after cleared)</span>
+                </label>
               </div>
             </div>
 

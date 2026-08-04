@@ -313,6 +313,25 @@ const AGENT_TOOLS = [
       ],
     },
   },
+  {
+    name: 'send_email',
+    description: 'Send an email to a customer with a specific message type (delivery order request or payment link request)',
+    input_schema: {
+      type: 'object',
+      properties: {
+        customer_email: { type: 'string', description: 'Customer email address' },
+        customer_name: { type: 'string', description: 'Customer name' },
+        message_type: {
+          type: 'string',
+          enum: ['delivery_order_request', 'payment_link_request'],
+          description: 'Type of message to send',
+        },
+        booking_amount: { type: 'number', description: 'Booking amount in USD (for payment link requests)' },
+        booking_details: { type: 'string', description: 'Booking details to include in the email' },
+      },
+      required: ['customer_email', 'customer_name', 'message_type'],
+    },
+  },
 ]
 
 async function executeTool(toolName, input, orgId) {
@@ -781,6 +800,57 @@ async function executeTool(toolName, input, orgId) {
       }
     }
 
+    case 'send_email': {
+      let emailBody = ''
+      let subject = ''
+
+      if (input.message_type === 'delivery_order_request') {
+        subject = 'Ship2Shore - Delivery Order Needed'
+        emailBody = `Hi ${input.customer_name},
+
+We're ready to proceed with your booking!
+
+To complete your reservation, please provide:
+- Proof of Authorization (POA)
+- Delivery order details
+- Estimated delivery date/time
+
+${input.booking_details ? `Booking Details:\n${input.booking_details}\n` : ''}
+
+Please reply with the required information so we can finalize your shipment.
+
+Best regards,
+Ship2Shore Logistics`
+      } else if (input.message_type === 'payment_link_request') {
+        subject = 'Ship2Shore - Payment Required'
+        emailBody = `Hi ${input.customer_name},
+
+Your vehicle is now cleared and ready to ship!
+
+Booking Amount: $${input.booking_amount}
+
+${input.booking_details ? `Booking Details:\n${input.booking_details}\n` : ''}
+
+Please proceed with payment to secure your shipment. A payment link has been attached.
+
+Thank you,
+Ship2Shore Logistics`
+      }
+
+      // Log email for now (in production, this would call an email service)
+      console.log(`📧 Email to ${input.customer_email}:\nSubject: ${subject}\n${emailBody}`)
+
+      return {
+        result: {
+          sent: true,
+          to: input.customer_email,
+          messageType: input.message_type,
+          subject,
+        },
+        clientEvent: null,
+      }
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`)
   }
@@ -813,6 +883,7 @@ async function getStageByName(orgId, stageName) {
 
 export const handler = async (event) => {
   try {
+    console.log('📍 agent-controller: Handler called')
     const token = (event.headers.authorization || event.headers.Authorization || '').replace(/^Bearer /, '')
     const user = await userFromToken(token)
     if (!user) return json(401, { error: 'Unauthorized' })
@@ -823,6 +894,7 @@ export const handler = async (event) => {
     const { userPrompt, conversationHistory = [] } = JSON.parse(event.body || '{}')
     if (!userPrompt) return json(400, { error: 'User prompt required' })
 
+    console.log('📍 agent-controller: User prompt received:', userPrompt.substring(0, 100))
     const messages = [...conversationHistory, { role: 'user', content: userPrompt }]
     const clientEvents = []
 
@@ -833,12 +905,28 @@ export const handler = async (event) => {
 
     while (loopCount < MAX_LOOPS) {
       loopCount++
+      console.log(`📍 agent-controller: Loop ${loopCount}`)
 
       const response = await anthropic.messages.create({
         model: 'claude-opus-5',
         max_tokens: 1024,
         system:
-          `You are a helpful CRM assistant for Ship2Shore, a port vehicle escort and logistics company. Help users manage pipeline jobs and generate accurate pricing quotes.
+          `You are a helpful CRM assistant for Ship2Shore, a port vehicle escort and logistics company.
+
+⚠️ CRITICAL BOOKING WORKFLOW - ALWAYS FOLLOW THIS EXACTLY:
+When user says "Create a new booking" or provides customer name + email + services + total value:
+1. IMMEDIATELY call: create_contact(full_name="customer name", email="customer email")
+2. WAIT for contact.id response
+3. THEN call: create_opportunity(contact_id="from step 1", title="Customer Name - Services", deal_value=total_value_provided, stage="lead")
+4. ONLY AFTER opportunity created, IF prompt mentions emails:
+   - "delivery order request" → send_email(message_type="delivery_order_request")
+   - "payment link request" → send_email(message_type="payment_link_request")
+5. CONFIRM: "✓ Booking created for [name] - $[amount] added to pipeline"
+
+DO NOT calculate prices. DO NOT call generate_quote for bookings. Use ONLY the total value provided in the user prompt.
+Use EXACTLY the customer name and email from the prompt - do not modify them.
+
+---
 
 SHIP2SHORE PRICING STRUCTURE:
 
@@ -885,7 +973,7 @@ EXAMPLES:
 - "2 semi containers, non-operating situation in Riverside" → generate_quote(zone='Riverside/San Bernardino', service='semi_container', quantity=2, surcharges=['non-operating'])
   Result: $325×2=$650 + $200 non-operating = $850
 
-ALWAYS:
+ALWAYS FOR QUOTES:
 1. Ask for zone/location if not provided
 2. Clarify if military/PCS (applies $80 instead of $95 for escort)
 3. List applicable surcharges
@@ -918,32 +1006,63 @@ The tool shows:
 - Deal title
 - Old value → New value
 - Dollar difference
-- Percent change`,
+- Percent change
+
+SENDING CUSTOMER EMAILS:
+Use send_email tool to send messages to customers. Two message types:
+
+1. Delivery Order Request (send first):
+   - send_email(customer_email="email@example.com", customer_name="John Doe", message_type="delivery_order_request", booking_details="1x TWIC Escort in LA Local - $95")
+   - Asks customer for POA and delivery order details
+   - SEND THIS FIRST before asking for payment
+
+2. Payment Link Request (send after cleared):
+   - send_email(customer_email="email@example.com", customer_name="John Doe", message_type="payment_link_request", booking_amount=95, booking_details="1x TWIC Escort in LA Local")
+   - Requests payment once vehicle is cleared
+   - ONLY send this after confirmation from user that car is cleared
+
         tools: AGENT_TOOLS,
         messages,
       })
 
       messages.push({ role: 'assistant', content: response.content })
 
+      console.log(`📍 Stop reason: ${response.stop_reason}`)
+      console.log(`📍 Response content: ${JSON.stringify(response.content.map(b => ({ type: b.type, text: b.text?.substring(0, 100), tool_name: b.name })))}`)
+
       if (response.stop_reason === 'end_turn') {
         finalReply = response.content.find((b) => b.type === 'text')?.text || 'Done'
+        console.log(`📍 Agent ended conversation: ${finalReply.substring(0, 100)}`)
         break
       }
 
       if (response.stop_reason === 'tool_use') {
+        console.log(`📍 Agent requesting tools`)
         const toolResults = []
 
         for (const block of response.content) {
           if (block.type === 'tool_use') {
-            const { result, clientEvent } = await executeTool(block.name, block.input, orgId)
+            console.log(`📍 Tool call: ${block.name}`)
+            try {
+              const { result, clientEvent } = await executeTool(block.name, block.input, orgId)
+              console.log(`📍 Tool ${block.name} succeeded:`, JSON.stringify(result).substring(0, 100))
 
-            if (clientEvent) clientEvents.push(clientEvent)
+              if (clientEvent) clientEvents.push(clientEvent)
 
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: JSON.stringify(result),
-            })
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: block.id,
+                content: JSON.stringify(result),
+              })
+            } catch (toolErr) {
+              console.error(`❌ Tool ${block.name} failed:`, toolErr.message)
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: block.id,
+                is_error: true,
+                content: toolErr.message,
+              })
+            }
           }
         }
 
