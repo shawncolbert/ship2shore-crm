@@ -33,6 +33,7 @@ export default function BookingSidebar({ open, onClose }) {
   const [quantity, setQuantity] = useState(1)
   const [zone, setZone] = useState('LA Local')
   const [isMilitary, setIsMilitary] = useState(false)
+  const [escortPriceTier, setEscortPriceTier] = useState(95)
   const [selectedSurcharges, setSelectedSurcharges] = useState([])
   const [lineItems, setLineItems] = useState([])
   const [newContactName, setNewContactName] = useState('')
@@ -57,7 +58,7 @@ export default function BookingSidebar({ open, onClose }) {
 
     let basePrice = 0
     if (serviceType === 'twic_escort') {
-      basePrice = (isMilitary ? service.military : service.base) * quantity
+      basePrice = escortPriceTier * quantity
     } else if (serviceType === 'hotshot') {
       basePrice = service.flat * quantity
     } else if (serviceType === 'semi_container') {
@@ -88,6 +89,7 @@ export default function BookingSidebar({ open, onClose }) {
       quantity,
       zone,
       isMilitary,
+      escortPriceTier: serviceType === 'twic_escort' ? escortPriceTier : null,
       surcharges: [...selectedSurcharges],
       total,
     }
@@ -164,6 +166,7 @@ Create the contact if needed and add to pipeline with total value $${getGrandTot
       setQuantity(1)
       setZone('LA Local')
       setIsMilitary(false)
+      setEscortPriceTier(95)
       setSelectedSurcharges([])
       setLineItems([])
       setNewContactName('')
@@ -322,8 +325,50 @@ Create the contact if needed and add to pipeline with total value $${getGrandTot
               onChange={(e) => setIsMilitary(e.target.checked)}
               className="rounded"
             />
-            <span className="text-sm text-ink">Military/PCS ($80/vehicle)</span>
+            <span className="text-sm text-ink">Military/PCS (special rate)</span>
           </label>
+        )}
+
+        {/* Escort Price Tier (for Escort) */}
+        {serviceType === 'twic_escort' && (
+          <div>
+            <label className="block text-sm font-semibold text-ink mb-2">Price per Vehicle</label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="escortPrice"
+                  value="75"
+                  checked={escortPriceTier === 75}
+                  onChange={() => setEscortPriceTier(75)}
+                  className="rounded"
+                />
+                <span className="text-sm text-ink">$75 (Existing customers)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="escortPrice"
+                  value="85"
+                  checked={escortPriceTier === 85}
+                  onChange={() => setEscortPriceTier(85)}
+                  className="rounded"
+                />
+                <span className="text-sm text-ink">$85 (New customers)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="escortPrice"
+                  value="95"
+                  checked={escortPriceTier === 95}
+                  onChange={() => setEscortPriceTier(95)}
+                  className="rounded"
+                />
+                <span className="text-sm text-ink">$95 (Premium)</span>
+              </label>
+            </div>
+          </div>
         )}
 
         {/* Surcharges */}
@@ -371,7 +416,7 @@ Create the contact if needed and add to pipeline with total value $${getGrandTot
                     <p className="font-medium text-ink">{item.serviceName}</p>
                     <p className="text-xs text-muted">
                       {item.quantity}x {item.zone}
-                      {item.isMilitary && ' (Military)'}
+                      {item.escortPriceTier && ` @ $${item.escortPriceTier}`}
                     </p>
                     {item.surcharges.length > 0 && (
                       <p className="text-xs text-muted">{item.surcharges.join(', ')}</p>
