@@ -12,7 +12,50 @@ export default function Agent() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [conversationHistory, setConversationHistory] = useState([])
+  const [listening, setListening] = useState(false)
   const messagesEndRef = useRef(null)
+  const recognitionRef = useRef(null)
+
+  // Initialize speech recognition
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (SpeechRecognition) {
+      recognitionRef.current = new SpeechRecognition()
+      recognitionRef.current.continuous = false
+      recognitionRef.current.interimResults = true
+      recognitionRef.current.lang = 'en-US'
+
+      recognitionRef.current.onstart = () => setListening(true)
+      recognitionRef.current.onend = () => setListening(false)
+      recognitionRef.current.onresult = (event) => {
+        let transcript = ''
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript
+        }
+        if (event.results[event.results.length - 1].isFinal) {
+          setInput(transcript)
+        }
+      }
+      recognitionRef.current.onerror = (event) => {
+        console.error('Speech recognition error:', event.error)
+        setListening(false)
+      }
+    }
+  }, [])
+
+  const toggleMic = () => {
+    if (!recognitionRef.current) {
+      alert('Speech recognition not supported in your browser')
+      return
+    }
+
+    if (listening) {
+      recognitionRef.current.stop()
+    } else {
+      setInput('')
+      recognitionRef.current.start()
+    }
+  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -119,10 +162,22 @@ export default function Agent() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Ask me anything... (e.g., 'Add John Doe as a $50k deal')"
+            placeholder={listening ? 'Listening...' : "Ask me anything... (e.g., 'Add John Doe as a $50k deal')"}
             disabled={loading}
             className="flex-1 rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-50"
           />
+          <button
+            onClick={toggleMic}
+            disabled={loading}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold ${
+              listening
+                ? 'bg-red-500 text-white hover:bg-red-600'
+                : 'bg-slate-600 text-white hover:bg-slate-700'
+            } disabled:opacity-50`}
+            title="Click to speak"
+          >
+            🎤
+          </button>
           <button
             onClick={handleSend}
             disabled={loading || !input.trim()}

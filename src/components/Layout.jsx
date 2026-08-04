@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { fetchMyProfile } from '../lib/supabase'
 
 const nav = [
+  { to: '/agent', label: 'AI Assistant' },
   { to: '/', label: 'Dashboard', end: true },
   { to: '/inbox', label: 'Inbox' },
   { to: '/contacts', label: 'Contacts' },
@@ -17,7 +18,6 @@ const nav = [
   { to: '/landing-pages', label: 'Landing Pages' },
   { to: '/funnels', label: 'Funnels' },
   { to: '/social-posts', label: 'Social Posts' },
-  { to: '/agent', label: 'AI Assistant' },
 ]
 
 function Brand() {
