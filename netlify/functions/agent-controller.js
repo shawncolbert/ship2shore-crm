@@ -11,6 +11,58 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
+// Ship2Shore Pricing Structure
+const SHIP2SHORE_PRICING = {
+  zones: {
+    'LA Local': { min: 275, max: 325, areas: ['Los Angeles', 'Santa Monica', 'West LA'] },
+    'Orange County': { min: 300, max: 350, areas: ['Anaheim', 'Long Beach area', 'Orange County'] },
+    'Ventura County': { min: 325, max: 375, areas: ['Ventura', 'Oxnard', 'Ojai'] },
+    'Valencia/Santa Clarita': { min: 350, max: 400, areas: ['Valencia', 'Santa Clarita', 'Castaic'] },
+    'Riverside/San Bernardino': { min: 400, max: 475, areas: ['Riverside', 'San Bernardino', 'Ontario'] },
+    'San Diego': { min: 600, max: 675, areas: ['San Diego', 'Oceanside', 'Carlsbad'] },
+    'Northern CA': { min: 625, max: 725, areas: ['Sacramento', 'Bay Area', 'Northern California'] },
+  },
+  services: {
+    twic_escort: { name: 'TWIC Vehicle Escort', standard: 95, military: 80 },
+    hotshot: { name: 'Hotshot Delivery', flat: 200 },
+    semi_container: { name: 'Semi/Container (Tractor-Trailer)', flat: 325 },
+  },
+  surcharges: {
+    'non-operating': 200,
+    'winching': 125,
+    'oversized': 125,
+    'lifted': { min: 125, max: 175 },
+  },
+  ports: {
+    wilmington_norton_lilly: {
+      name: 'Wilmington (Norton Lilly)',
+      services: [
+        { item: 'Terminal handling', rate: 83, unit: 'per vehicle', hh_rate: 93 },
+        { item: 'BL Processing', rate: 50, unit: 'per BL' },
+        { item: 'Local Wharfage', rate: 31, unit: 'per vehicle' },
+        { item: 'Service & Facilities', rate: 20, unit: 'per unit' },
+      ],
+    },
+    wilmington_ports_america: {
+      name: 'Wilmington (Ports America gate storage)',
+      services: [
+        { item: 'Passenger storage', rate: 30, unit: 'per vehicle per day' },
+        { item: 'Commercial/HH storage', rate: 19.65, unit: 'per MT per day' },
+        { item: 'Card processing', rate: 3, unit: 'percent' },
+        { item: 'Non-TWIC security escort', rate: 100, unit: 'flat' },
+      ],
+    },
+    long_beach_ssa: {
+      name: 'Long Beach (SSA Marine)',
+      note: 'Rates pending confirmation from Shawn',
+    },
+    matson: {
+      name: 'Matson',
+      note: 'Rates pending confirmation from Shawn',
+    },
+  },
+}
+
 const AGENT_TOOLS = [
   {
     name: 'create_contact',
@@ -203,6 +255,45 @@ const AGENT_TOOLS = [
         opportunity_id: { type: 'string', description: 'ID of the opportunity/job' },
       },
       required: ['opportunity_id'],
+    },
+  },
+  {
+    name: 'generate_quote',
+    description: 'Generate a detailed Ship2Shore quote with services and surcharges',
+    input_schema: {
+      type: 'object',
+      properties: {
+        zone: {
+          type: 'string',
+          enum: ['LA Local', 'Orange County', 'Ventura County', 'Valencia/Santa Clarita', 'Riverside/San Bernardino', 'San Diego', 'Northern CA'],
+          description: 'Geographic zone for pricing',
+        },
+        service_type: {
+          type: 'string',
+          enum: ['twic_escort', 'hotshot', 'semi_container'],
+          description: 'Type of service',
+        },
+        quantity: { type: 'number', description: 'Number of vehicles/units (for escort, number of cars)' },
+        is_military: { type: 'boolean', description: 'Is this a military/PCS job? (applies $80 rate instead of $95 for escort)' },
+        surcharges: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['non-operating', 'winching', 'oversized', 'lifted'],
+          },
+          description: 'Any applicable surcharges',
+        },
+        notes: { type: 'string', description: 'Additional notes about the job' },
+      },
+      required: ['zone', 'service_type', 'quantity'],
+    },
+  },
+  {
+    name: 'get_pricing_info',
+    description: 'Get all Ship2Shore pricing information (zones, services, surcharges, ports)',
+    input_schema: {
+      type: 'object',
+      properties: {},
     },
   },
 ]
@@ -522,6 +613,87 @@ async function executeTool(toolName, input, orgId) {
       }
     }
 
+    case 'generate_quote': {
+      const zone = SHIP2SHORE_PRICING.zones[input.zone]
+      if (!zone) throw new Error(`Zone "${input.zone}" not found`)
+
+      const service = SHIP2SHORE_PRICING.services[input.service_type]
+      if (!service) throw new Error(`Service type "${input.service_type}" not found`)
+
+      let basePrice = 0
+      let lineItems = []
+
+      // Calculate base price based on service type
+      if (input.service_type === 'twic_escort') {
+        const rate = input.is_military ? service.military : service.standard
+        basePrice = rate * (input.quantity || 1)
+        lineItems.push({
+          item: `${service.name} (${input.quantity} vehicle${input.quantity > 1 ? 's' : ''})`,
+          rate: `$${rate}/vehicle`,
+          quantity: input.quantity,
+          subtotal: basePrice,
+        })
+      } else if (input.service_type === 'hotshot') {
+        basePrice = service.flat
+        lineItems.push({
+          item: service.name,
+          rate: 'flat',
+          subtotal: basePrice,
+        })
+      } else if (input.service_type === 'semi_container') {
+        basePrice = service.flat * (input.quantity || 1)
+        lineItems.push({
+          item: `${service.name} (${input.quantity} unit${input.quantity > 1 ? 's' : ''})`,
+          rate: `$${service.flat}/unit`,
+          quantity: input.quantity,
+          subtotal: basePrice,
+        })
+      }
+
+      // Calculate surcharges
+      let surchargeTotal = 0
+      if (input.surcharges && input.surcharges.length > 0) {
+        for (const surcharge of input.surcharges) {
+          const surchargeInfo = SHIP2SHORE_PRICING.surcharges[surcharge]
+          if (surchargeInfo) {
+            const surchargeAmount = typeof surchargeInfo === 'object' && surchargeInfo.min
+              ? surchargeInfo.min
+              : surchargeInfo
+            surchargeTotal += surchargeAmount
+            lineItems.push({
+              item: `Surcharge: ${surcharge}`,
+              subtotal: surchargeAmount,
+            })
+          }
+        }
+      }
+
+      const total = basePrice + surchargeTotal
+
+      return {
+        result: {
+          zone: input.zone,
+          service: service.name,
+          quantity: input.quantity,
+          isMilitary: input.is_military,
+          lineItems,
+          basePrice,
+          surcharges: surchargeTotal,
+          estimatedTotal: total,
+          priceRange: `$${zone.min} - $${zone.max}`,
+          notes: input.notes || null,
+        },
+        clientEvent: null,
+      }
+    }
+
+    case 'get_pricing_info': {
+      return {
+        result: SHIP2SHORE_PRICING,
+        clientEvent: null,
+      }
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`)
   }
@@ -579,40 +751,59 @@ export const handler = async (event) => {
         model: 'claude-opus-5',
         max_tokens: 1024,
         system:
-          `You are a helpful CRM assistant for Ship2Shore, a port vehicle escort and logistics company. Help users manage pipeline jobs with service-based pricing.
+          `You are a helpful CRM assistant for Ship2Shore, a port vehicle escort and logistics company. Help users manage pipeline jobs and generate accurate pricing quotes.
 
-SHIP2SHORE SERVICES & PRICING:
-- Escort: $75-$95 per vehicle (single car = $95, multiple cars = $75 each)
-- Storage: $16-$700 (depends on duration/type)
-- Hotshot: $200 per urgent delivery
-- Big Rig: $325 per big rig job
+SHIP2SHORE PRICING STRUCTURE:
 
-WORKFLOW FOR ADDING SERVICES TO JOBS:
-1. Search for the contact/job using search_contacts
-2. Get their opportunities using get_contact_opportunities
-3. For each service, call add_service_item_to_opportunity with:
-   - opportunity_id (from step 2)
-   - service_type: escort|storage|hotshot|big_rig|other
-   - quantity: number of units
-   - unit_price: price per unit
-   - description: what this is for (e.g., "2 car escorts", "5-day storage")
-4. After adding all items, call update_opportunity_total_from_items to auto-sum
-5. Confirm the breakdown to the user
+ZONES & BASE RATES:
+- LA Local: $275–325
+- Orange County: $300–350
+- Ventura County: $325–375
+- Valencia/Santa Clarita: $350–400
+- Riverside/San Bernardino: $400–475
+- San Diego: $600–675
+- Northern CA: $625–725
 
-EXAMPLE: User says "Add 2 car escorts ($75 each) and 5-day storage to Sarah's $500 job"
-- add_service_item_to_opportunity: service_type='escort', quantity=2, unit_price=75
-- add_service_item_to_opportunity: service_type='storage', quantity=5, unit_price=100, description='5-day storage'
-- update_opportunity_total_from_items
-- Confirm: "✓ Added escorts ($150) + storage ($500) = $650 total to Sarah's job"
+SERVICES:
+- TWIC Vehicle Escort: $95/vehicle (standard), $80/vehicle (military/PCS)
+- Hotshot Delivery: $200/job flat
+- Semi/Container (Tractor-Trailer): $325/unit flat
 
-SMART PRICING:
-- Single vehicle escort → $95
-- Multiple vehicles → $75 each
-- Storage → $16-$700 depending on duration
-- Multiple jobs get combined at standard rates
-- Always show line-item breakdown in confirmation
+SURCHARGES (add to base):
+- Non-operating: +$200
+- Winching: +$125
+- Oversized: +$125
+- Lifted/Modified: +$125–$175
 
-IMPORTANT: Always get the opportunity_id by searching first. Never guess IDs.`,
+PORT-SPECIFIC STORAGE/FEES:
+- Wilmington (Norton Lilly): Terminal handling $83/vehicle, BL Processing $50, Wharfage $31/vehicle, Service & Facilities $20/unit
+- Wilmington (Ports America): Passenger $30/vehicle/day, Commercial/HH $19.65/MT/day, Non-TWIC escort $100
+- Long Beach (SSA Marine) & Matson: Rates pending confirmation
+
+WORKFLOW FOR GENERATING QUOTES:
+1. Call generate_quote with: zone, service_type, quantity, is_military (if applicable), surcharges
+2. Shows line-item breakdown with base price, surcharges, and total
+3. Can then add_service_item_to_opportunity to save to a job
+
+EXAMPLES:
+- "Quote for 1 car escort in LA" → generate_quote(zone='LA Local', service='twic_escort', quantity=1)
+  Result: $95–$325 (zone base applies to base service)
+
+- "Quote 3 car escorts with winching in Orange County" → generate_quote(zone='Orange County', service='twic_escort', quantity=3, surcharges=['winching'])
+  Result: $95×3=$285 + $125 winching = $410
+
+- "Hotshot to San Diego plus oversized" → generate_quote(zone='San Diego', service='hotshot', quantity=1, surcharges=['oversized'])
+  Result: $200 hotshot + $125 oversized = $325
+
+- "2 semi containers, non-operating situation in Riverside" → generate_quote(zone='Riverside/San Bernardino', service='semi_container', quantity=2, surcharges=['non-operating'])
+  Result: $325×2=$650 + $200 non-operating = $850
+
+ALWAYS:
+1. Ask for zone/location if not provided
+2. Clarify if military/PCS (applies $80 instead of $95 for escort)
+3. List applicable surcharges
+4. Show complete breakdown
+5. Offer to add to specific job in pipeline`,
         tools: AGENT_TOOLS,
         messages,
       })
