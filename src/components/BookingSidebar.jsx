@@ -118,6 +118,11 @@ export default function BookingSidebar({ open, onClose }) {
       return
     }
 
+    if (!selectedContact && !newContactEmail) {
+      setError('Please provide an email for the new customer')
+      return
+    }
+
     if (lineItems.length === 0) {
       setError('Please add at least one service')
       return
@@ -126,37 +131,32 @@ export default function BookingSidebar({ open, onClose }) {
     setLoading(true)
     setError('')
 
+    const customerName = selectedContact?.full_name || newContactName
+    const totalValue = getGrandTotal()
+
     try {
-      // Create booking via AI agent
-      const messageParts = []
-      if (messagesToSend.deliveryOrder) {
-        messageParts.push('Send delivery order request email asking for POA and delivery details')
-      }
-      if (messagesToSend.paymentLink) {
-        messageParts.push('Send payment link request email')
-      }
-
-      const prompt = `Create a new booking with these details:
-Customer: ${selectedContact?.full_name || newContactName}
-Email: ${selectedContact?.email || newContactEmail}
-Services: ${lineItems.map(item => `${item.quantity}x ${item.serviceName}`).join(', ')}
-Total Value: $${getGrandTotal()}
-Zone: ${zone}
-
-Create the contact if needed and add to pipeline with total value $${getGrandTotal()}.
-${messageParts.length > 0 ? `\nAfter creating the booking, also: ${messageParts.join(' and ')}` : ''}`
+      const lineItemsSummary = lineItems.map(item => {
+        const details = [`${item.quantity}x ${item.serviceName}`, item.zone, `$${item.total}`]
+        if (item.escortPriceTier) details.push(`@ $${item.escortPriceTier}/vehicle`)
+        if (item.surcharges.length > 0) details.push(item.surcharges.join(', '))
+        return details.join(' | ')
+      }).join('; ')
 
       const { data: { session } } = await supabase.auth.getSession()
 
-      const res = await fetch('/.netlify/functions/agent-controller', {
+      const res = await fetch('/.netlify/functions/create-booking', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token || ''}`,
         },
         body: JSON.stringify({
-          userPrompt: prompt,
-          conversationHistory: [],
+          contactId: selectedContact?.id || null,
+          newContact: selectedContact ? null : { full_name: newContactName, email: newContactEmail },
+          lineItemsSummary,
+          totalValue,
+          sendDeliveryOrder: messagesToSend.deliveryOrder,
+          sendPaymentLink: messagesToSend.paymentLink,
         }),
       })
 
@@ -164,13 +164,15 @@ ${messageParts.length > 0 ? `\nAfter creating the booking, also: ${messageParts.
 
       if (!res.ok) {
         setError(`Failed to create booking: ${data.error}`)
+        setLoading(false)
         return
       }
 
       // Refresh relevant queries
-      qc.invalidateQueries({ queryKey: ['contacts'] })
-      qc.invalidateQueries({ queryKey: ['opportunities'] })
-      qc.invalidateQueries({ queryKey: ['pipeline'] })
+      await qc.invalidateQueries({ queryKey: ['contacts'] })
+      await qc.invalidateQueries({ queryKey: ['opportunities'] })
+      await qc.invalidateQueries({ queryKey: ['pipeline'] })
+      await qc.invalidateQueries({ queryKey: ['dashboard'] })
 
       // Reset form
       setServiceType('twic_escort')
@@ -185,12 +187,13 @@ ${messageParts.length > 0 ? `\nAfter creating the booking, also: ${messageParts.
       setNewContactName('')
       setNewContactEmail('')
       setMessagesToSend({ deliveryOrder: true, paymentLink: false })
+      setError('')
 
-      alert('✓ Booking created and added to pipeline!')
+      alert(`✓ ${customerName} - $${totalValue} added to pipeline!`)
       onClose()
     } catch (err) {
-      setError(`Error: ${err.message}`)
-    } finally {
+      console.error('❌ Booking creation error:', err)
+      setError(`Error creating booking: ${err.message}`)
       setLoading(false)
     }
   }
@@ -228,7 +231,12 @@ ${messageParts.length > 0 ? `\nAfter creating the booking, also: ${messageParts.
                 <p className="text-xs text-muted">{selectedContact.email}</p>
               </div>
               <button
-                onClick={() => setSelectedContact(null)}
+                onClick={() => {
+                  setSelectedContact(null)
+                  setSearchQuery('')
+                  setNewContactName('')
+                  setNewContactEmail('')
+                }}
                 className="text-muted hover:text-ink"
               >
                 ✕
@@ -251,6 +259,8 @@ ${messageParts.length > 0 ? `\nAfter creating the booking, also: ${messageParts.
                       onClick={() => {
                         setSelectedContact(contact)
                         setSearchQuery('')
+                        setNewContactName('')
+                        setNewContactEmail('')
                       }}
                       className="w-full text-left px-3 py-2 hover:bg-accent hover:bg-opacity-10 border-b border-line last:border-b-0 text-sm"
                     >

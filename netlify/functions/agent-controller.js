@@ -1,4 +1,5 @@
 import { admin, userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
+import { getDefaultPipeline, getStageByName } from './_shared/pipeline.js'
 import Anthropic from '@anthropic-ai/sdk'
 
 const json = (statusCode, body) => ({
@@ -89,7 +90,7 @@ const AGENT_TOOLS = [
         deal_value: { type: 'number', description: 'Deal value in USD' },
         stage: {
           type: 'string',
-          enum: ['lead', 'qualified', 'proposal', 'negotiation', 'closed_won', 'closed_lost'],
+          enum: ['Not Customs Cleared', 'Customs Cleared', 'New Booking', 'Scheduled', 'In Progress', 'Completed', 'Paid', 'Canceled'],
           description: 'Pipeline stage',
         },
       },
@@ -146,7 +147,7 @@ const AGENT_TOOLS = [
         opportunity_id: { type: 'string', description: 'ID of the opportunity to move' },
         stage: {
           type: 'string',
-          enum: ['lead', 'qualified', 'proposal', 'negotiation', 'closed_won', 'closed_lost'],
+          enum: ['Not Customs Cleared', 'Customs Cleared', 'New Booking', 'Scheduled', 'In Progress', 'Completed', 'Paid', 'Canceled'],
           description: 'New pipeline stage',
         },
       },
@@ -194,7 +195,7 @@ const AGENT_TOOLS = [
         value: { type: 'number', description: 'Deal value in USD' },
         stage: {
           type: 'string',
-          enum: ['lead', 'qualified', 'proposal', 'negotiation', 'closed_won', 'closed_lost'],
+          enum: ['Not Customs Cleared', 'Customs Cleared', 'New Booking', 'Scheduled', 'In Progress', 'Completed', 'Paid', 'Canceled'],
           description: 'Pipeline stage',
         },
       },
@@ -468,29 +469,26 @@ async function executeTool(toolName, input, orgId) {
     }
 
     case 'get_outstanding_revenue': {
-      // Get all opportunities that aren't closed (won or lost)
+      // Outstanding = not yet paid and not cancelled/lost, based on the actual
+      // payment_status/status columns (not pipeline stage, which is free-text
+      // and varies per org).
       const { data: opportunities, error } = await admin
         .from('opportunities')
-        .select('id, title, value, stage_id')
+        .select('id, title, value, status, payment_status')
         .eq('org_id', orgId)
+        .neq('status', 'cancelled')
+        .neq('status', 'lost')
+        .neq('payment_status', 'paid')
 
       if (error) throw new Error(error.message)
 
-      // Get all stages to find which ones are "closed"
-      const { data: stages } = await admin.from('stages').select('id, name')
-
-      const closedStageNames = ['closed_won', 'closed_lost']
-      const closedStageIds = stages?.filter(s => closedStageNames.includes(s.name.toLowerCase()))?.map(s => s.id) || []
-
-      // Filter to only open deals
-      const openOpportunities = opportunities?.filter(opp => !closedStageIds.includes(opp.stage_id)) || []
-      const totalOutstanding = openOpportunities.reduce((sum, opp) => sum + (opp.value || 0), 0)
+      const totalOutstanding = (opportunities || []).reduce((sum, opp) => sum + (opp.value || 0), 0)
 
       return {
         result: {
           totalOutstanding,
-          dealCount: openOpportunities.length,
-          deals: openOpportunities.map(opp => ({ id: opp.id, title: opp.title, value: opp.value })),
+          dealCount: opportunities?.length || 0,
+          deals: (opportunities || []).map(opp => ({ id: opp.id, title: opp.title, value: opp.value })),
         },
         clientEvent: null,
       }
@@ -852,31 +850,6 @@ Ship2Shore Logistics`
   }
 }
 
-async function getDefaultPipeline(orgId) {
-  const { data } = await admin
-    .from('pipelines')
-    .select('id')
-    .eq('org_id', orgId)
-    .eq('is_default', true)
-    .single()
-  return data
-}
-
-async function getStageByName(orgId, stageName) {
-  const pipeline = await getDefaultPipeline(orgId)
-  if (!pipeline) return null
-
-  const { data } = await admin
-    .from('stages')
-    .select('id, name')
-    .eq('pipeline_id', pipeline.id)
-
-  if (!data) return null
-
-  const stage = data.find(s => s.name.toLowerCase() === stageName.toLowerCase())
-  return stage || null
-}
-
 export const handler = async (event) => {
   try {
     console.log('📍 agent-controller: Handler called')
@@ -985,12 +958,15 @@ ALWAYS FOR QUOTES:
 4. Show complete breakdown
 5. Offer to add to specific job in pipeline
 
-WHEN YOU SEE "Create a new booking":
-1. IMMEDIATELY call create_contact if customer is new (use full_name and email from prompt)
-2. THEN call create_opportunity with the contact_id and booking details (use total value as deal_value)
-3. IF prompt mentions "Send delivery order request" → call send_email with delivery_order_request
-4. IF prompt mentions "Send payment link request" → call send_email with payment_link_request
-5. Confirm booking complete with contact name, deal value, and services added
+PIPELINE STAGES (use these EXACT names — this org's pipeline is NOT a generic sales pipeline):
+Not Customs Cleared → Customs Cleared → New Booking → Scheduled → In Progress → Completed → Paid → Canceled
+New jobs normally start at "New Booking". Never invent stage names like "lead" or "qualified" — they do not exist in this pipeline and will fail.
+
+CREATING A NEW BOOKING FROM CHAT (natural-language requests only — the booking sidebar UI uses its own direct endpoint, not you):
+1. Call create_contact if customer is new (use full_name and email from prompt)
+2. Call create_opportunity with the contact_id, a descriptive title, deal_value, and stage="New Booking"
+3. If asked, call send_email for delivery_order_request and/or payment_link_request
+4. Confirm booking complete with contact name, deal value, and services added
 
 EDITING DEAL VALUES:
 Use edit_deal_value to update pipeline deal amounts. Two methods:
@@ -1033,24 +1009,7 @@ Use send_email tool to send messages to customers. Two message types:
    - Requests payment once vehicle is cleared
    - ONLY send this after confirmation from user that car is cleared
 
-WORKFLOW FOR BOOKING (CRITICAL - ALWAYS DO THIS):
-Step 1: Create contact
-   - call create_contact(full_name="customer name from prompt", email="email from prompt")
-   - Wait for response with contact.id
-
-Step 2: Create opportunity
-   - call create_opportunity(contact_id="use id from step 1", title="Customer Name - Service Type", deal_value=total value, stage="lead")
-   - Wait for response with opportunity.id
-
-Step 3: Send emails if requested in prompt
-   - If prompt says "Send delivery order request email":
-     call send_email(customer_email="from prompt", customer_name="from prompt", message_type="delivery_order_request", booking_details="services and total")
-   - If prompt says "Send payment link request email":
-     call send_email(customer_email="from prompt", customer_name="from prompt", message_type="payment_link_request", booking_amount=total, booking_details="services")
-
-Step 4: Confirm
-   - Reply "✓ Booking created for [name] - Deal: [title] - $[amount] added to pipeline"
-   - Include which emails were sent`,
+`,
           tools: AGENT_TOOLS,
           messages,
         })
