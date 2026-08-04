@@ -164,6 +164,47 @@ const AGENT_TOOLS = [
       required: ['contact_id'],
     },
   },
+  {
+    name: 'add_service_item_to_opportunity',
+    description: 'Add a line item service/fee to a job. Ship2Shore services: escort ($75-$95), storage ($16-$700), hotshot ($200), big_rig ($325)',
+    input_schema: {
+      type: 'object',
+      properties: {
+        opportunity_id: { type: 'string', description: 'ID of the opportunity/job' },
+        service_type: {
+          type: 'string',
+          enum: ['escort', 'storage', 'hotshot', 'big_rig', 'other'],
+          description: 'Type of service',
+        },
+        description: { type: 'string', description: 'e.g., "Single car escort", "5-day storage", "2 car escorts"' },
+        quantity: { type: 'number', description: 'Quantity (e.g., 2 cars, 5 days storage)' },
+        unit_price: { type: 'number', description: 'Price per unit in USD' },
+      },
+      required: ['opportunity_id', 'service_type', 'quantity', 'unit_price'],
+    },
+  },
+  {
+    name: 'get_opportunity_items',
+    description: 'Get all line item services/fees for a job',
+    input_schema: {
+      type: 'object',
+      properties: {
+        opportunity_id: { type: 'string', description: 'ID of the opportunity/job' },
+      },
+      required: ['opportunity_id'],
+    },
+  },
+  {
+    name: 'update_opportunity_total_from_items',
+    description: 'Recalculate opportunity total value by summing all line items',
+    input_schema: {
+      type: 'object',
+      properties: {
+        opportunity_id: { type: 'string', description: 'ID of the opportunity/job' },
+      },
+      required: ['opportunity_id'],
+    },
+  },
 ]
 
 async function executeTool(toolName, input, orgId) {
@@ -397,6 +438,90 @@ async function executeTool(toolName, input, orgId) {
       }
     }
 
+    case 'add_service_item_to_opportunity': {
+      if (!input.opportunity_id) throw new Error('opportunity_id is required')
+
+      const totalPrice = (input.quantity || 1) * (input.unit_price || 0)
+
+      const { data: item, error } = await admin
+        .from('opportunity_items')
+        .insert({
+          org_id: orgId,
+          opportunity_id: input.opportunity_id,
+          service_type: input.service_type,
+          description: input.description || null,
+          quantity: input.quantity || 1,
+          unit_price: input.unit_price,
+          total_price: totalPrice,
+        })
+        .select()
+        .single()
+
+      if (error) throw new Error(`Failed to add service item: ${error.message}`)
+
+      return {
+        result: item,
+        clientEvent: { type: 'OPPORTUNITY_UPDATED', data: { opportunityId: input.opportunity_id } },
+      }
+    }
+
+    case 'get_opportunity_items': {
+      const { data: items, error } = await admin
+        .from('opportunity_items')
+        .select('*')
+        .eq('opportunity_id', input.opportunity_id)
+        .eq('org_id', orgId)
+        .order('created_at', { ascending: true })
+
+      if (error) throw new Error(`Failed to get items: ${error.message}`)
+
+      const total = (items || []).reduce((sum, item) => sum + (item.total_price || 0), 0)
+
+      return {
+        result: {
+          items: items || [],
+          total,
+          itemCount: (items || []).length,
+        },
+        clientEvent: null,
+      }
+    }
+
+    case 'update_opportunity_total_from_items': {
+      // Get all items for this opportunity
+      const { data: items, error: itemsErr } = await admin
+        .from('opportunity_items')
+        .select('total_price')
+        .eq('opportunity_id', input.opportunity_id)
+        .eq('org_id', orgId)
+
+      if (itemsErr) throw new Error(`Failed to get items: ${itemsErr.message}`)
+
+      // Calculate total
+      const total = (items || []).reduce((sum, item) => sum + (item.total_price || 0), 0)
+
+      // Update opportunity value
+      const { data: updated, error: updateErr } = await admin
+        .from('opportunities')
+        .update({ value: total })
+        .eq('id', input.opportunity_id)
+        .eq('org_id', orgId)
+        .select()
+        .single()
+
+      if (updateErr) throw new Error(`Failed to update opportunity: ${updateErr.message}`)
+
+      return {
+        result: {
+          opportunityId: input.opportunity_id,
+          newTotal: total,
+          itemCount: items?.length || 0,
+          updated,
+        },
+        clientEvent: { type: 'OPPORTUNITY_UPDATED', data: updated },
+      }
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`)
   }
@@ -454,24 +579,40 @@ export const handler = async (event) => {
         model: 'claude-opus-5',
         max_tokens: 1024,
         system:
-          `You are a helpful CRM assistant. Use tools to help users manage their sales pipeline, contacts, and opportunities. Be concise and friendly.
+          `You are a helpful CRM assistant for Ship2Shore, a port vehicle escort and logistics company. Help users manage pipeline jobs with service-based pricing.
 
-IMPORTANT: When updating deal amounts, always convert amounts to numbers:
-- "$50k" → 50000
-- "$50,000" → 50000
-- "fifty thousand" → 50000
-- "50000" → 50000
+SHIP2SHORE SERVICES & PRICING:
+- Escort: $75-$95 per vehicle (single car = $95, multiple cars = $75 each)
+- Storage: $16-$700 (depends on duration/type)
+- Hotshot: $200 per urgent delivery
+- Big Rig: $325 per big rig job
 
-When users want to update pipeline cards (change deal amounts, names, emails, etc.):
-1. Search for the contact by name using search_contacts
-2. Note the contact_id from results
-3. Get their opportunities using get_contact_opportunities with that contact_id
-4. Note the opportunity_id
-5. Use update_opportunity or update_contact with the correct ID and converted values
-6. Confirm what was changed
+WORKFLOW FOR ADDING SERVICES TO JOBS:
+1. Search for the contact/job using search_contacts
+2. Get their opportunities using get_contact_opportunities
+3. For each service, call add_service_item_to_opportunity with:
+   - opportunity_id (from step 2)
+   - service_type: escort|storage|hotshot|big_rig|other
+   - quantity: number of units
+   - unit_price: price per unit
+   - description: what this is for (e.g., "2 car escorts", "5-day storage")
+4. After adding all items, call update_opportunity_total_from_items to auto-sum
+5. Confirm the breakdown to the user
 
-CRITICAL: Always get the opportunity_id before calling update_opportunity. Never guess - search first.
-You can update: deal title, deal value/amount, pipeline stage, contact name, email, phone, company.`,
+EXAMPLE: User says "Add 2 car escorts ($75 each) and 5-day storage to Sarah's $500 job"
+- add_service_item_to_opportunity: service_type='escort', quantity=2, unit_price=75
+- add_service_item_to_opportunity: service_type='storage', quantity=5, unit_price=100, description='5-day storage'
+- update_opportunity_total_from_items
+- Confirm: "✓ Added escorts ($150) + storage ($500) = $650 total to Sarah's job"
+
+SMART PRICING:
+- Single vehicle escort → $95
+- Multiple vehicles → $75 each
+- Storage → $16-$700 depending on duration
+- Multiple jobs get combined at standard rates
+- Always show line-item breakdown in confirmation
+
+IMPORTANT: Always get the opportunity_id by searching first. Never guess IDs.`,
         tools: AGENT_TOOLS,
         messages,
       })
