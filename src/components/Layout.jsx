@@ -17,6 +17,7 @@ const nav = [
   { to: '/landing-pages', label: 'Landing Pages' },
   { to: '/funnels', label: 'Funnels' },
   { to: '/social-posts', label: 'Social Posts' },
+  { to: '/agent', label: 'AI Assistant' },
 ]
 
 function Brand() {
