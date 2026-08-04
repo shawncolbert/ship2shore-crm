@@ -56,6 +56,17 @@ const AGENT_TOOLS = [
     },
   },
   {
+    name: 'get_contact_opportunities',
+    description: 'Get all opportunities/deals for a specific contact',
+    input_schema: {
+      type: 'object',
+      properties: {
+        contact_id: { type: 'string', description: 'ID of the contact' },
+      },
+      required: ['contact_id'],
+    },
+  },
+  {
     name: 'get_pipeline_summary',
     description: 'Get deal count and value breakdown by pipeline stage',
     input_schema: {
@@ -209,6 +220,17 @@ async function executeTool(toolName, input, orgId) {
 
       if (error) throw new Error(error.message)
       return { result: contacts || [], clientEvent: null }
+    }
+
+    case 'get_contact_opportunities': {
+      const { data: opportunities, error } = await admin
+        .from('opportunities')
+        .select('id, title, value, stage_id, contact_id')
+        .eq('contact_id', input.contact_id)
+        .eq('org_id', orgId)
+
+      if (error) throw new Error(error.message)
+      return { result: opportunities || [], clientEvent: null }
     }
 
     case 'get_pipeline_summary': {
@@ -423,7 +445,16 @@ export const handler = async (event) => {
         model: 'claude-opus-5',
         max_tokens: 1024,
         system:
-          'You are a helpful CRM assistant. Use tools to help users manage their sales pipeline, contacts, and opportunities. Be concise and friendly.',
+          `You are a helpful CRM assistant. Use tools to help users manage their sales pipeline, contacts, and opportunities. Be concise and friendly.
+
+When users want to update pipeline cards (change deal amounts, names, emails, etc.):
+1. First search for the contact by name if not given a contact ID
+2. Use get_contact_opportunities to find their deals
+3. Then use update_opportunity or update_contact to make changes
+4. Provide a clear confirmation of what was changed
+
+When users mention a contact's name or amount to change, always search first to find the right deal.
+You can update: deal title, deal value/amount, pipeline stage, contact name, email, phone, company.`,
         tools: AGENT_TOOLS,
         messages,
       })
