@@ -213,7 +213,7 @@ export const handler = async (event) => {
       loopCount++
 
       const response = await anthropic.messages.create({
-        model: 'claude-opus-5-20250805',
+        model: 'claude-opus-5',
         max_tokens: 1024,
         system:
           'You are a helpful CRM assistant. Use tools to help users manage their sales pipeline, contacts, and opportunities. Be concise and friendly.',
