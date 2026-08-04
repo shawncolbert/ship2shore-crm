@@ -884,15 +884,36 @@ async function getStageByName(orgId, stageName) {
 export const handler = async (event) => {
   try {
     console.log('📍 agent-controller: Handler called')
+    console.log('📍 Event body:', event.body?.substring(0, 200))
+
     const token = (event.headers.authorization || event.headers.Authorization || '').replace(/^Bearer /, '')
+    console.log('📍 Token received:', token ? 'Yes' : 'NO TOKEN')
+
     const user = await userFromToken(token)
-    if (!user) return json(401, { error: 'Unauthorized' })
+    if (!user) {
+      console.error('❌ No user found for token')
+      return json(401, { error: 'Unauthorized' })
+    }
 
     const orgId = await orgForUser(user.id)
-    if (!orgId) return json(403, { error: 'No organization' })
+    if (!orgId) {
+      console.error('❌ No organization for user')
+      return json(403, { error: 'No organization' })
+    }
 
-    const { userPrompt, conversationHistory = [] } = JSON.parse(event.body || '{}')
-    if (!userPrompt) return json(400, { error: 'User prompt required' })
+    let requestBody
+    try {
+      requestBody = JSON.parse(event.body || '{}')
+    } catch (parseErr) {
+      console.error('❌ Failed to parse request body:', parseErr.message)
+      return json(400, { error: `Invalid JSON: ${parseErr.message}` })
+    }
+
+    const { userPrompt, conversationHistory = [] } = requestBody
+    if (!userPrompt) {
+      console.error('❌ No userPrompt in request')
+      return json(400, { error: 'User prompt required' })
+    }
 
     console.log('📍 agent-controller: User prompt received:', userPrompt.substring(0, 100))
     const messages = [...conversationHistory, { role: 'user', content: userPrompt }]
@@ -906,11 +927,14 @@ export const handler = async (event) => {
     while (loopCount < MAX_LOOPS) {
       loopCount++
       console.log(`📍 agent-controller: Loop ${loopCount}`)
+      console.log(`📍 Messages array:`, JSON.stringify(messages.map(m => ({ role: m.role, contentType: typeof m.content, contentLength: JSON.stringify(m.content).length }))).substring(0, 200))
 
-      const response = await anthropic.messages.create({
-        model: 'claude-opus-5',
-        max_tokens: 1024,
-        system:
+      let response
+      try {
+        response = await anthropic.messages.create({
+          model: 'claude-opus-5',
+          max_tokens: 1024,
+          system:
           `You are a helpful CRM assistant for Ship2Shore, a port vehicle escort and logistics company. Help users manage pipeline jobs and generate accurate pricing quotes.
 
 SHIP2SHORE PRICING STRUCTURE:
@@ -1031,9 +1055,15 @@ Step 3: Send emails if requested in prompt
 Step 4: Confirm
    - Reply "✓ Booking created for [name] - Deal: [title] - $[amount] added to pipeline"
    - Include which emails were sent`,
-        tools: AGENT_TOOLS,
-        messages,
-      })
+          tools: AGENT_TOOLS,
+          messages,
+        })
+        console.log(`📍 Claude API response received successfully`)
+      } catch (apiErr) {
+        console.error(`❌ Claude API error: ${apiErr.message}`)
+        console.error(`❌ Error details:`, apiErr)
+        return json(500, { error: `Claude API error: ${apiErr.message}` })
+      }
 
       messages.push({ role: 'assistant', content: response.content })
 
