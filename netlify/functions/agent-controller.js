@@ -313,6 +313,25 @@ const AGENT_TOOLS = [
       ],
     },
   },
+  {
+    name: 'send_email',
+    description: 'Send an email to a customer with a specific message type (delivery order request or payment link request)',
+    input_schema: {
+      type: 'object',
+      properties: {
+        customer_email: { type: 'string', description: 'Customer email address' },
+        customer_name: { type: 'string', description: 'Customer name' },
+        message_type: {
+          type: 'string',
+          enum: ['delivery_order_request', 'payment_link_request'],
+          description: 'Type of message to send',
+        },
+        booking_amount: { type: 'number', description: 'Booking amount in USD (for payment link requests)' },
+        booking_details: { type: 'string', description: 'Booking details to include in the email' },
+      },
+      required: ['customer_email', 'customer_name', 'message_type'],
+    },
+  },
 ]
 
 async function executeTool(toolName, input, orgId) {
@@ -781,6 +800,57 @@ async function executeTool(toolName, input, orgId) {
       }
     }
 
+    case 'send_email': {
+      let emailBody = ''
+      let subject = ''
+
+      if (input.message_type === 'delivery_order_request') {
+        subject = 'Ship2Shore - Delivery Order Needed'
+        emailBody = `Hi ${input.customer_name},
+
+We're ready to proceed with your booking!
+
+To complete your reservation, please provide:
+- Proof of Authorization (POA)
+- Delivery order details
+- Estimated delivery date/time
+
+${input.booking_details ? `Booking Details:\n${input.booking_details}\n` : ''}
+
+Please reply with the required information so we can finalize your shipment.
+
+Best regards,
+Ship2Shore Logistics`
+      } else if (input.message_type === 'payment_link_request') {
+        subject = 'Ship2Shore - Payment Required'
+        emailBody = `Hi ${input.customer_name},
+
+Your vehicle is now cleared and ready to ship!
+
+Booking Amount: $${input.booking_amount}
+
+${input.booking_details ? `Booking Details:\n${input.booking_details}\n` : ''}
+
+Please proceed with payment to secure your shipment. A payment link has been attached.
+
+Thank you,
+Ship2Shore Logistics`
+      }
+
+      // Log email for now (in production, this would call an email service)
+      console.log(`📧 Email to ${input.customer_email}:\nSubject: ${subject}\n${emailBody}`)
+
+      return {
+        result: {
+          sent: true,
+          to: input.customer_email,
+          messageType: input.message_type,
+          subject,
+        },
+        clientEvent: null,
+      }
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`)
   }
@@ -918,7 +988,28 @@ The tool shows:
 - Deal title
 - Old value → New value
 - Dollar difference
-- Percent change`,
+- Percent change
+
+SENDING CUSTOMER EMAILS:
+Use send_email to send messages to customers. Two message types:
+
+1. Delivery Order Request (send first):
+   - send_email(customer_email, customer_name, "delivery_order_request", booking_details)
+   - Asks customer for POA and delivery order details
+   - SEND THIS FIRST before asking for payment
+
+2. Payment Link Request (send after cleared):
+   - send_email(customer_email, customer_name, "payment_link_request", booking_amount, booking_details)
+   - Requests payment once vehicle is cleared
+   - ONLY send this after confirmation from user that car is cleared
+
+WORKFLOW FOR BOOKING:
+1. Create contact (if needed) with create_contact
+2. Create opportunity with create_opportunity
+3. If send_email instructions in prompt:
+   - First send delivery_order_request if user requested it
+   - Then send payment_link_request if user requested it
+4. Confirm booking is complete`,
         tools: AGENT_TOOLS,
         messages,
       })

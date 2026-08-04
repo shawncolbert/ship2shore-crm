@@ -40,6 +40,10 @@ export default function BookingSidebar({ open, onClose }) {
   const [newContactEmail, setNewContactEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [messagesToSend, setMessagesToSend] = useState({
+    deliveryOrder: true,
+    paymentLink: false,
+  })
 
   const { data: contacts = [] } = useQuery({
     queryKey: ['contacts'],
@@ -124,6 +128,14 @@ export default function BookingSidebar({ open, onClose }) {
 
     try {
       // Create booking via AI agent
+      const messageParts = []
+      if (messagesToSend.deliveryOrder) {
+        messageParts.push('Send delivery order request email asking for POA and delivery details')
+      }
+      if (messagesToSend.paymentLink) {
+        messageParts.push('Send payment link request email')
+      }
+
       const prompt = `Create a new booking with these details:
 Customer: ${selectedContact?.full_name || newContactName}
 Email: ${selectedContact?.email || newContactEmail}
@@ -131,7 +143,8 @@ Services: ${lineItems.map(item => `${item.quantity}x ${item.serviceName}`).join(
 Total Value: $${getGrandTotal()}
 Zone: ${zone}
 
-Create the contact if needed and add to pipeline with total value $${getGrandTotal()}.`
+Create the contact if needed and add to pipeline with total value $${getGrandTotal()}.
+${messageParts.length > 0 ? `\nAfter creating the booking, also: ${messageParts.join(' and ')}` : ''}`
 
       const { data: { session } } = await supabase.auth.getSession()
 
@@ -171,6 +184,7 @@ Create the contact if needed and add to pipeline with total value $${getGrandTot
       setLineItems([])
       setNewContactName('')
       setNewContactEmail('')
+      setMessagesToSend({ deliveryOrder: true, paymentLink: false })
 
       alert('✓ Booking created and added to pipeline!')
       onClose()
@@ -438,6 +452,33 @@ Create the contact if needed and add to pipeline with total value $${getGrandTot
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-ink">Total Value:</span>
                 <span className="text-2xl font-bold text-accent">${getGrandTotal()}</span>
+              </div>
+            </div>
+
+            {/* Messages to Send */}
+            <div className="mt-4 pt-4 border-t border-line">
+              <label className="block text-sm font-semibold text-ink mb-3">Send to Customer:</label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={messagesToSend.deliveryOrder}
+                    onChange={(e) => setMessagesToSend({ ...messagesToSend, deliveryOrder: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-ink">📋 Delivery Order Request</span>
+                  <span className="text-xs text-muted">(asks for POA)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={messagesToSend.paymentLink}
+                    onChange={(e) => setMessagesToSend({ ...messagesToSend, paymentLink: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-ink">💳 Payment Link Request</span>
+                  <span className="text-xs text-muted">(after cleared)</span>
+                </label>
               </div>
             </div>
 
