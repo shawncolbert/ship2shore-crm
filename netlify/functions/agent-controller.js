@@ -333,9 +333,14 @@ async function executeTool(toolName, input, orgId) {
     }
 
     case 'update_opportunity': {
+      if (!input.opportunity_id) throw new Error('opportunity_id is required')
+
       const updateData = {}
       if (input.title) updateData.title = input.title
-      if (input.value !== undefined) updateData.value = input.value
+      if (input.value !== undefined) {
+        const numValue = typeof input.value === 'string' ? parseFloat(input.value.replace(/[^\d.]/g, '')) : input.value
+        if (!isNaN(numValue)) updateData.value = numValue
+      }
       if (input.stage) {
         const stageId = (await getStageByName(orgId, input.stage))?.id
         if (stageId) updateData.stage_id = stageId
@@ -353,7 +358,8 @@ async function executeTool(toolName, input, orgId) {
         .select()
         .single()
 
-      if (error) throw new Error(error.message)
+      if (error) throw new Error(`Failed to update opportunity: ${error.message}`)
+      if (!updated) throw new Error('Opportunity not found or not accessible')
 
       return {
         result: updated,
@@ -362,6 +368,8 @@ async function executeTool(toolName, input, orgId) {
     }
 
     case 'update_contact': {
+      if (!input.contact_id) throw new Error('contact_id is required')
+
       const updateData = {}
       if (input.full_name) updateData.full_name = input.full_name
       if (input.email) updateData.email = input.email
@@ -380,7 +388,8 @@ async function executeTool(toolName, input, orgId) {
         .select()
         .single()
 
-      if (error) throw new Error(error.message)
+      if (error) throw new Error(`Failed to update contact: ${error.message}`)
+      if (!updated) throw new Error('Contact not found or not accessible')
 
       return {
         result: updated,
@@ -447,13 +456,21 @@ export const handler = async (event) => {
         system:
           `You are a helpful CRM assistant. Use tools to help users manage their sales pipeline, contacts, and opportunities. Be concise and friendly.
 
-When users want to update pipeline cards (change deal amounts, names, emails, etc.):
-1. First search for the contact by name if not given a contact ID
-2. Use get_contact_opportunities to find their deals
-3. Then use update_opportunity or update_contact to make changes
-4. Provide a clear confirmation of what was changed
+IMPORTANT: When updating deal amounts, always convert amounts to numbers:
+- "$50k" → 50000
+- "$50,000" → 50000
+- "fifty thousand" → 50000
+- "50000" → 50000
 
-When users mention a contact's name or amount to change, always search first to find the right deal.
+When users want to update pipeline cards (change deal amounts, names, emails, etc.):
+1. Search for the contact by name using search_contacts
+2. Note the contact_id from results
+3. Get their opportunities using get_contact_opportunities with that contact_id
+4. Note the opportunity_id
+5. Use update_opportunity or update_contact with the correct ID and converted values
+6. Confirm what was changed
+
+CRITICAL: Always get the opportunity_id before calling update_opportunity. Never guess - search first.
 You can update: deal title, deal value/amount, pipeline stage, contact name, email, phone, company.`,
         tools: AGENT_TOOLS,
         messages,
