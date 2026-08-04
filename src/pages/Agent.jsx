@@ -108,6 +108,7 @@ export default function Agent() {
             navigate(event.route)
           } else if (
             event.type === 'CONTACT_ADDED' ||
+            event.type === 'CONTACT_UPDATED' ||
             event.type === 'OPPORTUNITY_ADDED' ||
             event.type === 'OPPORTUNITY_UPDATED' ||
             event.type === 'OPPORTUNITY_DELETED' ||
