@@ -382,19 +382,18 @@ async function getDefaultPipeline(orgId) {
 }
 
 async function getStageByName(orgId, stageName) {
-  // Map stage names to actual stage IDs
-  // For now, get first stage of default pipeline
   const pipeline = await getDefaultPipeline(orgId)
   if (!pipeline) return null
 
   const { data } = await admin
     .from('stages')
-    .select('id')
+    .select('id, name')
     .eq('pipeline_id', pipeline.id)
-    .order('position', { ascending: true })
-    .limit(1)
-    .single()
-  return data
+
+  if (!data) return null
+
+  const stage = data.find(s => s.name.toLowerCase() === stageName.toLowerCase())
+  return stage || null
 }
 
 export const handler = async (event) => {
