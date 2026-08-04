@@ -298,7 +298,7 @@ const AGENT_TOOLS = [
   },
   {
     name: 'edit_deal_value',
-    description: 'Edit the value/price of a pipeline deal. Can set exact amount or adjust by percentage.',
+    description: 'Edit the value/price of a pipeline deal. Provide EITHER new_value (exact amount) OR adjust_by_percent (relative change), not both.',
     input_schema: {
       type: 'object',
       properties: {
@@ -307,10 +307,6 @@ const AGENT_TOOLS = [
         adjust_by_percent: { type: 'number', description: 'Alternative: adjust current value by percent (e.g., 10 for +10%, -15 for -15%)' },
       },
       required: ['opportunity_id'],
-      oneOf: [
-        { required: ['opportunity_id', 'new_value'] },
-        { required: ['opportunity_id', 'adjust_by_percent'] },
-      ],
     },
   },
   {
