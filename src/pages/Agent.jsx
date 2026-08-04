@@ -131,30 +131,30 @@ export default function Agent() {
   return (
     <div className="flex h-full flex-col bg-canvas">
       {/* Header */}
-      <div className="border-b border-line bg-surface px-6 py-4">
-        <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">CRM Assistant</h1>
-        <p className="mt-1 text-sm text-muted">AI-powered sales automation. Create contacts, manage deals, search your pipeline.</p>
+      <div className="border-b border-line bg-surface px-3 py-3 sm:px-6 sm:py-4">
+        <h1 className="font-[family-name:var(--font-display)] text-lg sm:text-2xl font-bold text-ink">CRM Assistant</h1>
+        <p className="mt-1 text-xs sm:text-sm text-muted">AI-powered sales automation. Manage deals, contacts, pipeline.</p>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-3 sm:px-6 sm:space-y-4">
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
-              className={`max-w-md rounded-lg px-4 py-2 ${
+              className={`max-w-xs sm:max-w-md rounded-lg px-3 py-2 sm:px-4 sm:py-2 ${
                 msg.role === 'user'
                   ? 'bg-accent text-ink'
                   : 'bg-surface border border-line text-ink'
               }`}
             >
-              <p className="text-sm leading-relaxed">{msg.content}</p>
+              <p className="text-xs sm:text-sm leading-relaxed break-words">{msg.content}</p>
             </div>
           </div>
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-surface border border-line text-ink rounded-lg px-4 py-2">
-              <p className="text-sm text-muted">Thinking…</p>
+            <div className="bg-surface border border-line text-ink rounded-lg px-3 py-2 sm:px-4 sm:py-2">
+              <p className="text-xs sm:text-sm text-muted">Thinking…</p>
             </div>
           </div>
         )}
@@ -162,36 +162,38 @@ export default function Agent() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-line bg-surface px-6 py-4">
-        <div className="flex gap-2">
+      <div className="border-t border-line bg-surface px-3 py-3 sm:px-6 sm:py-4">
+        <div className="flex gap-2 flex-col sm:flex-row">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            placeholder={listening ? 'Listening...' : "Ask me anything... (e.g., 'Add John Doe as a $50k deal')"}
+            placeholder={listening ? 'Listening...' : "Ask me anything..."}
             disabled={loading}
-            className="flex-1 rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-50"
+            className="flex-1 rounded-lg border border-line bg-canvas px-3 py-2.5 sm:py-2 text-sm outline-none focus:border-accent disabled:opacity-50"
           />
-          <button
-            onClick={toggleMic}
-            disabled={loading}
-            className={`rounded-lg px-4 py-2 text-sm font-semibold ${
-              listening
-                ? 'bg-red-500 text-white hover:bg-red-600'
-                : 'bg-slate-600 text-white hover:bg-slate-700'
-            } disabled:opacity-50`}
-            title="Click to speak"
-          >
-            🎤
-          </button>
-          <button
-            onClick={handleSend}
-            disabled={loading || !input.trim()}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
-          >
-            Send
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={toggleMic}
+              disabled={loading}
+              className={`rounded-lg px-3 sm:px-4 py-2.5 sm:py-2 text-base sm:text-sm font-semibold transition-colors ${
+                listening
+                  ? 'bg-red-500 text-white hover:bg-red-600 active:bg-red-700'
+                  : 'bg-slate-600 text-white hover:bg-slate-700 active:bg-slate-800'
+              } disabled:opacity-50 flex-shrink-0`}
+              title="Click to speak"
+            >
+              🎤
+            </button>
+            <button
+              onClick={handleSend}
+              disabled={loading || !input.trim()}
+              className="rounded-lg bg-accent px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-semibold text-ink hover:bg-accent-600 active:bg-accent-700 disabled:opacity-50 flex-shrink-0 transition-colors"
+            >
+              Send
+            </button>
+          </div>
         </div>
       </div>
     </div>
