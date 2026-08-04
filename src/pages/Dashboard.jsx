@@ -4,6 +4,7 @@ import {
   fetchDashboardStats, fetchOpenPipelineJobs, fetchClosedJobs, fetchNewLeadsList, fetchJobsByStage,
 } from '../lib/supabase'
 import DrillDownModal from '../components/DrillDownModal'
+import BookingSidebar from '../components/BookingSidebar'
 
 const money = (n) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -46,6 +47,7 @@ export default function Dashboard() {
   })
   // { kind } for the four stat cards, or { kind: 'stage', stageId, stageName } for a per-stage row.
   const [drillDown, setDrillDown] = useState(null)
+  const [bookingSidebarOpen, setBookingSidebarOpen] = useState(false)
 
   const openDrillDown = (kind) => setDrillDown({ kind })
   const openStageDrillDown = (stageId, stageName) => setDrillDown({ kind: 'stage', stageId, stageName })
@@ -63,11 +65,19 @@ export default function Dashboard() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <header className="mb-6">
-        <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">
-          Dashboard
-        </h1>
-        <p className="text-sm text-muted">Your pipeline at a glance. Click a number to see what's behind it.</p>
+      <header className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">
+            Dashboard
+          </h1>
+          <p className="text-sm text-muted">Your pipeline at a glance. Click a number to see what's behind it.</p>
+        </div>
+        <button
+          onClick={() => setBookingSidebarOpen(true)}
+          className="h-fit shrink-0 bg-accent hover:bg-accent-600 text-ink font-semibold py-2 px-4 rounded text-sm"
+        >
+          + New Booking
+        </button>
       </header>
 
       {isLoading && <p className="text-sm text-muted">Loading…</p>}
@@ -135,6 +145,11 @@ export default function Dashboard() {
         rows={drillQuery.data}
         isLoading={drillQuery.isLoading}
         error={drillQuery.error}
+      />
+
+      <BookingSidebar
+        open={bookingSidebarOpen}
+        onClose={() => setBookingSidebarOpen(false)}
       />
     </div>
   )
