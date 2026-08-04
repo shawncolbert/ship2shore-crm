@@ -106,7 +106,13 @@ export default function Agent() {
         for (const event of data.clientEvents) {
           if (event.type === 'REDIRECT') {
             navigate(event.route)
-          } else if (event.type === 'CONTACT_ADDED' || event.type === 'OPPORTUNITY_ADDED') {
+          } else if (
+            event.type === 'CONTACT_ADDED' ||
+            event.type === 'OPPORTUNITY_ADDED' ||
+            event.type === 'OPPORTUNITY_UPDATED' ||
+            event.type === 'OPPORTUNITY_DELETED' ||
+            event.type === 'CONTACT_DELETED'
+          ) {
             // Refresh relevant queries
             qc.invalidateQueries({ queryKey: ['contacts'] })
             qc.invalidateQueries({ queryKey: ['opportunities'] })

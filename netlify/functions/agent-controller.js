@@ -74,6 +74,52 @@ const AGENT_TOOLS = [
       required: ['route'],
     },
   },
+  {
+    name: 'update_opportunity_stage',
+    description: 'Move an opportunity to a different pipeline stage',
+    input_schema: {
+      type: 'object',
+      properties: {
+        opportunity_id: { type: 'string', description: 'ID of the opportunity to move' },
+        stage: {
+          type: 'string',
+          enum: ['lead', 'qualified', 'proposal', 'negotiation', 'closed_won', 'closed_lost'],
+          description: 'New pipeline stage',
+        },
+      },
+      required: ['opportunity_id', 'stage'],
+    },
+  },
+  {
+    name: 'delete_opportunity',
+    description: 'Delete an opportunity/deal from the pipeline',
+    input_schema: {
+      type: 'object',
+      properties: {
+        opportunity_id: { type: 'string', description: 'ID of the opportunity to delete' },
+      },
+      required: ['opportunity_id'],
+    },
+  },
+  {
+    name: 'delete_contact',
+    description: 'Delete a contact from the CRM',
+    input_schema: {
+      type: 'object',
+      properties: {
+        contact_id: { type: 'string', description: 'ID of the contact to delete' },
+      },
+      required: ['contact_id'],
+    },
+  },
+  {
+    name: 'get_outstanding_revenue',
+    description: 'Calculate total amount still owed by customers (deals not closed)',
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  },
 ]
 
 async function executeTool(toolName, input, orgId) {
@@ -154,6 +200,80 @@ async function executeTool(toolName, input, orgId) {
       return {
         result: { status: 'navigating', route: input.route },
         clientEvent: { type: 'REDIRECT', route: input.route },
+      }
+    }
+
+    case 'update_opportunity_stage': {
+      const stageId = (await getStageByName(orgId, input.stage))?.id
+      if (!stageId) throw new Error(`Stage "${input.stage}" not found`)
+
+      const { error } = await admin
+        .from('opportunities')
+        .update({ stage_id: stageId })
+        .eq('id', input.opportunity_id)
+        .eq('org_id', orgId)
+
+      if (error) throw new Error(error.message)
+      return {
+        result: { status: 'updated', stage: input.stage },
+        clientEvent: { type: 'OPPORTUNITY_UPDATED', data: { opportunityId: input.opportunity_id, stage: input.stage } },
+      }
+    }
+
+    case 'delete_opportunity': {
+      const { error } = await admin
+        .from('opportunities')
+        .delete()
+        .eq('id', input.opportunity_id)
+        .eq('org_id', orgId)
+
+      if (error) throw new Error(error.message)
+      return {
+        result: { status: 'deleted', opportunityId: input.opportunity_id },
+        clientEvent: { type: 'OPPORTUNITY_DELETED', data: { opportunityId: input.opportunity_id } },
+      }
+    }
+
+    case 'delete_contact': {
+      const { error } = await admin
+        .from('contacts')
+        .delete()
+        .eq('id', input.contact_id)
+        .eq('org_id', orgId)
+
+      if (error) throw new Error(error.message)
+      return {
+        result: { status: 'deleted', contactId: input.contact_id },
+        clientEvent: { type: 'CONTACT_DELETED', data: { contactId: input.contact_id } },
+      }
+    }
+
+    case 'get_outstanding_revenue': {
+      // Get all opportunities that aren't closed (won or lost)
+      const { data: opportunities, error } = await admin
+        .from('opportunities')
+        .select('id, title, value, stage_id')
+        .eq('org_id', orgId)
+
+      if (error) throw new Error(error.message)
+
+      // Get all stages to find which ones are "closed"
+      const { data: stages } = await admin.from('stages').select('id, name')
+
+      const closedStageNames = ['closed_won', 'closed_lost']
+      const closedStageIds = stages?.filter(s => closedStageNames.includes(s.name.toLowerCase()))?.map(s => s.id) || []
+
+      // Filter to only open deals
+      const openOpportunities = opportunities?.filter(opp => !closedStageIds.includes(opp.stage_id)) || []
+      const totalOutstanding = openOpportunities.reduce((sum, opp) => sum + (opp.value || 0), 0)
+
+      return {
+        result: {
+          totalOutstanding,
+          dealCount: openOpportunities.length,
+          deals: openOpportunities.map(opp => ({ id: opp.id, title: opp.title, value: opp.value })),
+        },
+        clientEvent: null,
       }
     }
 
