@@ -883,6 +883,7 @@ async function getStageByName(orgId, stageName) {
 
 export const handler = async (event) => {
   try {
+    console.log('📍 agent-controller: Handler called')
     const token = (event.headers.authorization || event.headers.Authorization || '').replace(/^Bearer /, '')
     const user = await userFromToken(token)
     if (!user) return json(401, { error: 'Unauthorized' })
@@ -893,6 +894,7 @@ export const handler = async (event) => {
     const { userPrompt, conversationHistory = [] } = JSON.parse(event.body || '{}')
     if (!userPrompt) return json(400, { error: 'User prompt required' })
 
+    console.log('📍 agent-controller: User prompt received:', userPrompt.substring(0, 100))
     const messages = [...conversationHistory, { role: 'user', content: userPrompt }]
     const clientEvents = []
 
@@ -903,6 +905,7 @@ export const handler = async (event) => {
 
     while (loopCount < MAX_LOOPS) {
       loopCount++
+      console.log(`📍 agent-controller: Loop ${loopCount}`)
 
       const response = await anthropic.messages.create({
         model: 'claude-opus-5',
@@ -1034,25 +1037,42 @@ Step 4: Confirm
 
       messages.push({ role: 'assistant', content: response.content })
 
+      console.log(`📍 Stop reason: ${response.stop_reason}`)
+      console.log(`📍 Response content: ${JSON.stringify(response.content.map(b => ({ type: b.type, text: b.text?.substring(0, 100), tool_name: b.name })))}`)
+
       if (response.stop_reason === 'end_turn') {
         finalReply = response.content.find((b) => b.type === 'text')?.text || 'Done'
+        console.log(`📍 Agent ended conversation: ${finalReply.substring(0, 100)}`)
         break
       }
 
       if (response.stop_reason === 'tool_use') {
+        console.log(`📍 Agent requesting tools`)
         const toolResults = []
 
         for (const block of response.content) {
           if (block.type === 'tool_use') {
-            const { result, clientEvent } = await executeTool(block.name, block.input, orgId)
+            console.log(`📍 Tool call: ${block.name}`)
+            try {
+              const { result, clientEvent } = await executeTool(block.name, block.input, orgId)
+              console.log(`📍 Tool ${block.name} succeeded:`, JSON.stringify(result).substring(0, 100))
 
-            if (clientEvent) clientEvents.push(clientEvent)
+              if (clientEvent) clientEvents.push(clientEvent)
 
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: JSON.stringify(result),
-            })
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: block.id,
+                content: JSON.stringify(result),
+              })
+            } catch (toolErr) {
+              console.error(`❌ Tool ${block.name} failed:`, toolErr.message)
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: block.id,
+                is_error: true,
+                content: toolErr.message,
+              })
+            }
           }
         }
 
