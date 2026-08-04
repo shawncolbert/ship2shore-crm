@@ -109,7 +109,6 @@ async function executeTool(toolName, input, orgId) {
           stage_id: (await getStageByName(orgId, input.stage))?.id,
           title: input.title,
           value: input.deal_value || null,
-          description: `Created by AI agent`,
         })
         .select()
         .single()
