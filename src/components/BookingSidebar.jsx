@@ -118,6 +118,11 @@ export default function BookingSidebar({ open, onClose }) {
       return
     }
 
+    if (!selectedContact && !newContactEmail) {
+      setError('Please provide an email for the new customer')
+      return
+    }
+
     if (lineItems.length === 0) {
       setError('Please add at least one service')
       return
