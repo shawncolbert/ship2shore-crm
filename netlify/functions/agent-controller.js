@@ -1,5 +1,6 @@
 import { admin, userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
 import { getDefaultPipeline, getStageByName } from './_shared/pipeline.js'
+import { sendCustomerEmail } from './_shared/email.js'
 import Anthropic from '@anthropic-ai/sdk'
 
 const json = (statusCode, body) => ({
@@ -831,8 +832,9 @@ Thank you,
 Ship2Shore Logistics`
       }
 
-      // Log email for now (in production, this would call an email service)
-      console.log(`📧 Email to ${input.customer_email}:\nSubject: ${subject}\n${emailBody}`)
+      if (!input.customer_email) throw new Error('customer_email is required')
+
+      await sendCustomerEmail({ orgId, to: input.customer_email, subject, body: emailBody })
 
       return {
         result: {

@@ -1,5 +1,6 @@
 import { admin, userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
 import { getDefaultPipeline, getStageByName } from './_shared/pipeline.js'
+import { sendCustomerEmail } from './_shared/email.js'
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -127,20 +128,36 @@ export const handler = async (event) => {
 
     if (oppErr) return json(500, { error: `Failed to create booking: ${oppErr.message}` })
 
-    // Send requested emails (logged for now; swap in a real email provider later)
+    // Send requested emails
     const emailsSent = []
-    if (sendDeliveryOrder) {
-      const email = buildEmail('delivery_order_request', { customerName: contact.full_name, bookingDetails: lineItemsSummary })
-      console.log(`📧 Delivery order request to ${contact.email}:\nSubject: ${email.subject}\n${email.body}`)
-      emailsSent.push('delivery_order_request')
-    }
-    if (sendPaymentLink) {
-      const email = buildEmail('payment_link_request', { customerName: contact.full_name, bookingAmount: totalValue, bookingDetails: lineItemsSummary })
-      console.log(`📧 Payment link request to ${contact.email}:\nSubject: ${email.subject}\n${email.body}`)
-      emailsSent.push('payment_link_request')
+    const emailErrors = []
+
+    if ((sendDeliveryOrder || sendPaymentLink) && !contact.email) {
+      emailErrors.push('Contact has no email on file — could not send the requested email(s).')
+    } else {
+      if (sendDeliveryOrder) {
+        const email = buildEmail('delivery_order_request', { customerName: contact.full_name, bookingDetails: lineItemsSummary })
+        try {
+          await sendCustomerEmail({ orgId, to: contact.email, subject: email.subject, body: email.body, contactId: contact.id })
+          emailsSent.push('delivery_order_request')
+        } catch (e) {
+          console.error('❌ Failed to send delivery order email:', e)
+          emailErrors.push(`Delivery order email failed: ${e.message}`)
+        }
+      }
+      if (sendPaymentLink) {
+        const email = buildEmail('payment_link_request', { customerName: contact.full_name, bookingAmount: totalValue, bookingDetails: lineItemsSummary })
+        try {
+          await sendCustomerEmail({ orgId, to: contact.email, subject: email.subject, body: email.body, contactId: contact.id })
+          emailsSent.push('payment_link_request')
+        } catch (e) {
+          console.error('❌ Failed to send payment link email:', e)
+          emailErrors.push(`Payment link email failed: ${e.message}`)
+        }
+      }
     }
 
-    return json(200, { contact, opportunity, emailsSent })
+    return json(200, { contact, opportunity, emailsSent, emailErrors })
   } catch (e) {
     console.error('❌ create-booking error:', e)
     return json(500, { error: e.message })

@@ -189,7 +189,12 @@ export default function BookingSidebar({ open, onClose }) {
       setMessagesToSend({ deliveryOrder: true, paymentLink: false })
       setError('')
 
-      alert(`✓ ${customerName} - $${totalValue} added to pipeline!`)
+      const emailNote = data.emailErrors?.length
+        ? `\n\n⚠ ${data.emailErrors.join(' ')}`
+        : data.emailsSent?.length
+          ? `\n\n✓ Email sent to customer.`
+          : ''
+      alert(`✓ ${customerName} - $${totalValue} added to pipeline!${emailNote}`)
       onClose()
     } catch (err) {
       console.error('❌ Booking creation error:', err)
