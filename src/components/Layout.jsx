@@ -15,6 +15,7 @@ const nav = [
   { to: '/do-fix', label: 'DO Fix' },
   { to: '/automations', label: 'Automations' },
   { to: '/services', label: 'Services' },
+  { to: '/settings/business-card', label: 'Business Card' },
   { to: '/payment-settings', label: 'Payments' },
   { to: '/landing-pages', label: 'Landing Pages' },
   { to: '/funnels', label: 'Funnels' },

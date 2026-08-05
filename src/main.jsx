@@ -22,6 +22,8 @@ import LandingPageEditor from './pages/LandingPageEditor'
 import PublicUpload from './pages/PublicUpload'
 import PublicBooking from './pages/PublicBooking'
 import LandingPagePublic from './pages/LandingPagePublic'
+import PublicBusinessCard from './pages/PublicBusinessCard'
+import BusinessCardSettings from './pages/BusinessCardSettings'
 import Calendar from './pages/Calendar'
 import Funnels from './pages/Funnels'
 import PublicFunnel from './pages/PublicFunnel'
@@ -46,6 +48,8 @@ function App() {
       <Route path="/book/:orgSlug" element={<PublicBooking />} />
       {/* Public landing pages — no auth gate */}
       <Route path="/pages/:slug" element={<LandingPagePublic />} />
+      {/* Public digital business card — no auth gate */}
+      <Route path="/card/:slug" element={<PublicBusinessCard />} />
       {/* Public funnels — no auth gate */}
       <Route path="/funnel/:slug" element={<PublicFunnel />} />
       <Route
@@ -65,6 +69,7 @@ function App() {
                 <Route path="automations" element={<Automations />} />
                 <Route path="payment-settings" element={<PaymentSettings />} />
                 <Route path="services" element={<Services />} />
+                <Route path="settings/business-card" element={<BusinessCardSettings />} />
                 <Route path="landing-pages" element={<LandingPages />} />
                 <Route path="landing-pages/:id" element={<LandingPageEditor />} />
                 <Route path="funnels" element={<Funnels />} />

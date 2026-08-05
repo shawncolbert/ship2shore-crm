@@ -30,5 +30,15 @@ export const handler = async (event) => {
     .single()
   if (error) return json(500, { error: error.message })
 
+  // Seed a blank business card row so the builder isn't a crash on first
+  // login (see supabase/migrations/0015_business_cards.sql for the same
+  // backfill applied to orgs that already existed).
+  await admin.from('business_cards').insert({
+    org_id: data.id,
+    slug: data.slug || `card-${data.id.slice(0, 8)}`,
+    brand_name: data.name,
+    full_name: data.name,
+  })
+
   return json(200, { organization: data })
 }
