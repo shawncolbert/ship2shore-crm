@@ -1,4 +1,5 @@
 import { admin } from './_shared/supabaseAdmin.js'
+import { getDefaultPipeline, getStageByName } from './_shared/pipeline.js'
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -56,34 +57,22 @@ export const handler = async (event) => {
 
     // Create opportunity
     if (contact) {
-      // Get default pipeline and first stage
-      const { data: pipeline } = await admin
-        .from('pipelines')
-        .select('id')
-        .eq('org_id', orgId)
-        .eq('is_default', true)
-        .single()
+      const pipeline = await getDefaultPipeline(orgId)
+      if (!pipeline) return json(500, { error: 'No default pipeline configured for this organization' })
 
-      const { data: firstStage } = await admin
-        .from('stages')
-        .select('id')
-        .eq('pipeline_id', pipeline?.id)
-        .order('position', { ascending: true })
-        .limit(1)
-        .single()
+      const stage = await getStageByName(orgId, 'New Booking')
+      if (!stage) return json(500, { error: 'Pipeline is missing a "New Booking" stage' })
+
+      const details = Object.entries(data).map(([k, v]) => `${k}: ${v}`).join(' | ')
 
       const { error: oppErr } = await admin
         .from('opportunities')
         .insert({
           org_id: orgId,
-          pipeline_id: pipeline?.id,
-          stage_id: firstStage?.id,
+          pipeline_id: pipeline.id,
+          stage_id: stage.id,
           contact_id: contact.id,
-          title: data.service_type || 'Funnel Lead',
-          value: null,
-          description: Object.entries(data)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join('\n'),
+          title: `${contact.full_name} - ${data.service_type || 'Funnel Lead'}${details ? ` (${details})` : ''}`,
         })
 
       if (oppErr) return json(500, { error: oppErr.message })
