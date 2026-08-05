@@ -29,6 +29,7 @@ import Funnels from './pages/Funnels'
 import PublicFunnel from './pages/PublicFunnel'
 import SocialPosts from './pages/SocialPosts'
 import Agent from './pages/Agent'
+import Help from './pages/Help'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -59,6 +60,7 @@ function App() {
             <Layout>
               <Routes>
                 <Route index element={<Dashboard />} />
+                <Route path="help" element={<Help />} />
                 <Route path="inbox" element={<Inbox />} />
                 <Route path="contacts" element={<Contacts />} />
                 <Route path="contacts/:id" element={<ContactDetail />} />

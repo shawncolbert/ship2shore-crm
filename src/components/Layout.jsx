@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { fetchMyProfile, fetchMyOrg, fetchNewBookingCount } from '../lib/supabase'
 
 const nav = [
+  { to: '/help', label: 'Help / Getting Started' },
   { to: '/agent', label: 'AI Assistant' },
   { to: '/', label: 'Dashboard', end: true },
   { to: '/inbox', label: 'Inbox' },
