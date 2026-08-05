@@ -1,5 +1,5 @@
 import { admin } from './_shared/supabaseAdmin.js'
-import { getDefaultPipeline, getStageByName } from './_shared/pipeline.js'
+import { getDefaultPipeline, getIntakeStage } from './_shared/pipeline.js'
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -60,8 +60,8 @@ export const handler = async (event) => {
       const pipeline = await getDefaultPipeline(orgId)
       if (!pipeline) return json(500, { error: 'No default pipeline configured for this organization' })
 
-      const stage = await getStageByName(orgId, 'New Booking')
-      if (!stage) return json(500, { error: 'Pipeline is missing a "New Booking" stage' })
+      const stage = await getIntakeStage(orgId)
+      if (!stage) return json(500, { error: 'This pipeline has no stages configured yet.' })
 
       const details = Object.entries(data).map(([k, v]) => `${k}: ${v}`).join(' | ')
 

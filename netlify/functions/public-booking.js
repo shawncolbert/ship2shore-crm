@@ -1,5 +1,5 @@
 import { admin } from './_shared/supabaseAdmin.js'
-import { getDefaultPipeline, getStageByName } from './_shared/pipeline.js'
+import { getDefaultPipeline, getIntakeStage } from './_shared/pipeline.js'
 
 // Public, unauthenticated native booking widget — an in-app alternative to the
 // Calendly link. A customer picks a service + time slot and this writes the
@@ -14,7 +14,6 @@ import { getDefaultPipeline, getStageByName } from './_shared/pipeline.js'
 // existing /book link (with no slug) keeps working exactly as before for
 // every integration that already points at it.
 const DEFAULT_ORG_ID = '11111111-1111-1111-1111-111111111111'
-const BOOKING_STAGE_NAME = 'New Booking'
 
 // Resolves which org this request is for. White-label orgs are addressed by
 // their own slug (/book/:orgSlug); omitting it falls back to Ship2Shore so
@@ -186,8 +185,8 @@ async function bookSlot(orgId, payload) {
 
   const pipeline = await getDefaultPipeline(orgId)
   if (!pipeline) return { status: 500, body: { error: 'This business has no pipeline configured yet.' } }
-  const stage = await getStageByName(orgId, BOOKING_STAGE_NAME)
-  if (!stage) return { status: 500, body: { error: `This business's pipeline is missing a "${BOOKING_STAGE_NAME}" stage.` } }
+  const stage = await getIntakeStage(orgId)
+  if (!stage) return { status: 500, body: { error: 'This pipeline has no stages configured yet.' } }
 
   const title = service.name
   const { data: opp, error: oppErr } = await admin

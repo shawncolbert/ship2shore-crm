@@ -15,6 +15,7 @@ import Documents from './pages/Documents'
 import Automations from './pages/Automations'
 import PaymentSettings from './pages/PaymentSettings'
 import Services from './pages/Services'
+import PipelineStages from './pages/PipelineStages'
 import AdminOrgs from './pages/AdminOrgs'
 import DeliveryOrderFix from './pages/DeliveryOrderFix'
 import LandingPages from './pages/LandingPages'
@@ -71,6 +72,7 @@ function App() {
                 <Route path="automations" element={<Automations />} />
                 <Route path="payment-settings" element={<PaymentSettings />} />
                 <Route path="services" element={<Services />} />
+                <Route path="settings/pipeline-stages" element={<PipelineStages />} />
                 <Route path="settings/business-card" element={<BusinessCardSettings />} />
                 <Route path="landing-pages" element={<LandingPages />} />
                 <Route path="landing-pages/:id" element={<LandingPageEditor />} />

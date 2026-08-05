@@ -40,5 +40,26 @@ export const handler = async (event) => {
     full_name: data.name,
   })
 
+  // Seed a default pipeline with a simple 4-stage starter set so the
+  // dashboard, booking sidebar, and public booking widget all work from
+  // the first login -- without this an org has zero pipelines and every
+  // one of those breaks (see supabase/migrations/0016_stages_color_and_intake_flag.sql
+  // for the same backfill applied to orgs that already existed). The
+  // pipeline stages admin screen lets them rename/reorder/recolor or
+  // start over with a different template afterward.
+  const { data: pipeline } = await admin
+    .from('pipelines')
+    .insert({ org_id: data.id, name: 'Main Pipeline', is_default: true })
+    .select('id')
+    .single()
+  if (pipeline) {
+    await admin.from('stages').insert([
+      { org_id: data.id, pipeline_id: pipeline.id, name: 'New Lead', position: 0, color: '#e8a317', is_intake: true },
+      { org_id: data.id, pipeline_id: pipeline.id, name: 'Scheduled', position: 1, color: '#22d3ee' },
+      { org_id: data.id, pipeline_id: pipeline.id, name: 'Completed', position: 2, color: '#1fa97a' },
+      { org_id: data.id, pipeline_id: pipeline.id, name: 'Canceled', position: 100, color: '#d9534f' },
+    ])
+  }
+
   return json(200, { organization: data })
 }

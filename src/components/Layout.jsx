@@ -11,6 +11,7 @@ const nav = [
   { to: '/inbox', label: 'Inbox' },
   { to: '/contacts', label: 'Contacts' },
   { to: '/pipeline', label: 'Pipeline' },
+  { to: '/settings/pipeline-stages', label: 'Pipeline Stages' },
   { to: '/calendar', label: 'Calendar' },
   { to: '/documents', label: 'Documents' },
   { to: '/do-fix', label: 'DO Fix' },

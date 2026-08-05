@@ -1,5 +1,5 @@
 import { admin, userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
-import { getDefaultPipeline, getStageByName } from './_shared/pipeline.js'
+import { getDefaultPipeline, getIntakeStage } from './_shared/pipeline.js'
 import { sendCustomerEmail } from './_shared/email.js'
 
 const json = (statusCode, body) => ({
@@ -7,8 +7,6 @@ const json = (statusCode, body) => ({
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body),
 })
-
-const BOOKING_STAGE_NAME = 'New Booking'
 
 function buildEmail(messageType, { customerName, bookingAmount, bookingDetails }) {
   if (messageType === 'delivery_order_request') {
@@ -109,8 +107,8 @@ export const handler = async (event) => {
     const pipeline = await getDefaultPipeline(orgId)
     if (!pipeline) return json(500, { error: 'No default pipeline configured for this organization' })
 
-    const stage = await getStageByName(orgId, BOOKING_STAGE_NAME)
-    if (!stage) return json(500, { error: `Pipeline is missing a "${BOOKING_STAGE_NAME}" stage` })
+    const stage = await getIntakeStage(orgId)
+    if (!stage) return json(500, { error: 'This pipeline has no stages configured yet.' })
 
     // Create the opportunity
     const { data: opportunity, error: oppErr } = await admin

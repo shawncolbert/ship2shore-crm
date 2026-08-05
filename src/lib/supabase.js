@@ -158,9 +158,11 @@ export async function createContactWithBooking({ contact, booking = null }) {
 
   let opportunity = null
   if (booking) {
-    // Drop the card into the default pipeline's "New Booking" stage. Not
-    // "first by position" -- some orgs have earlier-position stages (e.g.
-    // Ship2Shore's "Not Customs Cleared" at -2) that aren't the intake stage.
+    // Drop the card into the default pipeline's intake stage. Not "first by
+    // position" -- some orgs have earlier-position stages (e.g. Ship2Shore's
+    // "Not Customs Cleared" at -2) that aren't the intake stage. The
+    // is_intake flag (set via the pipeline stages admin screen) is what
+    // actually marks it, regardless of what that stage is named for this org.
     const { data: pipeline, error: pErr } = await supabase
       .from('pipelines')
       .select('id')
@@ -172,10 +174,10 @@ export async function createContactWithBooking({ contact, booking = null }) {
 
     const { data: stages, error: sErr } = await supabase
       .from('stages')
-      .select('id, name')
+      .select('id, name, is_intake')
       .eq('pipeline_id', pipeline.id)
     if (sErr) throw sErr
-    const stage = stages.find((s) => s.name.toLowerCase() === 'new booking') || stages[0]
+    const stage = stages.find((s) => s.is_intake) || stages.find((s) => s.name.toLowerCase() === 'new booking') || stages[0]
     if (!stage) throw new Error('This pipeline has no stages configured.')
 
     const { data: newOpp, error: oErr } = await supabase
@@ -252,9 +254,10 @@ export async function fetchNewBookingCount() {
   if (pErr) throw pErr
   if (!pipeline) return 0
 
-  const { data: stage, error: sErr } = await supabase
-    .from('stages').select('id').eq('pipeline_id', pipeline.id).ilike('name', 'New Booking').maybeSingle()
+  const { data: stages, error: sErr } = await supabase
+    .from('stages').select('id, name, is_intake').eq('pipeline_id', pipeline.id)
   if (sErr) throw sErr
+  const stage = stages?.find((s) => s.is_intake) || stages?.find((s) => s.name.toLowerCase() === 'new booking')
   if (!stage) return 0
 
   const { count, error } = await supabase
@@ -730,6 +733,129 @@ export async function fetchStageNames() {
     .from('stages').select('name, position').gte('position', 0).order('position')
   if (error) throw error
   return (data || []).map((s) => s.name)
+}
+
+/* ------------------------------------------------------------------ */
+/* Pipeline stages admin (Settings > Pipeline Stages)                  */
+/* ------------------------------------------------------------------ */
+
+// A handful of starter sets offered when an org has zero stages -- picking
+// one just inserts normal rows into the org's own pipeline; nothing about
+// this is special beyond that first insert, so it's exactly as editable
+// afterward as anything built by hand.
+export const STAGE_TEMPLATES = {
+  simple: {
+    label: 'Simple 4-stage',
+    description: 'New Lead → Scheduled → Completed → Canceled',
+    stages: [
+      { name: 'New Lead', color: '#e8a317', is_intake: true },
+      { name: 'Scheduled', color: '#22d3ee' },
+      { name: 'Completed', color: '#1fa97a' },
+      { name: 'Canceled', color: '#d9534f' },
+    ],
+  },
+  booking: {
+    label: 'Booking flow',
+    description: 'New Booking → Scheduled → In Progress → Completed → Paid → Canceled',
+    stages: [
+      { name: 'New Booking', color: '#e8a317', is_intake: true },
+      { name: 'Scheduled', color: '#22d3ee' },
+      { name: 'In Progress', color: '#3a5567' },
+      { name: 'Completed', color: '#1fa97a' },
+      { name: 'Paid', color: '#1fa97a' },
+      { name: 'Canceled', color: '#d9534f' },
+    ],
+  },
+}
+
+export async function fetchMyPipeline() {
+  const orgId = await fetchMyOrgId()
+  const { data: pipeline, error: pErr } = await supabase
+    .from('pipelines').select('id, name').eq('org_id', orgId).eq('is_default', true).maybeSingle()
+  if (pErr) throw pErr
+  if (!pipeline) return { pipeline: null, stages: [] }
+
+  const { data: stages, error: sErr } = await supabase
+    .from('stages')
+    .select('id, name, position, color, is_intake, is_won, is_lost')
+    .eq('pipeline_id', pipeline.id)
+    .order('position', { ascending: true })
+  if (sErr) throw sErr
+
+  return { pipeline, stages: stages || [] }
+}
+
+// Seeds a fresh pipeline (or the org's first one) from a template. Only
+// meaningful when the org has none yet -- the admin screen only offers
+// this in that empty state.
+export async function applyStageTemplate(templateKey) {
+  const orgId = await fetchMyOrgId()
+  const template = STAGE_TEMPLATES[templateKey]
+  if (!template) throw new Error('Unknown template')
+
+  const { data: pipeline, error: pErr } = await supabase
+    .from('pipelines')
+    .insert({ org_id: orgId, name: 'Main Pipeline', is_default: true })
+    .select('id').single()
+  if (pErr) throw pErr
+
+  const rows = template.stages.map((s, i) => ({
+    org_id: orgId, pipeline_id: pipeline.id, name: s.name, position: i, color: s.color, is_intake: !!s.is_intake,
+  }))
+  const { error: sErr } = await supabase.from('stages').insert(rows)
+  if (sErr) throw sErr
+
+  return pipeline
+}
+
+export async function createStage({ pipelineId, name, color }) {
+  const orgId = await fetchMyOrgId()
+  const { data: existing } = await supabase.from('stages').select('position').eq('pipeline_id', pipelineId)
+  const nextPosition = (existing || []).reduce((max, s) => Math.max(max, s.position), -1) + 1
+  const { data, error } = await supabase
+    .from('stages')
+    .insert({ org_id: orgId, pipeline_id: pipelineId, name: name.trim(), color: color || null, position: nextPosition })
+    .select('*').single()
+  if (error) throw error
+  return data
+}
+
+export async function updateStage(id, patch) {
+  const allowed = {}
+  if ('name' in patch) allowed.name = patch.name.trim()
+  if ('color' in patch) allowed.color = patch.color || null
+  const { data, error } = await supabase.from('stages').update(allowed).eq('id', id).select('*').single()
+  if (error) throw error
+  if (!data) throw new Error('Could not save this stage — permission denied.')
+  return data
+}
+
+// Exactly one stage per pipeline may be the intake stage (DB-enforced by a
+// partial unique index) -- clear the old one first so setting a new one
+// never trips it.
+export async function setIntakeStage(pipelineId, stageId) {
+  const { error: clearErr } = await supabase.from('stages').update({ is_intake: false }).eq('pipeline_id', pipelineId)
+  if (clearErr) throw clearErr
+  const { error } = await supabase.from('stages').update({ is_intake: true }).eq('id', stageId)
+  if (error) throw error
+}
+
+export async function reorderStages(stages) {
+  // Supabase JS has no bulk-update-by-differing-values, so each row goes
+  // one at a time; the list is always small (a handful of pipeline stages).
+  await Promise.all(stages.map((s, i) => supabase.from('stages').update({ position: i }).eq('id', s.id)))
+}
+
+// Blocked if any job is currently sitting in this stage -- silently
+// deleting it would leave those opportunities pointing at a stage_id that
+// no longer exists.
+export async function deleteStage(id) {
+  const { count, error: cErr } = await supabase
+    .from('opportunities').select('id', { count: 'exact', head: true }).eq('stage_id', id).neq('status', 'cancelled')
+  if (cErr) throw cErr
+  if (count > 0) throw new Error(`${count} job${count === 1 ? ' is' : 's are'} still in this stage — move ${count === 1 ? 'it' : 'them'} first.`)
+  const { error } = await supabase.from('stages').delete().eq('id', id)
+  if (error) throw error
 }
 
 export async function fetchAutomationRules() {

@@ -25,6 +25,15 @@ const SECTIONS = [
       your attention — that's your first stop most mornings.`,
   },
   {
+    id: 'pipeline-stages',
+    title: 'Pipeline Stages',
+    nav: '/settings/pipeline-stages',
+    body: `The columns your Pipeline board shows are entirely yours to define — add, rename, recolor, reorder,
+      or delete them for how your business actually works. Mark one "New work lands here": that's where a
+      booking from your booking sidebar, public booking page, or a funnel gets dropped automatically,
+      whatever you've named it.`,
+  },
+  {
     id: 'booking',
     title: 'Creating a booking',
     nav: '/',
@@ -139,33 +148,40 @@ export default function Help() {
           <li className={step}>
             <span className={stepNum}>1</span>
             <div>
+              <p className="text-sm font-semibold text-ink">Set up your pipeline stages</p>
+              <p className="text-sm text-muted">Go to <a href="/settings/pipeline-stages" className="text-accent hover:underline">Pipeline Stages</a> and name the columns for how your business actually works — a starter template is offered if you haven't already.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>2</span>
+            <div>
               <p className="text-sm font-semibold text-ink">Add what you sell</p>
               <p className="text-sm text-muted">Go to <a href="/services" className="text-accent hover:underline">Services</a> and list your services with prices. This drives your booking screen and your public booking page.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>2</span>
+            <span className={stepNum}>3</span>
             <div>
               <p className="text-sm font-semibold text-ink">Add how you get paid</p>
               <p className="text-sm text-muted">Go to <a href="/payment-settings" className="text-accent hover:underline">Payment Settings</a> and enter your Zelle/Venmo/Cash App/Apple Pay handles.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>3</span>
+            <span className={stepNum}>4</span>
             <div>
               <p className="text-sm font-semibold text-ink">Publish your digital business card</p>
               <p className="text-sm text-muted">Go to <a href="/settings/business-card" className="text-accent hover:underline">Business Card</a>, fill it in, hit Publish, and copy your link or QR code to share.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>4</span>
+            <span className={stepNum}>5</span>
             <div>
               <p className="text-sm font-semibold text-ink">Create a test booking</p>
               <p className="text-sm text-muted">From the <a href="/" className="text-accent hover:underline">Dashboard</a>, click "+ New Booking" and walk through it once so you know what a customer's job looks like on your pipeline.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>5</span>
+            <span className={stepNum}>6</span>
             <div>
               <p className="text-sm font-semibold text-ink">Need a teammate added, or something changed?</p>
               <p className="text-sm text-muted">Adding additional users to your account isn't self-serve yet — reach out and we'll get them set up.</p>
