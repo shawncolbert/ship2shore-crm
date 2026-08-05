@@ -158,7 +158,9 @@ export async function createContactWithBooking({ contact, booking = null }) {
 
   let opportunity = null
   if (booking) {
-    // Drop the card into the default pipeline's first stage ("New Booking").
+    // Drop the card into the default pipeline's "New Booking" stage. Not
+    // "first by position" -- some orgs have earlier-position stages (e.g.
+    // Ship2Shore's "Not Customs Cleared" at -2) that aren't the intake stage.
     const { data: pipeline, error: pErr } = await supabase
       .from('pipelines')
       .select('id')
@@ -168,14 +170,13 @@ export async function createContactWithBooking({ contact, booking = null }) {
       .single()
     if (pErr) throw pErr
 
-    const { data: stage, error: sErr } = await supabase
+    const { data: stages, error: sErr } = await supabase
       .from('stages')
-      .select('id')
+      .select('id, name')
       .eq('pipeline_id', pipeline.id)
-      .order('position', { ascending: true })
-      .limit(1)
-      .single()
     if (sErr) throw sErr
+    const stage = stages.find((s) => s.name.toLowerCase() === 'new booking') || stages[0]
+    if (!stage) throw new Error('This pipeline has no stages configured.')
 
     const { data: newOpp, error: oErr } = await supabase
       .from('opportunities')
@@ -240,6 +241,29 @@ export async function fetchDefaultPipeline() {
   if (oErr) throw oErr
 
   return { pipeline, stages, opportunities: (opps || []).filter((o) => o.status !== 'cancelled') }
+}
+
+// Count of jobs sitting in the "New Booking" stage -- bookings that came in
+// (from the public booking widget, a funnel, or the sidebar) and haven't
+// been triaged into Scheduled/In Progress yet. Drives the sidebar nav badge.
+export async function fetchNewBookingCount() {
+  const { data: pipeline, error: pErr } = await supabase
+    .from('pipelines').select('id').eq('is_default', true).limit(1).maybeSingle()
+  if (pErr) throw pErr
+  if (!pipeline) return 0
+
+  const { data: stage, error: sErr } = await supabase
+    .from('stages').select('id').eq('pipeline_id', pipeline.id).ilike('name', 'New Booking').maybeSingle()
+  if (sErr) throw sErr
+  if (!stage) return 0
+
+  const { count, error } = await supabase
+    .from('opportunities')
+    .select('id', { count: 'exact', head: true })
+    .eq('stage_id', stage.id)
+    .neq('status', 'cancelled')
+  if (error) throw error
+  return count || 0
 }
 
 export async function moveOpportunity(id, stageId) {
@@ -593,6 +617,29 @@ export async function fetchAttachments(contactId) {
     .order('created_at', { ascending: false })
   if (error) throw error
   return data || []
+}
+
+// Files a customer sent us themselves (via the /u/:token upload link --
+// uploaded_by is null, unlike a staff upload) that nobody on staff has
+// opened yet. Shaped for DrillDownModal.
+export async function fetchNewCustomerFiles() {
+  const { data, error } = await supabase
+    .from('attachments')
+    .select('id, file_name, created_at, contact_id, contacts(full_name)')
+    .is('uploaded_by', null)
+    .is('viewed_at', null)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data || []).map((a) => ({
+    id: a.id, contactId: a.contact_id, contactName: a.contacts?.full_name || 'Unnamed contact',
+    jobTitle: a.file_name, stageName: null, date: a.created_at, value: null,
+  }))
+}
+
+export async function markAttachmentViewed(id) {
+  const { error } = await supabase
+    .from('attachments').update({ viewed_at: new Date().toISOString() }).eq('id', id).is('viewed_at', null)
+  if (error) throw error
 }
 
 export async function uploadDeliveryOrder({ orgId, contactId, opportunityId = null, file }) {

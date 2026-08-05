@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import {
   fetchContact, fetchMyOrgId, fetchAttachments, uploadDeliveryOrder,
   signedAttachmentUrl, deleteAttachment, createUploadLink, updateContact,
+  sendEmail, markAttachmentViewed,
 } from '../lib/supabase'
 import { calendlyPrefillUrl, mailtoUrl } from '../lib/config'
 import Badge from '../components/Badge'
@@ -166,8 +167,10 @@ function DeliveryOrders({ contact, jobs }) {
   }
 
   async function download(f) {
-    try { window.open(await signedAttachmentUrl(f.file_path), '_blank', 'noopener') }
-    catch (e) { setErr(e.message) }
+    try {
+      window.open(await signedAttachmentUrl(f.file_path), '_blank', 'noopener')
+      markAttachmentViewed(f.id).catch(() => {})
+    } catch (e) { setErr(e.message) }
   }
 
   async function remove(f) {
@@ -178,13 +181,30 @@ function DeliveryOrders({ contact, jobs }) {
 
   async function requestLink() {
     if (!orgId) return
+    if (!contact.email) {
+      setErr('This contact has no email on file — add one before requesting a delivery order.')
+      return
+    }
     setBusy(true); setErr(''); setInfo('')
     try {
       const url = await createUploadLink({ orgId, contactId: contact.id, opportunityId: jobId || null, label: contact.full_name })
-      try { await navigator.clipboard.writeText(url) } catch { /* clipboard may be blocked */ }
-      setInfo(`Customer upload link (copied · valid 30 days): ${url}`)
+      const firstName = (contact.full_name || '').split(/\s+/)[0] || 'there'
+      const subject = 'Delivery Order Needed'
+      const body = `Hi ${firstName},
+
+We're ready to move forward and need your delivery order (POA and delivery details) to proceed.
+
+Please upload it using this secure link — no account needed:
+${url}
+
+This link is valid for 30 days.
+
+Thanks,
+Dispatch`
+      await sendEmail({ contactId: contact.id, to: contact.email, subject, body })
+      setInfo(`✓ Delivery order request emailed to ${contact.email}.`)
     } catch (e) {
-      setErr('Could not create link: ' + (e.message || e))
+      setErr('Could not send delivery order request: ' + (e.message || e))
     } finally { setBusy(false) }
   }
 
@@ -202,7 +222,7 @@ function DeliveryOrders({ contact, jobs }) {
               {jobs.map((j) => <option key={j.id} value={j.id}>{j.title || j.service_code || 'Job'}</option>)}
             </select>
           )}
-          <button className={btn} disabled={busy} onClick={requestLink}>🔗 Request from customer</button>
+          <button className={btn} disabled={busy} onClick={requestLink}>📋 Request Delivery Order</button>
           <button className={btnAccent} disabled={busy} onClick={() => inputRef.current?.click()}>
             {busy ? 'Working…' : '⬆️ Upload'}
           </button>

@@ -11,7 +11,7 @@ const fmtDate = (d) =>
 // carries { id, contactId, contactName, jobTitle, stageName, date, value } and
 // links to that contact's page — same place every other job/contact reference
 // in this app sends you, since there's no separate single-opportunity view.
-export default function DrillDownModal({ open, onClose, title, subtitle, rows, isLoading, error, emptyMessage }) {
+export default function DrillDownModal({ open, onClose, title, subtitle, rows, isLoading, error, emptyMessage, onRowClick }) {
   useEffect(() => {
     if (!open) return
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -51,7 +51,7 @@ export default function DrillDownModal({ open, onClose, title, subtitle, rows, i
             <Link
               key={r.id}
               to={r.contactId ? `/contacts/${r.contactId}` : '#'}
-              onClick={onClose}
+              onClick={() => { onRowClick?.(r); onClose() }}
               className={`flex items-center justify-between gap-3 px-5 py-3 hover:bg-canvas ${i !== 0 ? 'border-t border-line' : ''}`}
             >
               <div className="min-w-0">

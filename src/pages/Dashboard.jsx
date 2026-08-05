@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchDashboardStats, fetchOpenPipelineJobs, fetchClosedJobs, fetchNewLeadsList, fetchJobsByStage,
+  fetchNewCustomerFiles, markAttachmentViewed,
 } from '../lib/supabase'
 import DrillDownModal from '../components/DrillDownModal'
 import BookingSidebar from '../components/BookingSidebar'
@@ -38,14 +39,26 @@ const DRILLDOWNS = {
     emptyMessage: 'No new contacts this week.',
     fetch: () => fetchNewLeadsList(7),
   },
+  newFiles: {
+    title: 'New files from customers',
+    subtitle: "Sent through their upload link — you haven't opened these yet",
+    emptyMessage: 'Nothing new.',
+    fetch: fetchNewCustomerFiles,
+  },
 }
 
 export default function Dashboard() {
+  const qc = useQueryClient()
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
     queryFn: fetchDashboardStats,
   })
-  // { kind } for the four stat cards, or { kind: 'stage', stageId, stageName } for a per-stage row.
+  const { data: newFilesCount } = useQuery({
+    queryKey: ['newCustomerFilesCount'],
+    queryFn: async () => (await fetchNewCustomerFiles()).length,
+    refetchInterval: 60_000,
+  })
+  // { kind } for the stat cards, or { kind: 'stage', stageId, stageName } for a per-stage row.
   const [drillDown, setDrillDown] = useState(null)
   const [bookingSidebarOpen, setBookingSidebarOpen] = useState(false)
 
@@ -85,7 +98,7 @@ export default function Dashboard() {
 
       {data && (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <Stat label="Open pipeline value" value={money(data.openValue)} mono accent
               hint="Not yet completed, paid or canceled" onClick={() => openDrillDown('open')} />
             <Stat label="Jobs closed · 7 days" value={data.closedThisWeek}
@@ -94,6 +107,8 @@ export default function Dashboard() {
               hint="Moved to Completed or Paid" onClick={() => openDrillDown('closed30')} />
             <Stat label="New leads · 7 days" value={data.newLeadsWeek}
               hint="Contacts added this week" onClick={() => openDrillDown('leads')} />
+            <Stat label="New files from customers" value={newFilesCount ?? '—'} accent={!!newFilesCount}
+              hint="Sent via their upload link" onClick={() => openDrillDown('newFiles')} />
           </div>
 
           <div className="mt-6 rounded-xl border border-line bg-surface p-5">
@@ -145,6 +160,9 @@ export default function Dashboard() {
         rows={drillQuery.data}
         isLoading={drillQuery.isLoading}
         error={drillQuery.error}
+        onRowClick={drillDown?.kind === 'newFiles' ? (row) => {
+          markAttachmentViewed(row.id).then(() => qc.invalidateQueries({ queryKey: ['newCustomerFilesCount'] }))
+        } : undefined}
       />
 
       <BookingSidebar

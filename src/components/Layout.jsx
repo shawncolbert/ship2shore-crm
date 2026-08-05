@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
-import { fetchMyProfile, fetchMyOrg } from '../lib/supabase'
+import { fetchMyProfile, fetchMyOrg, fetchNewBookingCount } from '../lib/supabase'
 
 const nav = [
   { to: '/agent', label: 'AI Assistant' },
@@ -49,6 +49,16 @@ function NavItems({ onNavigate }) {
   const { data: profile } = useQuery({ queryKey: ['myProfile'], queryFn: fetchMyProfile })
   const items = profile?.platform_admin ? [...nav, { to: '/admin/orgs', label: 'Organizations' }] : nav
 
+  // Jobs sitting in "New Booking" that haven't been triaged yet -- catches
+  // bookings that came in through the public booking widget or a funnel
+  // while nobody was looking at the pipeline. Polled, not live, so it's at
+  // most a minute stale.
+  const { data: newBookingCount } = useQuery({
+    queryKey: ['newBookingCount'],
+    queryFn: fetchNewBookingCount,
+    refetchInterval: 60_000,
+  })
+
   return (
     <nav className="flex-1 space-y-1 px-3">
       {items.map((item) => (
@@ -58,14 +68,19 @@ function NavItems({ onNavigate }) {
           end={item.end}
           onClick={onNavigate}
           className={({ isActive }) =>
-            `flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+            `flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors ${
               isActive
                 ? 'bg-accent text-ink'
                 : 'text-white/70 hover:bg-white/10 hover:text-white'
             }`
           }
         >
-          {item.label}
+          <span>{item.label}</span>
+          {item.to === '/pipeline' && !!newBookingCount && (
+            <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-ink">
+              {newBookingCount}
+            </span>
+          )}
         </NavLink>
       ))}
     </nav>
