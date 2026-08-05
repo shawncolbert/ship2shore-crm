@@ -30,7 +30,6 @@ const lum = (d, i) => d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114
 export default function DeliveryOrderFix() {
   const canvasRef = useRef(null)
   const wrapRef = useRef(null)
-  const overlayRef = useRef(null)
   const pagesRef = useRef([])         // one offscreen canvas per page
   const undoRef = useRef([])
   const redoRef = useRef([])
@@ -136,6 +135,24 @@ export default function DeliveryOrderFix() {
     g.lineWidth = 3
     g.strokeRect(stamp2.x - 4, stamp2.y - 4, stamp2.w + 8, stamp2.h + 8)
   }, [pageIndex, stamp2, paint])
+
+  /* Erase/rect drag preview, drawn straight onto the canvas in the exact
+     same coordinate space `box` will actually be applied in -- no separate
+     floating element trying to track zoom/scroll/border offsets, which is
+     what made the old selection box invisible in practice. Repaints the
+     clean page each call, same as the text/signature preview above. */
+  function drawMarquee(box) {
+    paint(pageIndex)
+    const g = ctx()
+    g.save()
+    g.setLineDash([10, 6])
+    g.lineWidth = 3
+    g.strokeStyle = 'rgba(232,163,23,0.95)'
+    g.strokeRect(box.x, box.y, box.w, box.h)
+    g.fillStyle = 'rgba(232,163,23,0.18)'
+    g.fillRect(box.x, box.y, box.w, box.h)
+    g.restore()
+  }
 
   useEffect(() => {
     if (!loaded) return
@@ -450,17 +467,10 @@ export default function DeliveryOrderFix() {
     }
 
     // Erase and rectangle both preview as a marquee before committing.
-    const c = canvasRef.current
-    const r = c.getBoundingClientRect()
-    const wr = wrapRef.current.getBoundingClientRect()
-    const sx = r.width / c.width
-    const sy = r.height / c.height
-    const o = overlayRef.current
-    o.style.display = 'block'
-    o.style.left = `${Math.min(dragRef.current.x, p.x) * sx + (r.left - wr.left)}px`
-    o.style.top = `${Math.min(dragRef.current.y, p.y) * sy + (r.top - wr.top)}px`
-    o.style.width = `${Math.abs(p.x - dragRef.current.x) * sx}px`
-    o.style.height = `${Math.abs(p.y - dragRef.current.y) * sy}px`
+    drawMarquee({
+      x: Math.min(dragRef.current.x, p.x), y: Math.min(dragRef.current.y, p.y),
+      w: Math.abs(p.x - dragRef.current.x), h: Math.abs(p.y - dragRef.current.y),
+    })
   }
 
   function onUp(e) {
@@ -477,7 +487,7 @@ export default function DeliveryOrderFix() {
     const p = point(e)
     const start = dragRef.current
     dragRef.current = null
-    overlayRef.current.style.display = 'none'
+    paint(pageIndex) // clear the marquee preview before sampling/committing anything real
     const box = {
       x: Math.min(start.x, p.x), y: Math.min(start.y, p.y),
       w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y),
@@ -675,11 +685,11 @@ export default function DeliveryOrderFix() {
     <div className="p-4 sm:p-6 lg:p-8">
       <header className="mb-6">
         <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">
-          Delivery Order Fix
+          DO / Contract Editor
         </h1>
         <p className="max-w-2xl text-sm text-muted">
-          Erase whatever's wrong on a delivery order and type the correction in its place.
-          Everything happens on this device — the document is never uploaded anywhere.
+          Erase whatever's wrong on a delivery order, contract, or any other PDF/photo and type the
+          correction in its place. Everything happens on this device — the document is never uploaded anywhere.
         </p>
       </header>
 
@@ -892,7 +902,6 @@ export default function DeliveryOrderFix() {
                   touchAction: tool === 'erase' ? 'none' : 'auto',
                 }}
               />
-              <div ref={overlayRef} className="pointer-events-none absolute hidden border-2 border-accent bg-accent/20" />
             </div>
 
             <div className="flex flex-wrap gap-2">

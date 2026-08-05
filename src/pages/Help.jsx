@@ -84,8 +84,9 @@ const SECTIONS = [
     body: `On any contact's page, "Request Delivery Order" emails them a secure upload link — no login
       needed on their end. Whatever they send back lands in that contact's file automatically, and a "New
       files from customers" card shows up on your Dashboard the moment it arrives, so you're not stuck
-      checking back manually. "DO Fix" is a separate on-device tool for redacting or correcting a delivery
-      order PDF before you send it anywhere — nothing you edit there ever leaves your browser.`,
+      checking back manually. "DO / Contract Editor" is a separate on-device tool for redacting or
+      correcting a delivery order, contract, or any other PDF/photo before you send it anywhere — nothing
+      you edit there ever leaves your browser.`,
   },
   {
     id: 'inbox',

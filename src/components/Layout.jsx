@@ -14,7 +14,7 @@ const nav = [
   { to: '/settings/pipeline-stages', label: 'Pipeline Stages' },
   { to: '/calendar', label: 'Calendar' },
   { to: '/documents', label: 'Documents' },
-  { to: '/do-fix', label: 'DO Fix' },
+  { to: '/do-fix', label: 'DO / Contract Editor' },
   { to: '/automations', label: 'Automations' },
   { to: '/services', label: 'Services' },
   { to: '/settings/business-card', label: 'Business Card' },
