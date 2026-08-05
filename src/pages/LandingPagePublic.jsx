@@ -32,10 +32,12 @@ export default function LandingPagePublic() {
     requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
   }, [])
 
+  const bookingHref = data?.bookingOrgSlug ? `/book/${data.bookingOrgSlug}` : '/book'
+
   const handleCta = useCallback((target) => {
-    if (target === 'booking') { window.location.href = '/book'; return }
+    if (target === 'booking') { window.location.href = bookingHref; return }
     openLead()
-  }, [openLead])
+  }, [openLead, bookingHref])
 
   if (isLoading) {
     return <div className="flex min-h-screen items-center justify-center bg-[#f3f4f6] text-sm text-gray-500">Loading…</div>
@@ -63,7 +65,7 @@ export default function LandingPagePublic() {
         <div key={block.id || i}>
           {block.type === 'cta'
             ? (i === leadIndex
-                ? <LeadAnchor block={block} slug={slug} formRef={formRef} open={leadOpen} onOpen={openLead} />
+                ? <LeadAnchor block={block} slug={slug} bookingHref={bookingHref} formRef={formRef} open={leadOpen} onOpen={openLead} />
                 : <LandingBlockView block={block} onCta={handleCta} />)
             : <LandingBlockView block={block} onCta={handleCta} />}
         </div>
@@ -73,11 +75,11 @@ export default function LandingPagePublic() {
 }
 
 // The one CTA that actually hosts the form. Others just scroll here.
-function LeadAnchor({ block, slug, formRef, open, onOpen }) {
+function LeadAnchor({ block, slug, bookingHref, formRef, open, onOpen }) {
   if (block.target === 'booking') {
     return (
       <Prose>
-        <a href="/book"
+        <a href={bookingHref}
           className="mb-4 mt-2 inline-block rounded-xl bg-[#e8a317] px-8 py-4 text-center text-base font-bold text-[#0c2231] hover:brightness-95">
           {block.label || 'Book Now'}
         </a>

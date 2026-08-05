@@ -2,42 +2,20 @@ import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase, fetchServices, fetchContacts } from '../lib/supabase'
 
-const SERVICES = {
-  twic_escort: { name: 'TWIC Vehicle Escort', base: 95, military: 80 },
-  hotshot: { name: 'Hotshot Delivery', flat: 200 },
-  semi_container: { name: 'Semi/Container', flat: 325 },
-}
-
-const ZONES = {
-  'LA Local': { min: 275, max: 325 },
-  'Orange County': { min: 300, max: 350 },
-  'Ventura County': { min: 325, max: 375 },
-  'Valencia/Santa Clarita': { min: 350, max: 400 },
-  'Riverside/San Bernardino': { min: 400, max: 475 },
-  'San Diego': { min: 600, max: 675 },
-  'Northern CA': { min: 625, max: 725 },
-}
-
-const SURCHARGES = {
-  'non-operating': 200,
-  'winching': 125,
-  'oversized': 125,
-  'lifted': 150,
-}
-
+// Every business defines its own service catalog under Settings > Services —
+// this sidebar has no built-in notion of what's being sold. Line items are
+// just "N x <catalog service> @ $price", which works the same whether the
+// catalog is TWIC escorts, portrait sessions, or listing photos.
 export default function BookingSidebar({ open, onClose }) {
   const qc = useQueryClient()
-  const [serviceType, setServiceType] = useState('twic_escort')
   const [selectedContact, setSelectedContact] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [quantity, setQuantity] = useState(1)
-  const [zone, setZone] = useState('LA Local')
-  const [isMilitary, setIsMilitary] = useState(false)
-  const [escortPriceTier, setEscortPriceTier] = useState(95)
-  const [selectedSurcharges, setSelectedSurcharges] = useState([])
-  const [lineItems, setLineItems] = useState([])
   const [newContactName, setNewContactName] = useState('')
   const [newContactEmail, setNewContactEmail] = useState('')
+  const [serviceCode, setServiceCode] = useState('')
+  const [quantity, setQuantity] = useState(1)
+  const [unitPrice, setUnitPrice] = useState('')
+  const [lineItems, setLineItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [messagesToSend, setMessagesToSend] = useState({
@@ -51,66 +29,55 @@ export default function BookingSidebar({ open, onClose }) {
     enabled: open,
   })
 
+  const { data: services = [] } = useQuery({
+    queryKey: ['services'],
+    queryFn: fetchServices,
+    enabled: open,
+  })
+
+  // Default to the org's first catalog service once it loads.
+  useEffect(() => {
+    if (open && services.length > 0 && !serviceCode) {
+      setServiceCode(services[0].code)
+      setUnitPrice(String(services[0].default_rate ?? 0))
+    }
+  }, [open, services, serviceCode])
+
   const filteredContacts = contacts.filter(c =>
     c.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.email?.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const calculateItemTotal = () => {
-    const service = SERVICES[serviceType]
-    if (!service) return 0
-
-    let basePrice = 0
-    if (serviceType === 'twic_escort') {
-      basePrice = escortPriceTier * quantity
-    } else if (serviceType === 'hotshot') {
-      basePrice = service.flat * quantity
-    } else if (serviceType === 'semi_container') {
-      basePrice = service.flat * quantity
-    }
-
-    const surchargeTotal = selectedSurcharges.reduce(
-      (sum, s) => sum + (SURCHARGES[s] || 0),
-      0
-    )
-
-    return basePrice + surchargeTotal
+  const onServiceChange = (code) => {
+    setServiceCode(code)
+    const svc = services.find((s) => s.code === code)
+    if (svc) setUnitPrice(String(svc.default_rate ?? 0))
   }
 
   const addLineItem = () => {
-    const service = SERVICES[serviceType]
-    if (!service) {
+    const svc = services.find((s) => s.code === serviceCode)
+    if (!svc) {
       setError('Please select a service')
       return
     }
+    const price = Number(unitPrice) || 0
+    const qty = Math.max(1, Number(quantity) || 1)
 
-    const total = calculateItemTotal()
-
-    const item = {
+    setLineItems([...lineItems, {
       id: Date.now(),
-      serviceType,
-      serviceName: service.name,
-      quantity,
-      zone,
-      isMilitary,
-      escortPriceTier: serviceType === 'twic_escort' ? escortPriceTier : null,
-      surcharges: [...selectedSurcharges],
-      total,
-    }
-
-    setLineItems([...lineItems, item])
-    setSelectedSurcharges([])
+      serviceCode,
+      serviceName: svc.name,
+      quantity: qty,
+      unitPrice: price,
+      total: price * qty,
+    }])
     setQuantity(1)
     setError('')
   }
 
-  const removeLineItem = (id) => {
-    setLineItems(lineItems.filter(item => item.id !== id))
-  }
+  const removeLineItem = (id) => setLineItems(lineItems.filter(item => item.id !== id))
 
-  const getGrandTotal = () => {
-    return lineItems.reduce((sum, item) => sum + item.total, 0)
-  }
+  const getGrandTotal = () => lineItems.reduce((sum, item) => sum + item.total, 0)
 
   const handleCreateBooking = async () => {
     if (!selectedContact && !newContactName) {
@@ -135,12 +102,9 @@ export default function BookingSidebar({ open, onClose }) {
     const totalValue = getGrandTotal()
 
     try {
-      const lineItemsSummary = lineItems.map(item => {
-        const details = [`${item.quantity}x ${item.serviceName}`, item.zone, `$${item.total}`]
-        if (item.escortPriceTier) details.push(`@ $${item.escortPriceTier}/vehicle`)
-        if (item.surcharges.length > 0) details.push(item.surcharges.join(', '))
-        return details.join(' | ')
-      }).join('; ')
+      const lineItemsSummary = lineItems
+        .map(item => `${item.quantity}x ${item.serviceName} @ $${item.unitPrice} = $${item.total}`)
+        .join('; ')
 
       const { data: { session } } = await supabase.auth.getSession()
 
@@ -175,14 +139,9 @@ export default function BookingSidebar({ open, onClose }) {
       await qc.invalidateQueries({ queryKey: ['dashboard'] })
 
       // Reset form
-      setServiceType('twic_escort')
       setSelectedContact(null)
       setSearchQuery('')
       setQuantity(1)
-      setZone('LA Local')
-      setIsMilitary(false)
-      setEscortPriceTier(95)
-      setSelectedSurcharges([])
       setLineItems([])
       setNewContactName('')
       setNewContactEmail('')
@@ -301,135 +260,57 @@ export default function BookingSidebar({ open, onClose }) {
 
         {/* Service Selection */}
         <div>
-          <label className="block text-sm font-semibold text-ink mb-2">Service Type</label>
-          <select
-            value={serviceType}
-            onChange={(e) => setServiceType(e.target.value)}
-            className="w-full border border-line rounded px-3 py-2 text-sm bg-canvas"
-          >
-            {Object.entries(SERVICES).map(([key, service]) => (
-              <option key={key} value={key}>
-                {service.name}
-              </option>
-            ))}
-          </select>
+          <label className="block text-sm font-semibold text-ink mb-2">Service</label>
+          {services.length === 0 ? (
+            <p className="text-xs text-muted">
+              No services set up yet. Add your service catalog under{' '}
+              <span className="font-medium text-ink">Settings → Services</span> first.
+            </p>
+          ) : (
+            <select
+              value={serviceCode}
+              onChange={(e) => onServiceChange(e.target.value)}
+              className="w-full border border-line rounded px-3 py-2 text-sm bg-canvas"
+            >
+              {services.map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.name} — ${Number(s.default_rate || 0).toFixed(0)}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
-        {/* Quantity */}
-        <div>
-          <label className="block text-sm font-semibold text-ink mb-2">
-            Quantity {serviceType === 'twic_escort' && '(# of vehicles)'}
-          </label>
-          <input
-            type="number"
-            min="1"
-            value={quantity}
-            onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-            className="w-full border border-line rounded px-3 py-2 text-sm bg-canvas"
-          />
-        </div>
-
-        {/* Zone */}
-        <div>
-          <label className="block text-sm font-semibold text-ink mb-2">Zone</label>
-          <select
-            value={zone}
-            onChange={(e) => setZone(e.target.value)}
-            className="w-full border border-line rounded px-3 py-2 text-sm bg-canvas"
-          >
-            {Object.entries(ZONES).map(([name, rates]) => (
-              <option key={name} value={name}>
-                {name} (${rates.min}–${rates.max})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Military Checkbox (for Escort) */}
-        {serviceType === 'twic_escort' && (
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isMilitary}
-              onChange={(e) => setIsMilitary(e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-sm text-ink">Military/PCS (special rate)</span>
-          </label>
-        )}
-
-        {/* Escort Price Tier (for Escort) */}
-        {serviceType === 'twic_escort' && (
+        {/* Quantity + Price */}
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-semibold text-ink mb-2">Price per Vehicle</label>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="escortPrice"
-                  value="75"
-                  checked={escortPriceTier === 75}
-                  onChange={() => setEscortPriceTier(75)}
-                  className="rounded"
-                />
-                <span className="text-sm text-ink">$75 (Existing customers)</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="escortPrice"
-                  value="85"
-                  checked={escortPriceTier === 85}
-                  onChange={() => setEscortPriceTier(85)}
-                  className="rounded"
-                />
-                <span className="text-sm text-ink">$85 (New customers)</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="escortPrice"
-                  value="95"
-                  checked={escortPriceTier === 95}
-                  onChange={() => setEscortPriceTier(95)}
-                  className="rounded"
-                />
-                <span className="text-sm text-ink">$95 (Premium)</span>
-              </label>
-            </div>
+            <label className="block text-sm font-semibold text-ink mb-2">Quantity</label>
+            <input
+              type="number"
+              min="1"
+              value={quantity}
+              onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+              className="w-full border border-line rounded px-3 py-2 text-sm bg-canvas"
+            />
           </div>
-        )}
-
-        {/* Surcharges */}
-        <div>
-          <label className="block text-sm font-semibold text-ink mb-2">Surcharges</label>
-          <div className="space-y-2">
-            {Object.entries(SURCHARGES).map(([name, cost]) => (
-              <label key={name} className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedSurcharges.includes(name)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedSurcharges([...selectedSurcharges, name])
-                    } else {
-                      setSelectedSurcharges(selectedSurcharges.filter(s => s !== name))
-                    }
-                  }}
-                  className="rounded"
-                />
-                <span className="text-sm text-ink">
-                  {name} <span className="text-muted">(+${cost})</span>
-                </span>
-              </label>
-            ))}
+          <div>
+            <label className="block text-sm font-semibold text-ink mb-2">Price (each)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={unitPrice}
+              onChange={(e) => setUnitPrice(e.target.value)}
+              className="w-full border border-line rounded px-3 py-2 text-sm bg-canvas"
+            />
           </div>
         </div>
 
         {/* Add Line Item Button */}
         <button
           onClick={addLineItem}
-          className="w-full bg-accent hover:bg-accent-600 text-ink font-semibold py-2 px-3 rounded text-sm"
+          disabled={services.length === 0}
+          className="w-full bg-accent hover:bg-accent-600 disabled:opacity-50 text-ink font-semibold py-2 px-3 rounded text-sm"
         >
           + Add Service to Quote
         </button>
@@ -443,13 +324,7 @@ export default function BookingSidebar({ open, onClose }) {
                 <div key={item.id} className="bg-canvas border border-line rounded p-3 flex items-start justify-between">
                   <div className="text-sm">
                     <p className="font-medium text-ink">{item.serviceName}</p>
-                    <p className="text-xs text-muted">
-                      {item.quantity}x {item.zone}
-                      {item.escortPriceTier && ` @ $${item.escortPriceTier}`}
-                    </p>
-                    {item.surcharges.length > 0 && (
-                      <p className="text-xs text-muted">{item.surcharges.join(', ')}</p>
-                    )}
+                    <p className="text-xs text-muted">{item.quantity}x @ ${item.unitPrice}</p>
                     <p className="font-semibold text-accent mt-1">${item.total}</p>
                   </div>
                   <button

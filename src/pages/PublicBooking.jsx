@@ -1,17 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useParams } from 'react-router-dom'
 
-const PORT_LABEL = {
-  long_beach: 'Long Beach',
-  wilmington: 'Wilmington',
-  matson: 'Matson',
-  other: 'Other',
-}
-
-async function callBooking(action, payload = {}) {
+async function callBooking(action, orgSlug, payload = {}) {
   const res = await fetch('/.netlify/functions/public-booking', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, ...payload }),
+    body: JSON.stringify({ action, org_slug: orgSlug || undefined, ...payload }),
   })
   const j = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`)
@@ -45,10 +39,11 @@ const fmtSlot = (iso) =>
   new Date(iso).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' })
 
 export default function PublicBooking() {
+  const { orgSlug } = useParams()
   const days = useMemo(upcomingDays, [])
   const [services, setServices] = useState(null)
+  const [orgName, setOrgName] = useState('us')
   const [serviceCode, setServiceCode] = useState('')
-  const [port, setPort] = useState('')
   const [dateKey, setDateKey] = useState(days[0]?.key || '')
   const [slots, setSlots] = useState(null)
   const [slot, setSlot] = useState('')
@@ -58,28 +53,29 @@ export default function PublicBooking() {
   const [err, setErr] = useState('')
 
   useEffect(() => {
-    callBooking('services').then((r) => {
+    callBooking('services', orgSlug).then((r) => {
       setServices(r.services || [])
       setServiceCode(r.services?.[0]?.code || '')
+      setOrgName(r.orgName || 'us')
     }).catch((e) => setErr(e.message))
-  }, [])
+  }, [orgSlug])
 
   useEffect(() => {
     if (!dateKey) return
     setSlot(''); setSlots(null); setLoadingSlots(true)
-    callBooking('availability', { date: dateKey })
+    callBooking('availability', orgSlug, { date: dateKey })
       .then((r) => setSlots(r.slots || []))
       .catch((e) => setErr(e.message))
       .finally(() => setLoadingSlots(false))
-  }, [dateKey])
+  }, [dateKey, orgSlug])
 
   async function submit(e) {
     e.preventDefault()
     if (!serviceCode || !slot || !form.full_name.trim() || !form.email.trim()) return
     setStatus('submitting'); setErr('')
     try {
-      await callBooking('book', {
-        service_code: serviceCode, port: port || null, start_at: slot,
+      await callBooking('book', orgSlug, {
+        service_code: serviceCode, start_at: slot,
         full_name: form.full_name.trim(), email: form.email.trim(), phone: form.phone.trim() || null,
         notes: form.notes.trim() || null,
       })
@@ -87,7 +83,7 @@ export default function PublicBooking() {
     } catch (e2) {
       setErr(e2.message); setStatus('error')
       // The slot may have just been taken — refresh the list.
-      callBooking('availability', { date: dateKey }).then((r) => setSlots(r.slots || [])).catch(() => {})
+      callBooking('availability', orgSlug, { date: dateKey }).then((r) => setSlots(r.slots || [])).catch(() => {})
     }
   }
 
@@ -103,7 +99,7 @@ export default function PublicBooking() {
             {selectedService?.name} on <strong className="text-ink">{fmtSlot(slot)}</strong> Pacific,{' '}
             {days.find((d) => d.key === dateKey)?.label}.
           </p>
-          <p className="mt-2 text-sm text-muted">We’ll email {form.email} to confirm. Thanks for booking with Ship2Shore!</p>
+          <p className="mt-2 text-sm text-muted">We’ll email {form.email} to confirm. Thanks for booking with {orgName}!</p>
         </div>
       </div>
     )
@@ -112,7 +108,7 @@ export default function PublicBooking() {
   return (
     <div className="min-h-screen bg-canvas p-4 sm:p-8">
       <div className="mx-auto w-full max-w-lg rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-8">
-        <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Book with Ship2Shore</h1>
+        <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Book with {orgName}</h1>
         <p className="mt-1 text-sm text-muted">Pick a service and a time — we’ll take it from there.</p>
 
         {err && <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
@@ -130,15 +126,6 @@ export default function PublicBooking() {
                 ))}
               </select>
             )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Port (optional)</label>
-            <select value={port} onChange={(e) => setPort(e.target.value)}
-              className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent">
-              <option value="">Not sure yet</option>
-              {Object.entries(PORT_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-            </select>
           </div>
 
           <div>

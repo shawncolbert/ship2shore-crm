@@ -66,6 +66,71 @@ export async function fetchServices() {
   return data || []
 }
 
+/* ------------------------------------------------------------------ */
+/* Service catalog (Settings > Services) — each org defines its own,   */
+/* so the booking sidebar and public booking widget show only the      */
+/* services that business actually sells.                              */
+/* ------------------------------------------------------------------ */
+
+export async function fetchAllServices() {
+  const { data, error } = await supabase
+    .from('services')
+    .select('id, code, name, default_rate, active')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function createService({ code, name, default_rate }) {
+  const orgId = await fetchMyOrgId()
+  const { data, error } = await supabase
+    .from('services')
+    .insert({ org_id: orgId, code: code.trim(), name: name.trim(), default_rate: Number(default_rate) || 0 })
+    .select('*').single()
+  if (error) {
+    if (error.code === '23505') throw new Error('A service with that code already exists.')
+    throw error
+  }
+  return data
+}
+
+export async function updateService(id, patch) {
+  const allowed = {}
+  if ('code' in patch) allowed.code = patch.code.trim()
+  if ('name' in patch) allowed.name = patch.name.trim()
+  if ('default_rate' in patch) allowed.default_rate = Number(patch.default_rate) || 0
+  if ('active' in patch) allowed.active = !!patch.active
+  const { data, error } = await supabase
+    .from('services').update(allowed).eq('id', id).select('*').single()
+  if (error) {
+    if (error.code === '23505') throw new Error('A service with that code already exists.')
+    throw error
+  }
+  if (!data) throw new Error('Could not save this service — permission denied.')
+  return data
+}
+
+export async function deleteService(id) {
+  const { error } = await supabase.from('services').delete().eq('id', id)
+  if (error) throw error
+}
+
+/* ------------------------------------------------------------------ */
+/* Org branding — used by Layout and the public booking widget so each */
+/* white-label org shows its own name/logo instead of "Ship2Shore".    */
+/* ------------------------------------------------------------------ */
+
+export async function fetchMyOrg() {
+  const orgId = await fetchMyOrgId()
+  const { data, error } = await supabase
+    .from('organizations')
+    .select('id, name, slug, logo_url, primary_color')
+    .eq('id', orgId)
+    .single()
+  if (error) throw error
+  return data
+}
+
 // Create a contact and, optionally, a "New Booking" opportunity for it.
 // `booking` is null to skip the pipeline card, or an object with
 // { title, service_code, port, value } to also drop a card in the first stage.

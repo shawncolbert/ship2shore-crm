@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
-import { fetchMyProfile } from '../lib/supabase'
+import { fetchMyProfile, fetchMyOrg } from '../lib/supabase'
 
 const nav = [
   { to: '/agent', label: 'AI Assistant' },
@@ -14,20 +14,32 @@ const nav = [
   { to: '/documents', label: 'Documents' },
   { to: '/do-fix', label: 'DO Fix' },
   { to: '/automations', label: 'Automations' },
+  { to: '/services', label: 'Services' },
   { to: '/payment-settings', label: 'Payments' },
   { to: '/landing-pages', label: 'Landing Pages' },
   { to: '/funnels', label: 'Funnels' },
   { to: '/social-posts', label: 'Social Posts' },
 ]
 
+// Falls back to the Ship2Shore identity while the org loads or if branding
+// isn't set — white-label orgs override this via their organizations row
+// (name, logo_url).
 function Brand() {
+  const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
+  const name = org?.name || 'Ship2Shore'
+
   return (
-    <div>
-      <div className="font-[family-name:var(--font-display)] text-lg font-bold tracking-tight text-white">
-        Ship2Shore
-      </div>
-      <div className="text-[11px] uppercase tracking-[0.18em] text-accent">
-        Dispatch
+    <div className="flex items-center gap-2">
+      {org?.logo_url && (
+        <img src={org.logo_url} alt="" className="h-7 w-7 rounded object-contain" />
+      )}
+      <div>
+        <div className="font-[family-name:var(--font-display)] text-lg font-bold tracking-tight text-white">
+          {name}
+        </div>
+        <div className="text-[11px] uppercase tracking-[0.18em] text-accent">
+          Dispatch
+        </div>
       </div>
     </div>
   )

@@ -1,4 +1,5 @@
 import { admin } from './_shared/supabaseAdmin.js'
+import { getDefaultPipeline, getStageByName } from './_shared/pipeline.js'
 
 // Public, unauthenticated native booking widget — an in-app alternative to the
 // Calendly link. A customer picks a service + time slot and this writes the
@@ -9,11 +10,20 @@ import { admin } from './_shared/supabaseAdmin.js'
 // This is additive: the Calendly webhook and integration are untouched and
 // keep working exactly as before, in parallel.
 
-// Same org/pipeline/stage ids the Calendly webhook uses, so both sources land
-// jobs in the same place on the board.
-const ORG_ID = '11111111-1111-1111-1111-111111111111'
-const PIPELINE_ID = '22222222-2222-2222-2222-222222222222'
-const NEW_BOOKING_STAGE_ID = '19770400-dade-4ea2-8339-5587c249a059'
+// Ship2Shore's own org — the default when no org_slug is given, so the
+// existing /book link (with no slug) keeps working exactly as before for
+// every integration that already points at it.
+const DEFAULT_ORG_ID = '11111111-1111-1111-1111-111111111111'
+const BOOKING_STAGE_NAME = 'New Booking'
+
+// Resolves which org this request is for. White-label orgs are addressed by
+// their own slug (/book/:orgSlug); omitting it falls back to Ship2Shore so
+// nothing that already links to plain /book breaks.
+async function resolveOrgId(orgSlug) {
+  if (!orgSlug) return DEFAULT_ORG_ID
+  const { data } = await admin.from('organizations').select('id').eq('slug', orgSlug).maybeSingle()
+  return data?.id || null
+}
 
 // --- Basic availability rules (deliberately simple for v1) ---------------
 // Up to CAPACITY jobs can run in the same slot (multiple crews/vehicles).
@@ -71,7 +81,7 @@ function parseDateParam(dateStr) {
 
 // List candidate hourly slots for one Pacific calendar day, minus already
 // booked (non-canceled) appointments and past/too-soon times.
-async function availableSlots(dateStr) {
+async function availableSlots(orgId, dateStr) {
   const ymd = parseDateParam(dateStr)
   if (!ymd) return { error: 'Bad date' }
 
@@ -92,7 +102,7 @@ async function availableSlots(dateStr) {
   const { data: busy, error } = await admin
     .from('appointments')
     .select('start_at, end_at, status')
-    .eq('org_id', ORG_ID)
+    .eq('org_id', orgId)
     .neq('status', 'cancelled')
     .lte('start_at', dayEndUtc.toISOString())
     .gte('end_at', dayStartUtc.toISOString())
@@ -114,21 +124,22 @@ async function availableSlots(dateStr) {
   return { slots }
 }
 
-async function listServices() {
+async function listServices(orgId) {
+  const { data: org } = await admin.from('organizations').select('name').eq('id', orgId).maybeSingle()
   const { data, error } = await admin
-    .from('services').select('code, name, default_rate').eq('active', true).order('name')
+    .from('services').select('code, name, default_rate').eq('org_id', orgId).eq('active', true).order('name')
   if (error) return { error: error.message }
-  return { services: data || [] }
+  return { services: data || [], orgName: org?.name || 'us' }
 }
 
-async function bookSlot(payload) {
+async function bookSlot(orgId, payload) {
   const { service_code, port, start_at, full_name, email, phone, notes } = payload
   if (!service_code || !start_at || !full_name || !email) {
     return { status: 400, body: { error: 'Missing required fields.' } }
   }
 
   const { data: service } = await admin
-    .from('services').select('code, name, default_rate').eq('code', service_code).eq('active', true).maybeSingle()
+    .from('services').select('code, name, default_rate').eq('org_id', orgId).eq('code', service_code).eq('active', true).maybeSingle()
   if (!service) return { status: 400, body: { error: 'Unknown service.' } }
 
   const startAt = new Date(start_at)
@@ -141,7 +152,7 @@ async function bookSlot(payload) {
   const { data: conflicts } = await admin
     .from('appointments')
     .select('id')
-    .eq('org_id', ORG_ID)
+    .eq('org_id', orgId)
     .neq('status', 'cancelled')
     .lt('start_at', endAt.toISOString())
     .gt('end_at', startAt.toISOString())
@@ -153,7 +164,7 @@ async function bookSlot(payload) {
   const cleanPhone = phone ? String(phone).trim() : null
 
   const { data: existingContact } = await admin
-    .from('contacts').select('id, phone').eq('org_id', ORG_ID).eq('email', cleanEmail).maybeSingle()
+    .from('contacts').select('id, phone').eq('org_id', orgId).eq('email', cleanEmail).maybeSingle()
 
   let contactId
   if (existingContact) {
@@ -165,7 +176,7 @@ async function bookSlot(payload) {
     const { data: newContact, error: contactErr } = await admin
       .from('contacts')
       .insert({
-        org_id: ORG_ID, full_name: String(full_name).trim(), email: cleanEmail, phone: cleanPhone,
+        org_id: orgId, full_name: String(full_name).trim(), email: cleanEmail, phone: cleanPhone,
         segment: 'private', source: 'in_app',
       })
       .select('id').single()
@@ -173,11 +184,16 @@ async function bookSlot(payload) {
     contactId = newContact.id
   }
 
+  const pipeline = await getDefaultPipeline(orgId)
+  if (!pipeline) return { status: 500, body: { error: 'This business has no pipeline configured yet.' } }
+  const stage = await getStageByName(orgId, BOOKING_STAGE_NAME)
+  if (!stage) return { status: 500, body: { error: `This business's pipeline is missing a "${BOOKING_STAGE_NAME}" stage.` } }
+
   const title = service.name
   const { data: opp, error: oppErr } = await admin
     .from('opportunities')
     .insert({
-      org_id: ORG_ID, contact_id: contactId, pipeline_id: PIPELINE_ID, stage_id: NEW_BOOKING_STAGE_ID,
+      org_id: orgId, contact_id: contactId, pipeline_id: pipeline.id, stage_id: stage.id,
       title, service_code: service.code, port: port || null, value: service.default_rate,
       status: 'open', scheduled_at: startAt.toISOString(),
     })
@@ -185,7 +201,7 @@ async function bookSlot(payload) {
   if (oppErr || !opp) return { status: 500, body: { error: 'Could not create booking.', detail: oppErr?.message } }
 
   const { error: apptErr } = await admin.from('appointments').insert({
-    org_id: ORG_ID, contact_id: contactId, opportunity_id: opp.id,
+    org_id: orgId, contact_id: contactId, opportunity_id: opp.id,
     source: 'in_app', external_id: null, title, port: port || null, service_code: service.code,
     start_at: startAt.toISOString(), end_at: endAt.toISOString(), status: 'scheduled',
   })
@@ -193,7 +209,7 @@ async function bookSlot(payload) {
 
   if (notes) {
     await admin.from('activities').insert({
-      org_id: ORG_ID, contact_id: contactId, type: 'note', body: `Booking note: ${String(notes).slice(0, 1000)}`,
+      org_id: orgId, contact_id: contactId, type: 'note', body: `Booking note: ${String(notes).slice(0, 1000)}`,
     })
   }
 
@@ -206,19 +222,22 @@ export const handler = async (event) => {
 
   let payload
   try { payload = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'Bad JSON' }) }
-  const { action } = payload
+  const { action, org_slug } = payload
+
+  const orgId = await resolveOrgId(org_slug)
+  if (!orgId) return json(404, { error: 'Unknown booking page.' })
 
   try {
     if (action === 'services') {
-      const r = await listServices()
+      const r = await listServices(orgId)
       return r.error ? json(500, { error: r.error }) : json(200, r)
     }
     if (action === 'availability') {
-      const r = await availableSlots(payload.date)
+      const r = await availableSlots(orgId, payload.date)
       return r.error ? json(500, { error: r.error }) : json(200, r)
     }
     if (action === 'book') {
-      const r = await bookSlot(payload)
+      const r = await bookSlot(orgId, payload)
       return json(r.status, r.body)
     }
     return json(400, { error: 'Unknown action' })

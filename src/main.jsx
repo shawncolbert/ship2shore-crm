@@ -14,6 +14,7 @@ import Inbox from './pages/Inbox'
 import Documents from './pages/Documents'
 import Automations from './pages/Automations'
 import PaymentSettings from './pages/PaymentSettings'
+import Services from './pages/Services'
 import AdminOrgs from './pages/AdminOrgs'
 import DeliveryOrderFix from './pages/DeliveryOrderFix'
 import LandingPages from './pages/LandingPages'
@@ -38,8 +39,11 @@ function App() {
       <Route path="/login" element={<Login />} />
       {/* Public customer upload link — no auth gate */}
       <Route path="/u/:token" element={<PublicUpload />} />
-      {/* Public native booking widget — no auth gate, additive to Calendly */}
+      {/* Public native booking widget — no auth gate, additive to Calendly.
+          /book keeps working with no slug (defaults to the original org);
+          /book/:orgSlug is the per-org link white-label orgs get. */}
       <Route path="/book" element={<PublicBooking />} />
+      <Route path="/book/:orgSlug" element={<PublicBooking />} />
       {/* Public landing pages — no auth gate */}
       <Route path="/pages/:slug" element={<LandingPagePublic />} />
       {/* Public funnels — no auth gate */}
@@ -60,6 +64,7 @@ function App() {
                 <Route path="do-fix" element={<DeliveryOrderFix />} />
                 <Route path="automations" element={<Automations />} />
                 <Route path="payment-settings" element={<PaymentSettings />} />
+                <Route path="services" element={<Services />} />
                 <Route path="landing-pages" element={<LandingPages />} />
                 <Route path="landing-pages/:id" element={<LandingPageEditor />} />
                 <Route path="funnels" element={<Funnels />} />

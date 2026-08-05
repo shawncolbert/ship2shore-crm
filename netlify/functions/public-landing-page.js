@@ -19,12 +19,12 @@ const json = (statusCode, body) => ({
 async function getPage(slug) {
   const { data, error } = await admin
     .from('landing_pages')
-    .select('id, org_id, title, blocks, published')
+    .select('id, org_id, title, blocks, published, organizations(slug)')
     .eq('slug', String(slug || '').trim())
     .maybeSingle()
   if (error) return { status: 500, body: { error: error.message } }
   if (!data || !data.published) return { status: 404, body: { error: 'Page not found.' } }
-  return { status: 200, body: { title: data.title, blocks: data.blocks || [] } }
+  return { status: 200, body: { title: data.title, blocks: data.blocks || [], bookingOrgSlug: data.organizations?.slug || null } }
 }
 
 async function submitLead(payload) {
