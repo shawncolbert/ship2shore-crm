@@ -22,10 +22,10 @@ export const handler = async () => {
   let failed = 0
 
   for (const post of due || []) {
-    if (!tiktokConfigured()) {
+    if (!(await tiktokConfigured(ORG_ID))) {
       await admin.from('social_posts').update({
         status: 'failed',
-        publish_error: 'No TikTok account is connected yet. An admin needs to connect one in TikTok Developer settings before scheduled posts can auto-publish.',
+        publish_error: 'No TikTok account is connected yet. Go to Social Posts and click "Connect TikTok" before scheduled posts can auto-publish.',
       }).eq('id', post.id)
       failed++
       continue
@@ -39,7 +39,7 @@ export const handler = async () => {
     }
 
     try {
-      const token = await tiktokAccessToken()
+      const token = await tiktokAccessToken(ORG_ID)
       const { publish_id: publishId } = await tiktokPublishPhoto(token, {
         imageUrl: post.image_url,
         caption: post.text,
