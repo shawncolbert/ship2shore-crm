@@ -15,10 +15,11 @@ export const handler = async (event) => {
     const orgId = await orgForUser(user.id)
     if (!orgId) return json(403, { error: 'No org membership' })
 
-    const { text, imageUrl, scheduledDate } = JSON.parse(event.body || '{}')
+    const { text, imageUrl, scheduledDate, autoPublishTiktok, tiktokPrivacyLevel, tiktokIsAigc } = JSON.parse(event.body || '{}')
 
     if (!text?.trim()) return json(400, { error: 'Post text is required' })
     if (!scheduledDate) return json(400, { error: 'Scheduled date is required' })
+    if (autoPublishTiktok && !imageUrl) return json(400, { error: 'An image URL is required to auto-publish to TikTok' })
 
     const { data: post, error: postErr } = await admin
       .from('social_posts')
@@ -27,7 +28,10 @@ export const handler = async (event) => {
         text,
         image_url: imageUrl || null,
         scheduled_date: scheduledDate,
-        status: 'draft',
+        status: autoPublishTiktok ? 'scheduled' : 'draft',
+        platform: autoPublishTiktok ? 'tiktok' : null,
+        tiktok_privacy_level: tiktokPrivacyLevel || 'SELF_ONLY',
+        tiktok_is_aigc: Boolean(tiktokIsAigc),
       })
       .select()
       .single()

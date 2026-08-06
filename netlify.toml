@@ -13,3 +13,7 @@
 # Draft (never send) a suggested reply for any conversation awaiting one
 [functions."ai-draft-reply"]
   schedule = "*/10 * * * *"
+
+# Publish any Social Media Planner post whose scheduled time has arrived
+[functions."tiktok-publish"]
+  schedule = "*/10 * * * *"
