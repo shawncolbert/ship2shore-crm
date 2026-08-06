@@ -339,6 +339,24 @@ function BlockCanvasItem({ block, index, count, dragging, dropTarget, onChange, 
   )
 }
 
+// Module-scope, not nested inside BlockPanel: a component defined inside
+// another component's render body gets a brand-new function identity on
+// every render, which makes React treat it as a different component type
+// at that position and remount it -- destroying focus after every single
+// keystroke. Takes block/onChange explicitly instead of closing over them.
+function Field({ block, onChange, name, k, ph, area }) {
+  return (
+    <div>
+      <label className={label}>{name}</label>
+      {area ? (
+        <textarea rows={2} className={input} value={block[k] || ''} onChange={(e) => onChange({ [k]: e.target.value })} placeholder={ph} />
+      ) : (
+        <input className={input} value={block[k] || ''} onChange={(e) => onChange({ [k]: e.target.value })} placeholder={ph} />
+      )}
+    </div>
+  )
+}
+
 /* Field panel for the structural blocks. Sits directly under the block it
    edits so the effect of a change is visible without scrolling. */
 function BlockPanel({ block, onChange, onClose }) {
@@ -349,17 +367,6 @@ function BlockPanel({ block, onChange, onClose }) {
   const addItem = (blank) => onChange({ items: [...(block.items || []), blank] })
   const removeItem = (i) => onChange({ items: (block.items || []).filter((_, j) => j !== i) })
 
-  const Field = ({ name, k, ph, area }) => (
-    <div>
-      <label className={label}>{name}</label>
-      {area ? (
-        <textarea rows={2} className={input} value={block[k] || ''} onChange={(e) => onChange({ [k]: e.target.value })} placeholder={ph} />
-      ) : (
-        <input className={input} value={block[k] || ''} onChange={(e) => onChange({ [k]: e.target.value })} placeholder={ph} />
-      )}
-    </div>
-  )
-
   return (
     <div className="border-y-2 border-accent bg-canvas p-4">
       <div className="mb-3 flex items-center justify-between">
@@ -369,10 +376,10 @@ function BlockPanel({ block, onChange, onClose }) {
 
       {block.type === 'hero' && (
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field name="Eyebrow (small line above)" k="eyebrow" ph="Mobile & Shop Welding" />
-          <Field name="Headline" k="heading" ph="Sparky's Arc Welding" />
-          <div className="sm:col-span-2"><Field name="Subheading" k="subheading" ph="What you do, where, and why you're worth calling." area /></div>
-          <Field name="Button label" k="ctaLabel" ph="Get a Free Quote" />
+          <Field block={block} onChange={onChange} name="Eyebrow (small line above)" k="eyebrow" ph="Mobile & Shop Welding" />
+          <Field block={block} onChange={onChange} name="Headline" k="heading" ph="Sparky's Arc Welding" />
+          <div className="sm:col-span-2"><Field block={block} onChange={onChange} name="Subheading" k="subheading" ph="What you do, where, and why you're worth calling." area /></div>
+          <Field block={block} onChange={onChange} name="Button label" k="ctaLabel" ph="Get a Free Quote" />
           <div>
             <label className={label}>Button goes to</label>
             <select className={input} value={block.ctaTarget || 'lead_form'} onChange={(e) => onChange({ ctaTarget: e.target.value })}>
@@ -380,7 +387,7 @@ function BlockPanel({ block, onChange, onClose }) {
               <option value="booking">Booking page (/book)</option>
             </select>
           </div>
-          <div className="sm:col-span-2"><Field name="Background image URL" k="image" ph="https://.../photo.jpg" /></div>
+          <div className="sm:col-span-2"><Field block={block} onChange={onChange} name="Background image URL" k="image" ph="https://.../photo.jpg" /></div>
           <p className="text-xs text-muted sm:col-span-2">
             Leave the image blank for a clean dark hero. A photo of the customer's own work will always beat stock.
           </p>
@@ -389,7 +396,7 @@ function BlockPanel({ block, onChange, onClose }) {
 
       {block.type === 'features' && (
         <div className="space-y-3">
-          <Field name="Section title" k="title" ph="What We Do" />
+          <Field block={block} onChange={onChange} name="Section title" k="title" ph="What We Do" />
           {(block.items || []).map((item, i) => (
             <div key={i} className="grid gap-2 rounded-lg border border-line bg-surface p-3 sm:grid-cols-[4rem_1fr]">
               <div>
@@ -427,9 +434,9 @@ function BlockPanel({ block, onChange, onClose }) {
 
       {block.type === 'testimonial' && (
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2"><Field name="Quote" k="quote" ph="Paste a real review from a customer." area /></div>
-          <Field name="Who said it" k="author" ph="Dana R." />
-          <Field name="Their role / context" k="role" ph="Homeowner" />
+          <div className="sm:col-span-2"><Field block={block} onChange={onChange} name="Quote" k="quote" ph="Paste a real review from a customer." area /></div>
+          <Field block={block} onChange={onChange} name="Who said it" k="author" ph="Dana R." />
+          <Field block={block} onChange={onChange} name="Their role / context" k="role" ph="Homeowner" />
           <p className="text-xs text-muted sm:col-span-2">
             Use a review the customer actually received. A made-up testimonial is a fake review.
           </p>
@@ -438,10 +445,10 @@ function BlockPanel({ block, onChange, onClose }) {
 
       {block.type === 'contact' && (
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field name="Business name" k="business" ph="Sparky's Arc Welding" />
-          <Field name="Phone" k="phone" ph="(910) 555-0142" />
-          <Field name="Email" k="email" ph="shop@example.com" />
-          <Field name="Service area" k="area" ph="Serving Wilmington and surrounding areas" />
+          <Field block={block} onChange={onChange} name="Business name" k="business" ph="Sparky's Arc Welding" />
+          <Field block={block} onChange={onChange} name="Phone" k="phone" ph="(910) 555-0142" />
+          <Field block={block} onChange={onChange} name="Email" k="email" ph="shop@example.com" />
+          <Field block={block} onChange={onChange} name="Service area" k="area" ph="Serving Wilmington and surrounding areas" />
         </div>
       )}
     </div>
