@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchDefaultPipeline, moveOpportunity, cancelOpportunity, setOpportunityBilling, patchOpportunity,
   updateOpportunity, sendWaveInvoice, fetchPaymentSettings, sendPaymentRequest,
+  uploadCompletionVideo, fetchCompletionVideo, fetchMyOrgId,
 } from '../lib/supabase'
 import { PAYMENT_METHODS, methodLabel } from '../lib/paymentRequest'
 import NewContactModal from '../components/NewContactModal'
@@ -226,6 +227,7 @@ export default function Pipeline() {
                   <JobCard
                     key={c.id}
                     c={c}
+                    isWon={!!stage.is_won}
                     dragId={dragId}
                     setDragId={setDragId}
                     cancelling={cancelling}
@@ -249,7 +251,7 @@ export default function Pipeline() {
   )
 }
 
-function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling, onSaveFields, onPatch, onSendInvoice, onSendPaymentRequest, paymentSettings }) {
+function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onSaveBilling, onSaveFields, onPatch, onSendInvoice, onSendPaymentRequest, paymentSettings }) {
   const ref = useRef(null)
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
@@ -475,7 +477,102 @@ function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling, on
         onInteractStart={() => setDraggable(false)}
         onInteractEnd={() => setDraggable(true)}
       />
+
+      {isWon && (
+        <CompletionVideoField
+          opportunityId={c.id}
+          contactId={c.contact_id}
+          onInteractStart={() => setDraggable(false)}
+          onInteractEnd={() => setDraggable(true)}
+        />
+      )}
     </article>
+  )
+}
+
+// Upload a completion video and explicitly tag its gate location. Only
+// outside_gate ever reaches the auto-post pipeline (trg_notify_completion_video
+// checks this server-side too) -- there's no default, a human must pick.
+function CompletionVideoField({ opportunityId, contactId, onInteractStart, onInteractEnd }) {
+  const qc = useQueryClient()
+  const [gateStatus, setGateStatus] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [err, setErr] = useState('')
+  const fileRef = useRef(null)
+  const stop = (e) => e.stopPropagation()
+
+  const { data: video, isLoading } = useQuery({
+    queryKey: ['completionVideo', opportunityId],
+    queryFn: () => fetchCompletionVideo(opportunityId),
+  })
+
+  const handleUpload = async () => {
+    const file = fileRef.current?.files?.[0]
+    if (!file) { setErr('Choose a video file first'); return }
+    if (!gateStatus) { setErr('Pick outside gate or inside gate first'); return }
+    setUploading(true)
+    setErr('')
+    try {
+      const orgId = await fetchMyOrgId()
+      await uploadCompletionVideo({ orgId, contactId, opportunityId, file, gateStatus })
+      qc.invalidateQueries({ queryKey: ['completionVideo', opportunityId] })
+    } catch (e) {
+      setErr(e.message || 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  if (isLoading) return null
+
+  return (
+    <div
+      className="mt-2 rounded-lg border border-line bg-canvas/50 p-2"
+      onMouseDown={stop}
+      onPointerDown={stop}
+      onClick={stop}
+      onFocus={onInteractStart}
+      onBlur={onInteractEnd}
+    >
+      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+        Completion video
+      </label>
+      {video ? (
+        <div className="flex items-center gap-1.5 text-xs text-ink">
+          <span aria-hidden="true">🎬</span>
+          <span className="truncate">{video.file_name}</span>
+          <span className={`ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${video.gate_status === 'outside_gate' ? 'bg-accent/20 text-ink' : 'bg-ink/10 text-muted'}`}>
+            {video.gate_status === 'outside_gate' ? 'Outside gate' : 'Inside gate'}
+          </span>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="video/*"
+            className="w-full text-[10px] text-muted file:mr-2 file:rounded file:border-0 file:bg-ink/10 file:px-2 file:py-1 file:text-[10px] file:font-semibold"
+          />
+          <select
+            value={gateStatus}
+            onChange={(e) => setGateStatus(e.target.value)}
+            className="w-full rounded border border-line bg-white px-2 py-1 text-xs outline-none focus:border-accent"
+          >
+            <option value="">Gate location — required</option>
+            <option value="outside_gate">Outside gate (safe to auto-post)</option>
+            <option value="inside_gate">Inside gate (private — never posted)</option>
+          </select>
+          {err && <p className="text-[10px] text-port">{err}</p>}
+          <button
+            onClick={handleUpload}
+            disabled={uploading}
+            className="w-full rounded bg-accent px-2 py-1 text-[10px] font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
+          >
+            {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -484,6 +581,7 @@ function JobCard({ c, dragId, setDragId, cancelling, onCancel, onSaveBilling, on
 function JobEditor({ c, onCancel, onSave }) {
   const [title, setTitle] = useState(c.title || '')
   const [port, setPort] = useState(c.port || '')
+  const [vehicle, setVehicle] = useState(c.vehicle || '')
   const [when, setWhen] = useState(toLocalInput(c.scheduled_at))
   const [amount, setAmount] = useState(c.value ?? '')
   const [saving, setSaving] = useState(false)
@@ -496,6 +594,7 @@ function JobEditor({ c, onCancel, onSave }) {
       await onSave({
         title: title.trim() || null,
         port: port || null,
+        vehicle: vehicle.trim() || null,
         scheduled_at: fromLocalInput(when),
         value: amount === '' ? null : amount,
       })
@@ -548,6 +647,15 @@ function JobEditor({ c, onCancel, onSave }) {
               <option key={k} value={k}>{label}</option>
             ))}
           </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Vehicle</label>
+          <input
+            value={vehicle}
+            onChange={(e) => setVehicle(e.target.value)}
+            placeholder="e.g. 2022 Toyota Tacoma"
+            className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+          />
         </div>
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Scheduled (Pacific)</label>

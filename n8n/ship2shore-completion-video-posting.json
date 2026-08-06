@@ -1,0 +1,179 @@
+{
+  "name": "Ship2Shore — Completion Video Auto-Post",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "description": "Receives an outside-gate completion-video event from the Supabase completion-video-webhook, re-checks the safety tag, generates a caption by client type, posts to Metricool/Buffer (TikTok/Instagram), and confirms in Slack. Import into n8n, attach a Slack credential to the two Slack nodes and your Metricool/Buffer credential to the HTTP Request node, copy the Webhook production URL into the Supabase secret N8N_COMPLETION_VIDEO_WEBHOOK_URL, then activate."
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ship2shore-completion-video",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Completion video (Webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 380],
+      "webhookId": "ship2shore-completion-video"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Same reason as the stage-change workflow: n8n puts a POST webhook's body\n// under $json.body, so lift the fields to the top level for every\n// downstream {{ $json.field }} expression to work directly.\nreturn $input.all().map((item) => ({ json: item.json.body ?? item.json }));"
+      },
+      "id": "unwrap-payload",
+      "name": "Unwrap payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 380]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.video_tag }}",
+              "rightValue": "outside-gate",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "content-safety-check",
+      "name": "Content safety check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tone by client_type, per the comms rule: always close with phone + Calendly.\nconst PHONE = '(310) 748-0040';\nconst CALENDLY = 'https://calendly.com/ship2shore/escort';\n\nconst TONE_INTRO = {\n  'Military/PCS': 'Proud to support another PCS move',\n  'Trucking': 'Another safe hand-off, logged and on schedule',\n  'Dispatcher': 'Job complete — confirming pickup',\n  'Private': 'Another smooth pickup in the books',\n};\n\nreturn $input.all().map((item) => {\n  const j = item.json;\n  const tone = TONE_INTRO[j.client_type] || TONE_INTRO['Private'];\n  const vehicle = j.vehicle || 'vehicle';\n  const port = j.port || 'the port';\n  const caption = `${tone} — ${vehicle} picked up at ${port}.\\nBook your escort: ${CALENDLY} | ${PHONE}`;\n  return { json: { ...j, caption } };\n});"
+      },
+      "id": "caption-generator",
+      "name": "Caption Generator",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 260]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://app.metricool.com/api/YOUR_METRICOOL_OR_BUFFER_ENDPOINT",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"caption\": $json.caption, \"video_url\": $json.video_url, \"platforms\": [\"tiktok\", \"instagram\"], \"job_ref\": $json.job_ref } }}",
+        "options": { "response": { "response": { "neverError": true } } }
+      },
+      "id": "post-to-metricool",
+      "name": "Post to Metricool/Buffer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 260],
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID", "name": "Metricool/Buffer API key" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 300,
+              "operator": { "type": "number", "operation": "lt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "post-succeeded",
+      "name": "Post succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1320, 260]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "#completed-jobs",
+        "text": "=Queued: {{ $json.job_ref }} social post ready",
+        "otherOptions": {}
+      },
+      "id": "slack-confirmation",
+      "name": "Slack confirmation",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1540, 180]
+    },
+    {
+      "parameters": {
+        "select": "user",
+        "user": "REPLACE_WITH_YOUR_SLACK_MEMBER_ID",
+        "text": "=🚨 Social post FAILED for {{ $json.job_ref }} ({{ $json.client_type }}, {{ $json.port }}). Check Metricool/Buffer manually.",
+        "otherOptions": {}
+      },
+      "id": "slack-http-error",
+      "name": "Slack alert — post failed",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1540, 340]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "#completed-jobs",
+        "text": "=⚠️ {{ $json.job_ref }} video needs manual review — not tagged outside-gate, so it was NOT auto-posted.",
+        "otherOptions": {}
+      },
+      "id": "slack-manual-review",
+      "name": "Slack — manual review queue",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [880, 500]
+    }
+  ],
+  "connections": {
+    "Completion video (Webhook)": {
+      "main": [
+        [ { "node": "Unwrap payload", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Unwrap payload": {
+      "main": [
+        [ { "node": "Content safety check", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Content safety check": {
+      "main": [
+        [ { "node": "Caption Generator", "type": "main", "index": 0 } ],
+        [ { "node": "Slack — manual review queue", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Caption Generator": {
+      "main": [
+        [ { "node": "Post to Metricool/Buffer", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Post to Metricool/Buffer": {
+      "main": [
+        [ { "node": "Post succeeded?", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Post succeeded?": {
+      "main": [
+        [ { "node": "Slack confirmation", "type": "main", "index": 0 } ],
+        [ { "node": "Slack alert — post failed", "type": "main", "index": 0 } ]
+      ]
+    }
+  }
+}

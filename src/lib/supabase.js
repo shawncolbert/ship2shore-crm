@@ -238,7 +238,7 @@ export async function fetchDefaultPipeline() {
 
   const { data: opps, error: oErr } = await supabase
     .from('opportunities')
-    .select('id, title, service_code, port, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, payment_status, wave_invoice_id, payment_requested_at, payment_method_requested, contacts(full_name, company, email)')
+    .select('id, title, service_code, port, vehicle, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, payment_status, wave_invoice_id, payment_requested_at, payment_method_requested, contacts(full_name, company, email)')
     .eq('pipeline_id', pipeline.id)
   if (oErr) throw oErr
 
@@ -669,6 +669,38 @@ export async function deleteAttachment({ id, filePath }) {
   await supabase.storage.from('delivery-orders').remove([filePath])
   const { error } = await supabase.from('attachments').delete().eq('id', id)
   if (error) throw error
+}
+
+// gateStatus must be 'outside_gate' or 'inside_gate' -- picked explicitly by
+// a human uploading, never defaulted. Inserting the row with gate_status
+// already set is what fires (or doesn't fire) the auto-post webhook --
+// see trg_notify_completion_video / completion-video-webhook.
+export async function uploadCompletionVideo({ orgId, contactId, opportunityId, file, gateStatus }) {
+  const safe = file.name.replace(/[^\w.\-]+/g, '_')
+  const path = `${orgId}/${opportunityId}/${Date.now()}-${safe}`
+  const up = await supabase.storage.from('job-videos').upload(path, file, { upsert: false })
+  if (up.error) throw up.error
+  const { data: { user } } = await supabase.auth.getUser()
+  const { error } = await supabase.from('attachments').insert({
+    org_id: orgId, contact_id: contactId, opportunity_id: opportunityId,
+    file_name: file.name, file_path: path, mime_type: file.type || null,
+    size_bytes: file.size || null, uploaded_by: user?.id || null,
+    kind: 'completion_video', gate_status: gateStatus,
+  })
+  if (error) throw error
+}
+
+export async function fetchCompletionVideo(opportunityId) {
+  const { data, error } = await supabase
+    .from('attachments')
+    .select('id, file_name, gate_status, created_at')
+    .eq('opportunity_id', opportunityId)
+    .eq('kind', 'completion_video')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data
 }
 
 // --- Auto-ingested document review queue (gmail-sync) --------------------
