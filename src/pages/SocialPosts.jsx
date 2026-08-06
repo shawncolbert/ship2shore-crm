@@ -74,8 +74,6 @@ export default function SocialPosts() {
     }
   }
 
-  const hasScheduledTiktok = posts?.some((p) => p.platform === 'tiktok' && p.status === 'scheduled')
-
   // Group posts by date
   const postsByDate = {}
   posts?.forEach((post) => {
@@ -124,11 +122,11 @@ export default function SocialPosts() {
         </div>
       )}
 
-      {tiktokStatus && !tiktokStatus.connected && !tiktokStatus.appConfigured && hasScheduledTiktok && (
+      {tiktokStatus && !tiktokStatus.connected && !tiktokStatus.appConfigured && (
         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           ⚠️ TikTok isn't set up on this site yet — an admin needs to create a TikTok Developer app and set
-          TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET before anyone can connect an account. Posts set to auto-publish
-          will fail until then.
+          TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET before a "Connect TikTok" button can appear here. Posts set
+          to auto-publish will fail until then.
         </div>
       )}
 
