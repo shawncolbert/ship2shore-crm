@@ -20,15 +20,28 @@ export default function BusinessCardView({ card, mode = 'public', onSubmitLead }
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2200) }
 
   const publicUrl = card.slug ? `${window.location.origin}/card/${card.slug}` : ''
+  // The QR image itself carries ?src=qr so a scan is attributable -- a
+  // normal link visit and a QR scan land on the exact same page otherwise.
+  const qrTargetUrl = card.slug ? `${publicUrl}?src=qr` : ''
+
+  // Only real visitor actions count -- never the admin builder's own preview.
+  const logEvent = (kind) => {
+    if (mode !== 'public' || !card.slug) return
+    fetch('/.netlify/functions/public-business-card', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'log_event', slug: card.slug, kind }),
+    }).catch(() => {})
+  }
 
   useEffect(() => {
-    if (!publicUrl) { setQrDataUrl(''); return }
+    if (!qrTargetUrl) { setQrDataUrl(''); return }
     let cancelled = false
-    QRCode.toDataURL(publicUrl, { margin: 1, width: 240, color: { dark: '#0c1a24', light: '#ffffff' } })
+    QRCode.toDataURL(qrTargetUrl, { margin: 1, width: 240, color: { dark: '#0c1a24', light: '#ffffff' } })
       .then((url) => { if (!cancelled) setQrDataUrl(url) })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [publicUrl])
+  }, [qrTargetUrl])
 
   const theme = {
     '--cb-bg': card.primary_bg || '#0c1a24',
@@ -66,9 +79,10 @@ export default function BusinessCardView({ card, mode = 'public', onSubmitLead }
   const share = async () => {
     const shareData = { title: card.full_name || card.brand_name || 'Digital card', url: publicUrl }
     if (navigator.share) {
-      try { await navigator.share(shareData); return } catch { /* user cancelled or unsupported */ }
+      try { await navigator.share(shareData); logEvent('share'); return } catch { /* user cancelled or unsupported */ }
     }
     copyText(publicUrl, 'Link copied.')
+    logEvent('share')
   }
 
   return (
@@ -150,7 +164,7 @@ export default function BusinessCardView({ card, mode = 'public', onSubmitLead }
 
         {/* 8. Primary CTA */}
         <button
-          onClick={() => downloadVCard(card)}
+          onClick={() => { downloadVCard(card); logEvent('download') }}
           className="w-full rounded-xl py-3.5 text-sm font-bold"
           style={{ background: 'var(--cb-cta)', color: '#1a1a1a' }}
         >

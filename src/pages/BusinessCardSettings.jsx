@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import QRCode from 'qrcode'
 import {
-  fetchMyBusinessCard, saveBusinessCard, slugify, suggestSlugs, PAYMENT_TYPES,
+  fetchMyBusinessCards, createBusinessCard, deleteBusinessCard, saveBusinessCard, slugify, suggestSlugs, PAYMENT_TYPES,
 } from '../lib/businessCard'
+import { fetchMyOrgId } from '../lib/supabase'
 import BusinessCardView from '../components/businessCard/BusinessCardView'
 
 const card = 'rounded-xl border border-line bg-surface p-5 space-y-3'
@@ -14,10 +15,118 @@ const label = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-mut
 const sectionTitle = 'text-sm font-semibold text-ink'
 const colorInput = 'h-9 w-14 cursor-pointer rounded-lg border border-line bg-canvas'
 
+// One card per driver now (was one per org). This top level is just the
+// driver picker + create/delete; the actual builder form below is
+// unchanged, it just edits whichever card is selected.
 export default function BusinessCardSettings() {
   const qc = useQueryClient()
-  const { data, isLoading } = useQuery({ queryKey: ['myBusinessCard'], queryFn: fetchMyBusinessCard })
-  const [form, setForm] = useState(null)
+  const { data: cards, isLoading } = useQuery({ queryKey: ['myBusinessCards'], queryFn: fetchMyBusinessCards })
+  const { data: orgId } = useQuery({ queryKey: ['myOrgId'], queryFn: fetchMyOrgId })
+  const [selectedId, setSelectedId] = useState(null)
+  const [creating, setCreating] = useState(false)
+
+  useEffect(() => {
+    if (cards?.length && !cards.some((c) => c.id === selectedId)) setSelectedId(cards[0].id)
+  }, [cards, selectedId])
+
+  if (isLoading || !cards) return <div className="p-8 text-sm text-muted">Loading…</div>
+
+  const selectedCard = cards.find((c) => c.id === selectedId) || null
+
+  const handleCreate = async () => {
+    if (!orgId) return
+    setCreating(true)
+    try {
+      const created = await createBusinessCard(orgId, { brand_name: cards[0]?.brand_name || '' })
+      await qc.invalidateQueries({ queryKey: ['myBusinessCards'] })
+      setSelectedId(created.id)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleDelete = async (id) => {
+    const target = cards.find((c) => c.id === id)
+    if (!confirm(`Delete ${target?.full_name || 'this driver'}'s card? This can't be undone.`)) return
+    await deleteBusinessCard(id)
+    await qc.invalidateQueries({ queryKey: ['myBusinessCards'] })
+    if (selectedId === id) setSelectedId(null)
+  }
+
+  return (
+    <div className="p-4 sm:p-6 lg:p-8">
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Digital Business Cards</h1>
+          <p className="max-w-xl text-sm text-muted">
+            One shareable card per driver — no code needed. Shares, downloads, and QR scans are counted per card below.
+          </p>
+        </div>
+        <button onClick={handleCreate} disabled={creating} className={btnAccent}>
+          {creating ? 'Creating…' : '+ New driver card'}
+        </button>
+      </header>
+
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {cards.map((c) => (
+          <DriverCardRow
+            key={c.id}
+            c={c}
+            selected={c.id === selectedId}
+            onSelect={() => setSelectedId(c.id)}
+            onDelete={() => handleDelete(c.id)}
+          />
+        ))}
+      </div>
+
+      {selectedCard && (
+        <BusinessCardEditor
+          key={selectedCard.id}
+          initialCard={selectedCard}
+          onSaved={() => qc.invalidateQueries({ queryKey: ['myBusinessCards'] })}
+        />
+      )}
+    </div>
+  )
+}
+
+function DriverCardRow({ c, selected, onSelect, onDelete }) {
+  return (
+    <div
+      onClick={onSelect}
+      className={`cursor-pointer rounded-xl border p-4 transition-colors ${selected ? 'border-accent bg-accent/5' : 'border-line bg-surface hover:border-accent/50'}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-ink">{c.full_name || 'Unnamed driver'}</div>
+          <div className="truncate text-xs text-muted">/card/{c.slug}</div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+            c.is_published ? 'bg-starboard/15 text-starboard' : 'bg-canvas text-muted ring-1 ring-inset ring-line'
+          }`}>
+            {c.is_published ? 'Live' : 'Draft'}
+          </span>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete() }}
+            className="rounded p-0.5 text-muted hover:bg-red-50 hover:text-red-500"
+            title="Delete this card"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-3 text-xs text-muted">
+        <span title="Times shared">🔗 {c.share_count ?? 0}</span>
+        <span title="Times saved to contacts">⬇️ {c.download_count ?? 0}</span>
+        <span title="QR code scans">📷 {c.scan_count ?? 0}</span>
+      </div>
+    </div>
+  )
+}
+
+function BusinessCardEditor({ initialCard, onSaved }) {
+  const [form, setForm] = useState(initialCard)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [saved, setSaved] = useState(false)
@@ -26,15 +135,11 @@ export default function BusinessCardSettings() {
   const [qrPngUrl, setQrPngUrl] = useState('')
   const [copyFlag, setCopyFlag] = useState('')
 
-  useEffect(() => { if (data) setForm(data) }, [data])
-
   useEffect(() => {
     if (!form?.slug) { setQrPngUrl(''); return }
-    QRCode.toDataURL(`${window.location.origin}/card/${form.slug}`, { margin: 1, width: 480 })
+    QRCode.toDataURL(`${window.location.origin}/card/${form.slug}?src=qr`, { margin: 1, width: 480 })
       .then(setQrPngUrl).catch(() => {})
   }, [form?.slug])
-
-  if (isLoading || !form) return <div className="p-8 text-sm text-muted">Loading…</div>
 
   const set = (k) => (e) => { setForm((f) => ({ ...f, [k]: e.target.value })); setSaved(false); setSlugSuggestions([]) }
   const setBool = (k) => (e) => { setForm((f) => ({ ...f, [k]: e.target.checked })); setSaved(false) }
@@ -45,9 +150,10 @@ export default function BusinessCardSettings() {
     try {
       const patch = { ...form, slug: slugify(form.slug) }
       delete patch.id; delete patch.org_id; delete patch.created_at; delete patch.updated_at
+      delete patch.share_count; delete patch.download_count; delete patch.scan_count
       const updated = await saveBusinessCard(form.id, patch)
       setForm(updated)
-      qc.invalidateQueries({ queryKey: ['myBusinessCard'] })
+      onSaved()
       setSaved(true)
     } catch (e) {
       setErr(e.message || String(e))
@@ -76,32 +182,23 @@ export default function BusinessCardSettings() {
   function flashCopy(which) { setCopyFlag(which); setTimeout(() => setCopyFlag(''), 1800) }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Business Card</h1>
-          <p className="max-w-xl text-sm text-muted">
-            Build your shareable digital business card — no code needed. Edits show up in the preview instantly;
-            nothing goes live until you hit Save.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-            form.is_published ? 'bg-starboard/15 text-starboard' : 'bg-canvas text-muted ring-1 ring-inset ring-line'
-          }`}>
-            {form.is_published ? 'Published' : 'Draft'}
-          </span>
-          <button onClick={() => setForm((f) => ({ ...f, is_published: !f.is_published }))} className={btn}>
-            {form.is_published ? 'Unpublish' : 'Publish'}
-          </button>
-          <button onClick={save} disabled={saving} className={btnAccent}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      </header>
-
+    <div>
       {err && <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
       {saved && <p className="mb-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">✓ Saved.</p>}
+
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+        <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+          form.is_published ? 'bg-starboard/15 text-starboard' : 'bg-canvas text-muted ring-1 ring-inset ring-line'
+        }`}>
+          {form.is_published ? 'Published' : 'Draft'}
+        </span>
+        <button onClick={() => setForm((f) => ({ ...f, is_published: !f.is_published }))} className={btn}>
+          {form.is_published ? 'Unpublish' : 'Publish'}
+        </button>
+        <button onClick={save} disabled={saving} className={btnAccent}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
 
       {form.is_published && (
         <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface p-3">

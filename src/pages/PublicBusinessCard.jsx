@@ -1,4 +1,5 @@
-import { useParams } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import BusinessCardView from '../components/businessCard/BusinessCardView'
 
@@ -15,11 +16,23 @@ async function callCard(payload) {
 
 export default function PublicBusinessCard() {
   const { slug } = useParams()
+  const [searchParams] = useSearchParams()
+  const isQrScan = searchParams.get('src') === 'qr'
+  const loggedScan = useRef(false)
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['publicBusinessCard', slug],
     queryFn: () => callCard({ action: 'get', slug }),
     retry: false,
   })
+
+  // Log once per page load, only when the QR code itself was scanned (its
+  // encoded URL carries ?src=qr) -- a normal shared-link visit never has it.
+  useEffect(() => {
+    if (!isQrScan || loggedScan.current || !data?.card) return
+    loggedScan.current = true
+    callCard({ action: 'log_event', slug, kind: 'scan' }).catch(() => {})
+  }, [isQrScan, data, slug])
 
   if (isLoading) {
     return <div className="flex min-h-screen items-center justify-center bg-[#0c1a24] text-sm text-white/50">Loading…</div>

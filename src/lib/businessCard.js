@@ -2,28 +2,43 @@ import { supabase, fetchMyOrgId } from './supabase'
 
 /* ------------------------------------------------------------------ */
 /* Data access — direct client CRUD under RLS, same pattern as         */
-/* Services.jsx and the automation rules editor. One row per org.      */
+/* Services.jsx and the automation rules editor. One row per driver.   */
 /* ------------------------------------------------------------------ */
 
-export async function fetchMyBusinessCard() {
+export async function fetchMyBusinessCards() {
   const orgId = await fetchMyOrgId()
   const { data, error } = await supabase
-    .from('business_cards').select('*').eq('org_id', orgId).maybeSingle()
+    .from('business_cards').select('*').eq('org_id', orgId).order('created_at', { ascending: true })
   if (error) throw error
-  if (data) return data
+  if (data && data.length > 0) return data
   // Every org gets a row seeded on creation (admin-create-org.js) or by the
   // backfill migration, but fall back to creating one on the fly just in
   // case this org predates both.
-  return createDefaultBusinessCard(orgId)
+  return [await createDefaultBusinessCard(orgId)]
 }
 
 async function createDefaultBusinessCard(orgId) {
   const { data, error } = await supabase
     .from('business_cards')
-    .insert({ org_id: orgId, slug: `card-${orgId.slice(0, 8)}` })
+    .insert({ org_id: orgId, slug: `card-${orgId.slice(0, 8)}-${Date.now().toString(36)}` })
     .select('*').single()
   if (error) throw error
   return data
+}
+
+// Explicit "+ New driver card" action — a blank card the dispatcher fills in.
+export async function createBusinessCard(orgId, seed = {}) {
+  const { data, error } = await supabase
+    .from('business_cards')
+    .insert({ org_id: orgId, slug: `card-${orgId.slice(0, 8)}-${Date.now().toString(36)}`, ...seed })
+    .select('*').single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteBusinessCard(id) {
+  const { error } = await supabase.from('business_cards').delete().eq('id', id)
+  if (error) throw error
 }
 
 // Slugs are globally unique (enforced at the DB level, like funnels/landing

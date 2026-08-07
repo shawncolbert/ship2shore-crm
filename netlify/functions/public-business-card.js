@@ -25,6 +25,16 @@ async function getCard(slug) {
   return { status: 200, body: { card: data } }
 }
 
+const EVENT_KINDS = new Set(['share', 'download', 'scan'])
+
+async function logEvent(payload) {
+  const { slug, kind } = payload
+  if (!slug || !EVENT_KINDS.has(kind)) return { status: 400, body: { error: 'Invalid event' } }
+  const { error } = await admin.rpc('increment_business_card_stat', { p_slug: String(slug).trim(), p_kind: kind })
+  if (error) return { status: 500, body: { error: error.message } }
+  return { status: 200, body: { ok: true } }
+}
+
 async function submitLead(payload) {
   const { slug, name, phone, email } = payload
   if (!slug || !name || !(phone || email)) return { status: 400, body: { error: 'Missing required fields.' } }
@@ -62,6 +72,10 @@ export const handler = async (event) => {
     }
     if (action === 'submit_lead') {
       const r = await submitLead(payload)
+      return json(r.status, r.body)
+    }
+    if (action === 'log_event') {
+      const r = await logEvent(payload)
       return json(r.status, r.body)
     }
     return json(400, { error: 'Unknown action' })

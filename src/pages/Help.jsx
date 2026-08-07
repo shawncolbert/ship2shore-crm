@@ -53,12 +53,14 @@ const SECTIONS = [
   },
   {
     id: 'business-card',
-    title: 'Digital Business Card',
+    title: 'Digital Business Cards',
     nav: '/settings/business-card',
-    body: `A shareable, mobile web page with your contact info, a "save to phone contacts" button, your
-      booking link, payment handles, and a QR code — all editable without touching code. Fill it in, hit
-      Publish, then use "Copy my public link" or "Copy QR image" to put it on a text signature, a truck
-      decal, a printed card, anywhere. Nothing is public until you publish it.`,
+    body: `One shareable, mobile web page per driver — contact info, a "save to phone contacts" button,
+      your booking link, payment handles, and a QR code — all editable without touching code. Click
+      "+ New driver card" for each driver, fill it in, hit Publish, then use "Copy my public link" or
+      "Copy QR image" to put it on a text signature, a truck decal, a printed card, anywhere. Nothing is
+      public until you publish it. Each card tracks its own shares, contact-saves, and QR scans right on
+      its tile, so you can see which drivers' cards are actually getting used.`,
   },
   {
     id: 'landing-funnels',
