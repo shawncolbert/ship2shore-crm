@@ -25,6 +25,8 @@ import PublicBooking from './pages/PublicBooking'
 import LandingPagePublic from './pages/LandingPagePublic'
 import PublicBusinessCard from './pages/PublicBusinessCard'
 import BusinessCardSettings from './pages/BusinessCardSettings'
+import ExternalCardLinks from './pages/ExternalCardLinks'
+import GoRedirect from './pages/GoRedirect'
 import Calendar from './pages/Calendar'
 import Funnels from './pages/Funnels'
 import PublicFunnel from './pages/PublicFunnel'
@@ -52,6 +54,8 @@ function App() {
       <Route path="/pages/:slug" element={<LandingPagePublic />} />
       {/* Public digital business card — no auth gate */}
       <Route path="/card/:slug" element={<PublicBusinessCard />} />
+      {/* Trackable link to an externally-hosted digital business card — no auth gate */}
+      <Route path="/go/:slug" element={<GoRedirect />} />
       {/* Public funnels — no auth gate */}
       <Route path="/funnel/:slug" element={<PublicFunnel />} />
       <Route
@@ -74,6 +78,7 @@ function App() {
                 <Route path="services" element={<Services />} />
                 <Route path="settings/pipeline-stages" element={<PipelineStages />} />
                 <Route path="settings/business-card" element={<BusinessCardSettings />} />
+                <Route path="settings/card-links" element={<ExternalCardLinks />} />
                 <Route path="landing-pages" element={<LandingPages />} />
                 <Route path="landing-pages/:id" element={<LandingPageEditor />} />
                 <Route path="funnels" element={<Funnels />} />
