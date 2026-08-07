@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchDashboardStats, fetchOpenPipelineJobs, fetchClosedJobs, fetchNewLeadsList, fetchJobsByStage,
   fetchNewCustomerFiles, markAttachmentViewed,
 } from '../lib/supabase'
+import { fetchMyBusinessCards } from '../lib/businessCard'
 import DrillDownModal from '../components/DrillDownModal'
 import BookingSidebar from '../components/BookingSidebar'
 
@@ -49,6 +51,7 @@ const DRILLDOWNS = {
 
 export default function Dashboard() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
     queryFn: fetchDashboardStats,
@@ -58,6 +61,14 @@ export default function Dashboard() {
     queryFn: async () => (await fetchNewCustomerFiles()).length,
     refetchInterval: 60_000,
   })
+  const { data: businessCards } = useQuery({
+    queryKey: ['myBusinessCards'],
+    queryFn: fetchMyBusinessCards,
+    refetchInterval: 60_000,
+  })
+  const cardActivity = (businessCards || []).reduce(
+    (sum, c) => sum + (c.share_count || 0) + (c.download_count || 0) + (c.scan_count || 0), 0,
+  )
   // { kind } for the stat cards, or { kind: 'stage', stageId, stageName } for a per-stage row.
   const [drillDown, setDrillDown] = useState(null)
   const [bookingSidebarOpen, setBookingSidebarOpen] = useState(false)
@@ -98,7 +109,10 @@ export default function Dashboard() {
 
       {data && (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <Stat label="Digital business cards" value={businessCards?.length ?? '—'}
+              hint={`${cardActivity} shares/saves/scans total — click to view all`}
+              onClick={() => navigate('/settings/business-card')} />
             <Stat label="Open pipeline value" value={money(data.openValue)} mono accent
               hint="Not yet completed, paid or canceled" onClick={() => openDrillDown('open')} />
             <Stat label="Jobs closed · 7 days" value={data.closedThisWeek}
