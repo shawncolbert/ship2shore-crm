@@ -416,7 +416,10 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onSaveBill
             </svg>
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); onCancel(c.id) }}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (window.confirm(`Cancel "${c.title || 'this job'}"? It'll disappear from the board.`)) onCancel(c.id)
+            }}
             disabled={cancelling === c.id}
             title="Cancel job"
             className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
