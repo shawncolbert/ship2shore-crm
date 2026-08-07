@@ -138,6 +138,36 @@ export default function ContactDetail() {
   )
 }
 
+// Presets for the "which document am I asking for" picker -- subject/body
+// are just a starting point, both stay fully editable before sending.
+const DOC_REQUEST_PRESETS = {
+  delivery_order: {
+    label: 'Delivery Order',
+    subject: 'Delivery Order Needed',
+    body: (firstName) => `Hi ${firstName},\n\nWe're ready to move forward and need your delivery order (POA and delivery details) to proceed.`,
+  },
+  doc_receipt: {
+    label: 'Doc Receipt',
+    subject: 'Documentation Receipt Needed',
+    body: (firstName) => `Hi ${firstName},\n\nWe need the documentation receipt to pick up the container/cargo. Please send it over so we can proceed.`,
+  },
+  gate_pass: {
+    label: 'Gate Pass',
+    subject: 'Gate Pass Needed',
+    body: (firstName) => `Hi ${firstName},\n\nWe need your gate pass to proceed with pickup. Please send it over when you get a chance.`,
+  },
+  supporting_docs: {
+    label: 'Supporting Documents',
+    subject: 'Supporting Documents Needed',
+    body: (firstName) => `Hi ${firstName},\n\nCould you send over any supporting documents for this job (delivery order, gate pass, doc receipt, or similar)? Whatever you have is a help.`,
+  },
+  custom: {
+    label: 'Custom',
+    subject: '',
+    body: () => '',
+  },
+}
+
 function DeliveryOrders({ contact, jobs }) {
   const qc = useQueryClient()
   const inputRef = useRef(null)
@@ -145,6 +175,29 @@ function DeliveryOrders({ contact, jobs }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [info, setInfo] = useState('')
+  const [showRequestForm, setShowRequestForm] = useState(false)
+  const [docType, setDocType] = useState('delivery_order')
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+
+  const firstName = (contact.full_name || '').split(/\s+/)[0] || 'there'
+
+  function openRequestForm() {
+    if (!contact.email) {
+      setErr('This contact has no email on file — add one before requesting a document.')
+      return
+    }
+    setErr(''); setInfo('')
+    applyPreset('delivery_order')
+    setShowRequestForm(true)
+  }
+
+  function applyPreset(key) {
+    setDocType(key)
+    const preset = DOC_REQUEST_PRESETS[key]
+    setSubject(preset.subject)
+    setBody(preset.body(firstName))
+  }
 
   const { data: orgId } = useQuery({ queryKey: ['myOrgId'], queryFn: fetchMyOrgId })
   const { data: files } = useQuery({ queryKey: ['attachments', contact.id], queryFn: () => fetchAttachments(contact.id) })
@@ -179,32 +232,18 @@ function DeliveryOrders({ contact, jobs }) {
     catch (e) { setErr(e.message) }
   }
 
-  async function requestLink() {
+  async function sendRequest() {
     if (!orgId) return
-    if (!contact.email) {
-      setErr('This contact has no email on file — add one before requesting a delivery order.')
-      return
-    }
+    if (!subject.trim() || !body.trim()) { setErr('Subject and message are required.'); return }
     setBusy(true); setErr(''); setInfo('')
     try {
       const url = await createUploadLink({ orgId, contactId: contact.id, opportunityId: jobId || null, label: contact.full_name })
-      const firstName = (contact.full_name || '').split(/\s+/)[0] || 'there'
-      const subject = 'Delivery Order Needed'
-      const body = `Hi ${firstName},
-
-We're ready to move forward and need your delivery order (POA and delivery details) to proceed.
-
-Please upload it using this secure link — no account needed:
-${url}
-
-This link is valid for 30 days.
-
-Thanks,
-Dispatch`
-      await sendEmail({ contactId: contact.id, to: contact.email, subject, body })
-      setInfo(`✓ Delivery order request emailed to ${contact.email}.`)
+      const fullBody = `${body}\n\nPlease upload it using this secure link — no account needed:\n${url}\n\nThis link is valid for 30 days.\n\nThanks,\nDispatch`
+      await sendEmail({ contactId: contact.id, to: contact.email, subject, body: fullBody })
+      setInfo(`✓ ${DOC_REQUEST_PRESETS[docType].label} request emailed to ${contact.email}.`)
+      setShowRequestForm(false)
     } catch (e) {
-      setErr('Could not send delivery order request: ' + (e.message || e))
+      setErr('Could not send document request: ' + (e.message || e))
     } finally { setBusy(false) }
   }
 
@@ -222,7 +261,7 @@ Dispatch`
               {jobs.map((j) => <option key={j.id} value={j.id}>{j.title || j.service_code || 'Job'}</option>)}
             </select>
           )}
-          <button className={btn} disabled={busy} onClick={requestLink}>📋 Request Delivery Order</button>
+          <button className={btn} disabled={busy} onClick={openRequestForm}>📋 Request a Document</button>
           <button className={btnAccent} disabled={busy} onClick={() => inputRef.current?.click()}>
             {busy ? 'Working…' : '⬆️ Upload'}
           </button>
@@ -233,6 +272,49 @@ Dispatch`
 
       {err && <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
       {info && <p className="mb-3 break-all rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">🔗 {info}</p>}
+
+      {showRequestForm && (
+        <div className="mb-4 space-y-3 rounded-lg border border-line bg-canvas/50 p-3">
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">What are you asking for?</label>
+            <select
+              value={docType}
+              onChange={(e) => applyPreset(e.target.value)}
+              className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm outline-none focus:border-accent"
+            >
+              {Object.entries(DOC_REQUEST_PRESETS).map(([key, p]) => (
+                <option key={key} value={key}>{p.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Subject</label>
+            <input
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm outline-none focus:border-accent"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Message</label>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={4}
+              className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm outline-none focus:border-accent"
+            />
+            <p className="mt-1 text-xs text-muted">The secure upload link and its 30-day note are added automatically after this message.</p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setShowRequestForm(false)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:bg-canvas hover:text-ink">
+              Cancel
+            </button>
+            <button onClick={sendRequest} disabled={busy} className={btnAccent}>
+              {busy ? 'Sending…' : 'Send request'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {!files ? (
         <p className="text-sm text-muted">Loading…</p>

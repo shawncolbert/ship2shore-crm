@@ -81,12 +81,14 @@ const SECTIONS = [
     id: 'documents',
     title: 'Documents & Delivery Orders',
     nav: '/documents',
-    body: `On any contact's page, "Request Delivery Order" emails them a secure upload link — no login
-      needed on their end. Whatever they send back lands in that contact's file automatically, and a "New
-      files from customers" card shows up on your Dashboard the moment it arrives, so you're not stuck
-      checking back manually. "DO / Contract Editor" is a separate on-device tool for redacting or
-      correcting a delivery order, contract, or any other PDF/photo before you send it anywhere — nothing
-      you edit there ever leaves your browser.`,
+    body: `On any contact's page, "Request a Document" emails them a secure upload link — no login needed
+      on their end. Pick what you're actually asking for (delivery order, doc receipt, gate pass, or any
+      supporting document) and edit the subject/message before sending; the link itself is added
+      automatically. Whatever they send back lands in that contact's file automatically — photos included,
+      not just PDFs — and a "New files from customers" card shows up on your Dashboard the moment it
+      arrives, so you're not stuck checking back manually. "DO / Contract Editor" is a separate on-device
+      tool for redacting or correcting a delivery order, contract, or any other PDF/photo before you send
+      it anywhere — nothing you edit there ever leaves your browser.`,
   },
   {
     id: 'inbox',

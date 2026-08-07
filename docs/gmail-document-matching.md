@@ -1,22 +1,36 @@
-# Auto-matching Delivery Orders & gate-pass PDFs from Gmail
+# Auto-matching Delivery Orders & gate-pass docs from Gmail
 
 The scheduled `gmail-sync` Edge Function (cron: every 15 min) now also scans new
-emails for **Delivery Order** and **Ports America gate-pass** PDF attachments,
-matches them to a job, and files them — no manual step to run it.
+emails for **Delivery Order** and **Ports America gate-pass** attachments —
+PDFs and photos (jpg/png/heic) alike — matches them to a job, and files them —
+no manual step to run it.
+
+> Photos used to be invisible to this entirely: only `.pdf` attachments were
+> ever looked at, so a customer photographing a delivery order with their
+> phone (very common) produced no record at all — not even a "review" flag,
+> it just vanished. Fixed: image attachments are now collected the same as
+> PDFs. There's no OCR in the edge runtime, so a photo can only auto-match a
+> job by its **filename** carrying the job's billing/BL number — but unlike
+> PDFs, an unmatched photo is never silently dropped: it's always stored and
+> flagged `needs_review` so a dispatcher can link it by hand from the
+> Documents page instead of it disappearing.
 
 ## Flow (all automatic)
 
 ```
 gmail-sync (every 15 min)
-  → for each recent email, walk its PDF attachments
-  → download the PDF, pull its embedded text (unpdf; best-effort)
-  → decide from the ATTACHMENT ITSELF (filename + its own PDF text):
+  → for each recent email, walk its PDF and image (jpg/png/heic) attachments
+  → PDF: download it, pull its embedded text (unpdf; best-effort)
+  → image: no text extraction possible (no OCR in the edge runtime) — filename only
+  → decide from the ATTACHMENT ITSELF (filename + its own PDF text, when it has one):
        • is it a Delivery Order / gate pass?      (classifyKind)
        • does it carry a job's number?            (matchOpportunity)
-  → store the PDF in the delivery-orders bucket + attachments table
+  → store it in the delivery-orders bucket + attachments table
        • matched  → linked to that job + contact
-       • unmatched but clearly a DO/gate pass → flagged needs_review = true
-       • neither  → ignored (not stored)
+       • unmatched but clearly a DO/gate pass (PDF) → flagged needs_review = true
+       • unmatched image → ALWAYS flagged needs_review = true (never dropped)
+       • unmatched, unclassified PDF → ignored (not stored) -- these are almost
+         always unrelated customs paperwork (7501s, ABI messages, etc.)
   → extract a BL/booking number (e.g. MOLU18009201655) → attachments.bl_number,
     and backfill the job's opportunities.bl_number if it had none
 ```
@@ -42,13 +56,13 @@ flag and files it on that job/contact) or **Dismissed** (deletes it).
 
 | Step | Automatic? |
 |------|------------|
-| Scan email for DO / gate-pass PDFs, on schedule | ✅ Automatic (cron, every 15 min) |
-| Extract embedded text + BL number | ✅ Automatic (text-layer PDFs) |
-| Match to a job by billing_number / bl_number | ✅ Automatic |
-| Store the PDF and link it to the job/contact | ✅ Automatic |
-| Flag unmatched documents | ✅ Automatic |
+| Scan email for DO / gate-pass PDFs **and photos**, on schedule | ✅ Automatic (cron, every 15 min) |
+| Extract embedded text + BL number | ✅ Automatic (text-layer PDFs only) |
+| Match to a job by billing_number / bl_number | ✅ Automatic (PDF text, or a photo's filename) |
+| Store the doc and link it to the job/contact | ✅ Automatic |
+| Flag unmatched documents for review | ✅ Automatic — **always** for photos, and for PDFs recognized as a DO/gate pass |
 | **Link an unmatched document to the right job** | 🖐 Manual (Documents page) |
-| **Read an image-only / scanned PDF with no text layer** | 🖐 Not supported in the edge runtime (no OCR). It's still stored from its filename and flagged for review. |
+| **Read the actual contents of a photo or scanned/image-only PDF** | 🖐 Not supported in the edge runtime (no OCR). It's still stored and flagged for review — just matched/named from its filename, not its contents. |
 
 ## Schema
 

@@ -120,14 +120,27 @@ function b64urlToBytes(data: string): Uint8Array {
   return bytes;
 }
 
-function collectPdfParts(payload: any): Array<{ filename: string; mimeType: string; attachmentId: string }> {
-  const out: Array<{ filename: string; mimeType: string; attachmentId: string }> = [];
+const IMAGE_EXT_RE = /\.(jpe?g|png|heic|heif)$/i;
+const isImageMime = (m: string) => /^image\/(jpe?g|png|heic|heif)$/i.test(m || "");
+
+// Customers very often photograph a delivery order / gate pass with their
+// phone instead of attaching a PDF -- those images used to be invisible to
+// this sync entirely (only .pdf parts were ever collected), so they just
+// vanished with no record and no review flag. Collect both.
+function collectDocParts(payload: any): Array<{ filename: string; mimeType: string; attachmentId: string; isImage: boolean }> {
+  const out: Array<{ filename: string; mimeType: string; attachmentId: string; isImage: boolean }> = [];
   function walk(part: any) {
     if (!part) return;
     const fn: string = part.filename || "";
     const isPdf = part.mimeType === "application/pdf" || /\.pdf$/i.test(fn);
-    if (part.body?.attachmentId && fn && isPdf) {
-      out.push({ filename: fn, mimeType: part.mimeType || "application/pdf", attachmentId: part.body.attachmentId });
+    const isImage = isImageMime(part.mimeType) || IMAGE_EXT_RE.test(fn);
+    if (part.body?.attachmentId && fn && (isPdf || isImage)) {
+      out.push({
+        filename: fn,
+        mimeType: part.mimeType || (isPdf ? "application/pdf" : "application/octet-stream"),
+        attachmentId: part.body.attachmentId,
+        isImage,
+      });
     }
     if (part.parts) part.parts.forEach(walk);
   }
@@ -137,9 +150,9 @@ function collectPdfParts(payload: any): Array<{ filename: string; mimeType: stri
 
 const safeName = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 120);
 
-// Scan one message's PDF attachments, match Delivery Orders / gate passes to a
-// job, store them in the delivery-orders bucket + attachments table, and flag
-// anything unmatched for manual review. Returns per-message counts.
+// Scan one message's PDF and image attachments, match Delivery Orders / gate
+// passes to a job, store them in the delivery-orders bucket + attachments
+// table, and flag anything unmatched for manual review. Returns per-message counts.
 //
 // Classification and matching are done from EACH attachment's own text
 // (filename + its PDF text) — never the shared email subject/body — so an email
@@ -154,7 +167,7 @@ async function processAttachments(
   opps: any[],
 ) {
   const stats = { stored: 0, matched: 0, review: 0, irrelevant: 0, errors: [] as any[] };
-  const parts = collectPdfParts(payload);
+  const parts = collectDocParts(payload);
 
   for (const part of parts) {
     const filename = part.filename;
@@ -176,13 +189,19 @@ async function processAttachments(
       if (!attRes.ok || !attData?.data) { stats.errors.push({ file: filename, detail: attData }); continue; }
 
       const bytes = b64urlToBytes(attData.data);
-      const pdfText = await extractPdfText(bytes);
+      // No OCR in the edge runtime -- an image's only signal is its filename.
+      // A PDF's embedded text layer is far more reliable, when it has one.
+      const pdfText = part.isImage ? "" : await extractPdfText(bytes);
       const docText = filename + "\n" + pdfText;
       const kind = classifyKind(docText);
       const match = matchOpportunity(opps, normalize(docText));
 
-      // Unrelated PDF (not a DO/gate pass and matches no job) — leave it alone.
-      if (!match && !kind) { stats.irrelevant++; continue; }
+      // An unmatched, unclassified PDF is almost always an unrelated customs
+      // form (7501, ABI, etc.) -- safe to skip. A photo attachment has no such
+      // signal to fall back on, and in this business a customer's photo
+      // attachment is overwhelmingly a document photo, not decoration -- so
+      // images always get stored and flagged for a human instead of dropped.
+      if (!match && !kind && !part.isImage) { stats.irrelevant++; continue; }
 
       const bl = firstBl(docText);
       const linkContactId = match?.contact_id || contactId || null;
@@ -190,7 +209,7 @@ async function processAttachments(
 
       const { error: upErr } = await supabase.storage
         .from(DOCS_BUCKET)
-        .upload(path, bytes, { contentType: "application/pdf", upsert: true });
+        .upload(path, bytes, { contentType: part.mimeType, upsert: true });
       if (upErr) { stats.errors.push({ file: filename, detail: upErr.message || upErr }); continue; }
 
       const { error: insErr } = await supabase.from("attachments").insert({
@@ -199,7 +218,7 @@ async function processAttachments(
         opportunity_id: match?.id || null,
         file_name: filename,
         file_path: path,
-        mime_type: "application/pdf",
+        mime_type: part.mimeType,
         size_bytes: bytes.length,
         kind: kind || "shipping_doc",
         bl_number: bl,
