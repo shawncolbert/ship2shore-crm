@@ -139,7 +139,7 @@ async function resolveReferrer(orgId, ref) {
   if (!ref) return null
   const { data } = await admin
     .from('external_card_links')
-    .select('slug, name, notify_email, round_the_clock')
+    .select('slug, name, notify_email, round_the_clock, booking_label')
     .eq('org_id', orgId).eq('slug', ref).maybeSingle()
   return data || null
 }
@@ -150,7 +150,16 @@ async function listServices(orgId, ref) {
     .from('services').select('code, name, default_rate').eq('org_id', orgId).eq('active', true).order('name')
   if (error) return { error: error.message }
   const referrer = await resolveReferrer(orgId, ref)
-  return { services: data || [], orgName: referrer?.name || org?.name || 'us', roundTheClock: !!referrer?.round_the_clock }
+  // booking_label is customer-facing page branding ("Tilly's Dispatch") --
+  // deliberately separate from `name` (the card's own display name, "Tilly's
+  // Classics", used for click-tracking and the "Lead source" activity note)
+  // so a customer never sees "Ship2Shore Dispatch" on what should read as
+  // that driver's own booking page.
+  return {
+    services: data || [],
+    orgName: referrer?.booking_label || referrer?.name || org?.name || 'us',
+    roundTheClock: !!referrer?.round_the_clock,
+  }
 }
 
 // Best-effort "you've got a lead" ping to the driver whose card sent this
