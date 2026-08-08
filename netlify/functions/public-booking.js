@@ -80,8 +80,11 @@ function parseDateParam(dateStr) {
 }
 
 // List candidate hourly slots for one Pacific calendar day, minus already
-// booked (non-canceled) appointments and past/too-soon times.
-async function availableSlots(orgId, dateStr) {
+// booked (non-canceled) appointments and past/too-soon times. `roundTheClock`
+// (true for bookings referred through a driver card set up for 24/7
+// availability) skips the Mon–Fri/8–5 restriction entirely -- every hour of
+// every day within the booking window is a candidate slot.
+async function availableSlots(orgId, dateStr, roundTheClock = false) {
   const ymd = parseDateParam(dateStr)
   if (!ymd) return { error: 'Bad date' }
 
@@ -92,9 +95,11 @@ async function availableSlots(orgId, dateStr) {
   )
   if (dayIndexToday < 0 || dayIndexToday > MAX_DAYS_OUT) return { slots: [] }
 
-  // No Saturday or Sunday work (0=Sunday, 6=Saturday).
-  const dow = new Date(Date.UTC(ymd.y, ymd.m - 1, ymd.d)).getUTCDay()
-  if (dow === 0 || dow === 6) return { slots: [] }
+  if (!roundTheClock) {
+    // No Saturday or Sunday work (0=Sunday, 6=Saturday).
+    const dow = new Date(Date.UTC(ymd.y, ymd.m - 1, ymd.d)).getUTCDay()
+    if (dow === 0 || dow === 6) return { slots: [] }
+  }
 
   const dayStartUtc = zonedWallTimeToUtc(ymd.y, ymd.m, ymd.d, 0, 0, TIMEZONE)
   const dayEndUtc = zonedWallTimeToUtc(ymd.y, ymd.m, ymd.d, 23, 59, TIMEZONE)
@@ -109,8 +114,10 @@ async function availableSlots(orgId, dateStr) {
   if (error) return { error: error.message }
 
   const earliest = new Date(now.getTime() + MIN_LEAD_HOURS * 3600 * 1000)
+  const startHour = roundTheClock ? 0 : BUSINESS_START_HOUR
+  const endHour = roundTheClock ? 24 : BUSINESS_END_HOUR
   const slots = []
-  for (let hour = BUSINESS_START_HOUR; hour < BUSINESS_END_HOUR; hour++) {
+  for (let hour = startHour; hour < endHour; hour++) {
     const slotStart = zonedWallTimeToUtc(ymd.y, ymd.m, ymd.d, hour, 0, TIMEZONE)
     const slotEnd = new Date(slotStart.getTime() + SLOT_MINUTES * 60 * 1000)
     if (slotStart < earliest) continue
@@ -132,7 +139,7 @@ async function resolveReferrer(orgId, ref) {
   if (!ref) return null
   const { data } = await admin
     .from('external_card_links')
-    .select('slug, name, notify_email')
+    .select('slug, name, notify_email, round_the_clock')
     .eq('org_id', orgId).eq('slug', ref).maybeSingle()
   return data || null
 }
@@ -143,7 +150,7 @@ async function listServices(orgId, ref) {
     .from('services').select('code, name, default_rate').eq('org_id', orgId).eq('active', true).order('name')
   if (error) return { error: error.message }
   const referrer = await resolveReferrer(orgId, ref)
-  return { services: data || [], orgName: referrer?.name || org?.name || 'us' }
+  return { services: data || [], orgName: referrer?.name || org?.name || 'us', roundTheClock: !!referrer?.round_the_clock }
 }
 
 // Best-effort "you've got a lead" ping to the driver whose card sent this
@@ -284,7 +291,8 @@ export const handler = async (event) => {
       return r.error ? json(500, { error: r.error }) : json(200, r)
     }
     if (action === 'availability') {
-      const r = await availableSlots(orgId, payload.date)
+      const referrer = await resolveReferrer(orgId, ref)
+      const r = await availableSlots(orgId, payload.date, !!referrer?.round_the_clock)
       return r.error ? json(500, { error: r.error }) : json(200, r)
     }
     if (action === 'book') {

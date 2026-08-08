@@ -18,16 +18,18 @@ function pacificToday() {
   return { y: Number(parts.year), m: Number(parts.month), d: Number(parts.day) }
 }
 
-// Next 21 calendar days (matching the server's booking window), weekends
-// excluded (no Saturday or Sunday work). Each entry carries the YYYY-MM-DD
-// key the API expects.
-function upcomingDays() {
+// Next 21 calendar days (matching the server's booking window). Weekends are
+// excluded by default (no Saturday or Sunday work), except for bookings
+// referred through a driver card set up for round-the-clock availability
+// (roundTheClock=true), which show every day. Each entry carries the
+// YYYY-MM-DD key the API expects.
+function upcomingDays(roundTheClock) {
   const { y, m, d } = pacificToday()
   const days = []
   for (let offset = 0; offset <= 21; offset++) {
     const marker = new Date(Date.UTC(y, m - 1, d + offset))
     const dow = marker.getUTCDay()
-    if (dow === 0 || dow === 6) continue // Saturday or Sunday
+    if (!roundTheClock && (dow === 0 || dow === 6)) continue // Saturday or Sunday
     const key = `${marker.getUTCFullYear()}-${String(marker.getUTCMonth() + 1).padStart(2, '0')}-${String(marker.getUTCDate()).padStart(2, '0')}`
     const label = marker.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' })
     days.push({ key, label })
@@ -42,7 +44,8 @@ export default function PublicBooking() {
   const { orgSlug } = useParams()
   const [searchParams] = useSearchParams()
   const ref = searchParams.get('ref')
-  const days = useMemo(upcomingDays, [])
+  const [roundTheClock, setRoundTheClock] = useState(false)
+  const days = useMemo(() => upcomingDays(roundTheClock), [roundTheClock])
   const [services, setServices] = useState(null)
   const [orgName, setOrgName] = useState('us')
   const [serviceCode, setServiceCode] = useState('')
@@ -59,6 +62,7 @@ export default function PublicBooking() {
       setServices(r.services || [])
       setServiceCode(r.services?.[0]?.code || '')
       setOrgName(r.orgName || 'us')
+      setRoundTheClock(!!r.roundTheClock)
     }).catch((e) => setErr(e.message))
   }, [orgSlug, ref])
 
