@@ -1,5 +1,6 @@
 import { admin } from './_shared/supabaseAdmin.js'
 import { getDefaultPipeline, getIntakeStage } from './_shared/pipeline.js'
+import { googleAccessToken, buildRaw, gmailSend } from './_shared/google.js'
 
 // Public, unauthenticated native booking widget — an in-app alternative to the
 // Calendly link. A customer picks a service + time slot and this writes the
@@ -123,16 +124,56 @@ async function availableSlots(orgId, dateStr) {
   return { slots }
 }
 
-async function listServices(orgId) {
+// A booking link can carry ?ref=<external_card_links.slug> so a driver's
+// own card (Tilly's, Eloy's, ...) can send its leads through this same
+// booking flow while still (a) branding the page with that driver's name
+// and (b) telling us who to notify once the lead comes in.
+async function resolveReferrer(orgId, ref) {
+  if (!ref) return null
+  const { data } = await admin
+    .from('external_card_links')
+    .select('slug, name, notify_email')
+    .eq('org_id', orgId).eq('slug', ref).maybeSingle()
+  return data || null
+}
+
+async function listServices(orgId, ref) {
   const { data: org } = await admin.from('organizations').select('name').eq('id', orgId).maybeSingle()
   const { data, error } = await admin
     .from('services').select('code, name, default_rate').eq('org_id', orgId).eq('active', true).order('name')
   if (error) return { error: error.message }
-  return { services: data || [], orgName: org?.name || 'us' }
+  const referrer = await resolveReferrer(orgId, ref)
+  return { services: data || [], orgName: referrer?.name || org?.name || 'us' }
+}
+
+// Best-effort "you've got a lead" ping to the driver whose card sent this
+// booking. Deliberately not logged into the CRM's conversations/messages --
+// it's an internal heads-up to the driver, not a message to the customer.
+async function notifyReferrer(referrer, { fullName, email, phone, serviceName, startAt, port }) {
+  if (!referrer?.notify_email) return
+  try {
+    const from = process.env.GMAIL_ADDRESS
+    const at = await googleAccessToken()
+    const when = new Date(startAt).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', dateStyle: 'medium', timeStyle: 'short' })
+    const subject = `New lead from your card: ${fullName}`
+    const body =
+      `You've got a new booking through your Ship2Shore card (${referrer.name}).\n\n` +
+      `Name: ${fullName}\n` +
+      `Email: ${email}\n` +
+      `Phone: ${phone || '—'}\n` +
+      `Service: ${serviceName}\n` +
+      `Requested time: ${when} Pacific\n` +
+      `${port ? `Port: ${port}\n` : ''}` +
+      `\nThis is already logged in Ship2Shore Dispatch.`
+    await gmailSend(at, buildRaw({ from, to: referrer.notify_email, subject, body }))
+  } catch {
+    // Lead is already saved in the CRM regardless -- a notification-email
+    // hiccup shouldn't fail or roll back the booking itself.
+  }
 }
 
 async function bookSlot(orgId, payload) {
-  const { service_code, port, start_at, full_name, email, phone, notes } = payload
+  const { service_code, port, start_at, full_name, email, phone, notes, ref } = payload
   if (!service_code || !start_at || !full_name || !email) {
     return { status: 400, body: { error: 'Missing required fields.' } }
   }
@@ -212,6 +253,17 @@ async function bookSlot(orgId, payload) {
     })
   }
 
+  const referrer = await resolveReferrer(orgId, ref)
+  if (referrer) {
+    await admin.from('activities').insert({
+      org_id: orgId, contact_id: contactId, type: 'note', body: `Lead source: ${referrer.name}'s card`,
+    })
+    await notifyReferrer(referrer, {
+      fullName: String(full_name).trim(), email: cleanEmail, phone: cleanPhone,
+      serviceName: service.name, startAt: startAt.toISOString(), port,
+    })
+  }
+
   return { status: 200, body: { ok: true, contact_id: contactId, opportunity_id: opp.id, start_at: startAt.toISOString() } }
 }
 
@@ -221,14 +273,14 @@ export const handler = async (event) => {
 
   let payload
   try { payload = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'Bad JSON' }) }
-  const { action, org_slug } = payload
+  const { action, org_slug, ref } = payload
 
   const orgId = await resolveOrgId(org_slug)
   if (!orgId) return json(404, { error: 'Unknown booking page.' })
 
   try {
     if (action === 'services') {
-      const r = await listServices(orgId)
+      const r = await listServices(orgId, ref)
       return r.error ? json(500, { error: r.error }) : json(200, r)
     }
     if (action === 'availability') {

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 
-async function callBooking(action, orgSlug, payload = {}) {
+async function callBooking(action, orgSlug, ref, payload = {}) {
   const res = await fetch('/.netlify/functions/public-booking', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, org_slug: orgSlug || undefined, ...payload }),
+    body: JSON.stringify({ action, org_slug: orgSlug || undefined, ref: ref || undefined, ...payload }),
   })
   const j = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`)
@@ -40,6 +40,8 @@ const fmtSlot = (iso) =>
 
 export default function PublicBooking() {
   const { orgSlug } = useParams()
+  const [searchParams] = useSearchParams()
+  const ref = searchParams.get('ref')
   const days = useMemo(upcomingDays, [])
   const [services, setServices] = useState(null)
   const [orgName, setOrgName] = useState('us')
@@ -53,28 +55,28 @@ export default function PublicBooking() {
   const [err, setErr] = useState('')
 
   useEffect(() => {
-    callBooking('services', orgSlug).then((r) => {
+    callBooking('services', orgSlug, ref).then((r) => {
       setServices(r.services || [])
       setServiceCode(r.services?.[0]?.code || '')
       setOrgName(r.orgName || 'us')
     }).catch((e) => setErr(e.message))
-  }, [orgSlug])
+  }, [orgSlug, ref])
 
   useEffect(() => {
     if (!dateKey) return
     setSlot(''); setSlots(null); setLoadingSlots(true)
-    callBooking('availability', orgSlug, { date: dateKey })
+    callBooking('availability', orgSlug, ref, { date: dateKey })
       .then((r) => setSlots(r.slots || []))
       .catch((e) => setErr(e.message))
       .finally(() => setLoadingSlots(false))
-  }, [dateKey, orgSlug])
+  }, [dateKey, orgSlug, ref])
 
   async function submit(e) {
     e.preventDefault()
     if (!serviceCode || !slot || !form.full_name.trim() || !form.email.trim()) return
     setStatus('submitting'); setErr('')
     try {
-      await callBooking('book', orgSlug, {
+      await callBooking('book', orgSlug, ref, {
         service_code: serviceCode, start_at: slot,
         full_name: form.full_name.trim(), email: form.email.trim(), phone: form.phone.trim() || null,
         notes: form.notes.trim() || null,
@@ -83,7 +85,7 @@ export default function PublicBooking() {
     } catch (e2) {
       setErr(e2.message); setStatus('error')
       // The slot may have just been taken — refresh the list.
-      callBooking('availability', orgSlug, { date: dateKey }).then((r) => setSlots(r.slots || [])).catch(() => {})
+      callBooking('availability', orgSlug, ref, { date: dateKey }).then((r) => setSlots(r.slots || [])).catch(() => {})
     }
   }
 
