@@ -645,7 +645,7 @@ export async function markAttachmentViewed(id) {
   if (error) throw error
 }
 
-export async function uploadDeliveryOrder({ orgId, contactId, opportunityId = null, file }) {
+export async function uploadDeliveryOrder({ orgId, contactId, opportunityId = null, file, kind }) {
   const safe = file.name.replace(/[^\w.\-]+/g, '_')
   const path = `${orgId}/${contactId}/${Date.now()}-${safe}`
   const up = await supabase.storage.from('delivery-orders').upload(path, file, { upsert: false })
@@ -655,6 +655,7 @@ export async function uploadDeliveryOrder({ orgId, contactId, opportunityId = nu
     org_id: orgId, contact_id: contactId, opportunity_id: opportunityId || null,
     file_name: file.name, file_path: path, mime_type: file.type || null,
     size_bytes: file.size || null, uploaded_by: user?.id || null,
+    ...(kind ? { kind } : {}),
   })
   if (error) throw error
 }

@@ -89,8 +89,9 @@ const SECTIONS = [
       automatically. Whatever they send back lands in that contact's file automatically — photos included,
       not just PDFs — and a "New files from customers" card shows up on your Dashboard the moment it
       arrives, so you're not stuck checking back manually. "DO / Contract Editor" is a separate on-device
-      tool for redacting or correcting a delivery order, contract, or any other PDF/photo before you send
-      it anywhere — nothing you edit there ever leaves your browser.`,
+      tool for redacting or correcting a delivery order, contract, or any other PDF/photo — editing itself
+      stays on your device, and when you're done you can download it, print it (opens your normal print
+      dialog), or use "Save to customer file" to file the corrected copy under whichever customer it's for.`,
   },
   {
     id: 'inbox',

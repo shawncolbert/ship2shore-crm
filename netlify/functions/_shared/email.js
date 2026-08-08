@@ -3,10 +3,10 @@ import { googleAccessToken, buildRaw, gmailSend } from './google.js'
 
 // Sends a real email via Gmail and logs it into messages/conversations so it
 // shows up in the inbox thread, same as any other outbound email.
-export async function sendCustomerEmail({ orgId, to, subject, body, contactId, conversationId }) {
+export async function sendCustomerEmail({ orgId, to, subject, body, html, contactId, conversationId }) {
   const from = process.env.GMAIL_ADDRESS
   const at = await googleAccessToken()
-  const sent = await gmailSend(at, buildRaw({ from, to, subject: subject || '(no subject)', body }))
+  const sent = await gmailSend(at, buildRaw({ from, to, subject: subject || '(no subject)', body, html }))
 
   let convId = conversationId
   if (!convId) {

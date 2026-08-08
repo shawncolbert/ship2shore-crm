@@ -1,12 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { fetchContacts, fetchContact, fetchMyOrgId, uploadDeliveryOrder } from '../lib/supabase'
 
 /* Manual delivery-order corrector: erase anything wrong on a DO and type the
    correction in its place. Deliberately manual -- no OCR, no broker
    detection, nothing guessed on the dispatcher's behalf.
 
-   Everything runs in this browser. A customer's delivery order is never
-   uploaded anywhere, and pdf.js/jsPDF are served from /vendor rather than a
-   CDN so the tool still works on the dead signal around a port gate. */
+   Editing itself runs entirely in this browser -- a document isn't uploaded
+   anywhere just by opening or correcting it, and pdf.js/jsPDF are served
+   from /vendor rather than a CDN so the tool still works on the dead signal
+   around a port gate. The one deliberate exception is "Save to customer
+   file": that's an explicit, one-time upload of the corrected result back
+   into that customer's record, only when the dispatcher asks for it. */
+
+const DOC_KINDS = [
+  { value: 'delivery_order', label: 'Delivery Order' },
+  { value: 'contract', label: 'Contract' },
+  { value: 'gate_pass', label: 'Gate Pass' },
+  { value: 'shipping_doc', label: 'Other document' },
+]
 
 const RENDER_SCALE = 300 / 72       // 300 DPI -- what the port expects
 const TEXT_FILL = 'rgb(28,28,28)'   // typical DO body ink
@@ -68,6 +79,20 @@ export default function DeliveryOrderFix() {
   const stampImgRef = useRef(null)
   const [zoom, setZoom] = useState(1)          // 1 = fit page width
   const queuedRef = useRef(null)
+
+  // "Save to customer file" -- the one deliberate exception to "nothing
+  // leaves this device": explicitly files the corrected result under
+  // whichever customer it belongs to.
+  const [saveOpen, setSaveOpen] = useState(false)
+  const [saveQuery, setSaveQuery] = useState('')
+  const [saveResults, setSaveResults] = useState([])
+  const [saveSearching, setSaveSearching] = useState(false)
+  const [saveContact, setSaveContact] = useState(null)
+  const [saveJobs, setSaveJobs] = useState([])
+  const [saveJobId, setSaveJobId] = useState('')
+  const [saveKind, setSaveKind] = useState('delivery_order')
+  const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState('')
 
   useEffect(() => {
     Promise.all([loadScript('/vendor/pdf.min.js'), loadScript('/vendor/jspdf.umd.min.js')])
@@ -638,7 +663,9 @@ export default function DeliveryOrderFix() {
     )
   }
 
-  function downloadPdf() {
+  // Shared by Download, Print, and Save to customer file -- one PDF build,
+  // three different things done with the resulting blob.
+  function buildPdfBlob() {
     commit()
     const { jsPDF } = window.jspdf
     let pdf = null
@@ -650,7 +677,97 @@ export default function DeliveryOrderFix() {
       else pdf.addPage([w, h], orient)
       pdf.addImage(c.toDataURL('image/jpeg', 0.94), 'JPEG', 0, 0, w, h)
     })
-    deliver(pdf.output('blob'), `Delivery_Order_Corrected_${stamp()}.pdf`)
+    return pdf.output('blob')
+  }
+
+  function downloadPdf() {
+    deliver(buildPdfBlob(), `Delivery_Order_Corrected_${stamp()}.pdf`)
+  }
+
+  // A browser can't connect to a printer directly (no site can, for
+  // security reasons) -- this opens the same system print dialog Gmail or
+  // Google Docs would, where whatever printer is already set up on this
+  // computer (USB, WiFi, AirPrint) shows up as a normal option.
+  function printPdf() {
+    const blob = buildPdfBlob()
+    const url = URL.createObjectURL(blob)
+    const iframe = document.createElement('iframe')
+    iframe.style.position = 'fixed'
+    iframe.style.right = '0'
+    iframe.style.bottom = '0'
+    iframe.style.width = '0'
+    iframe.style.height = '0'
+    iframe.style.border = '0'
+    document.body.appendChild(iframe)
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow.focus()
+        iframe.contentWindow.print()
+      } catch {
+        window.open(url, '_blank') // print dialog blocked -- let them print from the opened tab instead
+      }
+    }
+    iframe.src = url
+    // The dialog only needs the blob to exist while it's open; clean up well
+    // after any reasonable time spent picking a printer.
+    setTimeout(() => { iframe.remove(); URL.revokeObjectURL(url) }, 120000)
+  }
+
+  function openSavePanel() {
+    setSaveErr('')
+    setSaveQuery('')
+    setSaveResults([])
+    setSaveContact(null)
+    setSaveJobs([])
+    setSaveJobId('')
+    setSaveKind('delivery_order')
+    setSaveOpen(true)
+  }
+
+  async function runSaveSearch(q) {
+    setSaveQuery(q)
+    if (!q.trim()) { setSaveResults([]); return }
+    setSaveSearching(true)
+    try {
+      const rows = await fetchContacts({ search: q.trim() })
+      setSaveResults(rows.slice(0, 8))
+    } catch {
+      // a failed search just shows no results -- not worth a hard error here
+    } finally {
+      setSaveSearching(false)
+    }
+  }
+
+  async function pickSaveContact(c) {
+    setSaveContact(c)
+    setSaveResults([])
+    setSaveQuery(c.full_name || '')
+    try {
+      const detail = await fetchContact(c.id)
+      setSaveJobs(detail.jobs || [])
+    } catch {
+      setSaveJobs([])
+    }
+  }
+
+  async function saveToCustomerFile() {
+    if (!saveContact) { setSaveErr('Pick a customer first.'); return }
+    setSaving(true); setSaveErr('')
+    try {
+      const orgId = await fetchMyOrgId()
+      const blob = buildPdfBlob()
+      const filename = `Delivery_Order_Corrected_${stamp()}.pdf`
+      const file = new File([blob], filename, { type: 'application/pdf' })
+      await uploadDeliveryOrder({
+        orgId, contactId: saveContact.id, opportunityId: saveJobId || null, file, kind: saveKind,
+      })
+      flash(`✓ Saved to ${saveContact.full_name}'s file`)
+      setSaveOpen(false)
+    } catch (e) {
+      setSaveErr(e.message || String(e))
+    } finally {
+      setSaving(false)
+    }
   }
 
   function reset() {
@@ -689,7 +806,9 @@ export default function DeliveryOrderFix() {
         </h1>
         <p className="max-w-2xl text-sm text-muted">
           Erase whatever's wrong on a delivery order, contract, or any other PDF/photo and type the
-          correction in its place. Everything happens on this device — the document is never uploaded anywhere.
+          correction in its place. Editing happens entirely on this device — nothing is uploaded just by
+          opening or correcting a document. When you're done, download it, print it, or use
+          "Save to customer file" to file the corrected copy under whichever customer it belongs to.
         </p>
       </header>
 
@@ -908,6 +1027,12 @@ export default function DeliveryOrderFix() {
               <button className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-ink hover:bg-accent-600" onClick={downloadPdf}>
                 ✅ Download corrected PDF
               </button>
+              <button className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink hover:border-accent" onClick={printPdf}>
+                🖨️ Print
+              </button>
+              <button className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink hover:border-accent" onClick={openSavePanel}>
+                📁 Save to customer file
+              </button>
               <button className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink hover:border-accent" onClick={downloadPng}>
                 🖼️ Download PNG (this page)
               </button>
@@ -915,6 +1040,80 @@ export default function DeliveryOrderFix() {
                 Start over
               </button>
             </div>
+            <p className="mt-2 text-xs text-muted">
+              Print opens your computer's normal print dialog — pick whatever printer's already set up there.
+            </p>
+
+            {saveOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSaveOpen(false)}>
+                <div className="w-full max-w-sm rounded-xl border border-line bg-surface p-5" onClick={(e) => e.stopPropagation()}>
+                  <h2 className="mb-3 text-sm font-semibold text-ink">Save corrected file to customer's record</h2>
+                  {saveErr && <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-xs text-port">⚠️ {saveErr}</p>}
+
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Customer</label>
+                  <input
+                    value={saveQuery}
+                    onChange={(e) => { setSaveContact(null); runSaveSearch(e.target.value) }}
+                    placeholder="Search by name, phone, or email…"
+                    className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+                  />
+                  {saveSearching && <p className="mt-1 text-xs text-muted">Searching…</p>}
+                  {saveResults.length > 0 && (
+                    <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-line">
+                      {saveResults.map((c) => (
+                        <li key={c.id}>
+                          <button
+                            onClick={() => pickSaveContact(c)}
+                            className="block w-full px-3 py-2 text-left text-sm text-ink hover:bg-canvas"
+                          >
+                            {c.full_name || 'Unnamed contact'}
+                            {c.company && <span className="text-muted"> · {c.company}</span>}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {saveContact && saveJobs.length > 0 && (
+                    <div className="mt-3">
+                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Job (optional)</label>
+                      <select
+                        value={saveJobId}
+                        onChange={(e) => setSaveJobId(e.target.value)}
+                        className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+                      >
+                        <option value="">No job link</option>
+                        {saveJobs.map((j) => <option key={j.id} value={j.id}>{j.title || j.service_code || 'Job'}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="mt-3">
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Document type</label>
+                    <select
+                      value={saveKind}
+                      onChange={(e) => setSaveKind(e.target.value)}
+                      className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+                    >
+                      {DOC_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button onClick={() => setSaveOpen(false)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:bg-canvas hover:text-ink">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveToCustomerFile}
+                      disabled={saving || !saveContact}
+                      className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
+                    >
+                      {saving ? 'Saving…' : 'Save to file'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
