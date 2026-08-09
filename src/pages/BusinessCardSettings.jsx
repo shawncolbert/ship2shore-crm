@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import QRCode from 'qrcode'
 import {
   fetchMyBusinessCards, createBusinessCard, deleteBusinessCard, saveBusinessCard, slugify, suggestSlugs, PAYMENT_TYPES,
+  uploadCardAsset,
 } from '../lib/businessCard'
 import { fetchMyOrgId } from '../lib/supabase'
 import BusinessCardView from '../components/businessCard/BusinessCardView'
@@ -134,6 +135,8 @@ function BusinessCardEditor({ initialCard, onSaved }) {
   const [mobileTab, setMobileTab] = useState('edit') // 'edit' | 'preview'
   const [qrPngUrl, setQrPngUrl] = useState('')
   const [copyFlag, setCopyFlag] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [uploadErr, setUploadErr] = useState('')
 
   useEffect(() => {
     if (!form?.slug) { setQrPngUrl(''); return }
@@ -180,6 +183,22 @@ function BusinessCardEditor({ initialCard, onSaved }) {
     }
   }
   function flashCopy(which) { setCopyFlag(which); setTimeout(() => setCopyFlag(''), 1800) }
+
+  const uploadLogo = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploading(true); setUploadErr('')
+    try {
+      const url = await uploadCardAsset(form.org_id, form.id, file)
+      setForm((f) => ({ ...f, brand_logo_url: url }))
+      setSaved(false)
+    } catch (err) {
+      setUploadErr(err.message || String(err))
+    } finally {
+      setUploading(false)
+    }
+  }
 
   return (
     <div>
@@ -242,8 +261,18 @@ function BusinessCardEditor({ initialCard, onSaved }) {
           <section className={card}>
             <h2 className={sectionTitle}>Branding</h2>
             <Field label="Brand name"><input value={form.brand_name || ''} onChange={set('brand_name')} className={input} /></Field>
-            <Field label="Logo URL (optional — falls back to the icon)">
+            <Field label="Logo / photo (optional — falls back to the icon)">
               <input value={form.brand_logo_url || ''} onChange={set('brand_logo_url')} className={input} placeholder="https://…" />
+              <div className="mt-2 flex items-center gap-3">
+                <label className={`${btn} cursor-pointer`}>
+                  {uploading ? 'Uploading…' : 'Upload a photo'}
+                  <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={uploadLogo} />
+                </label>
+                {form.brand_logo_url && (
+                  <img src={form.brand_logo_url} alt="" className="h-10 w-10 rounded-full border border-line object-cover" />
+                )}
+              </div>
+              {uploadErr && <p className="mt-1 text-xs text-port">⚠️ {uploadErr}</p>}
             </Field>
             <Field label="Icon (emoji)"><input value={form.brand_icon || ''} onChange={set('brand_icon')} className={input} maxLength={4} /></Field>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

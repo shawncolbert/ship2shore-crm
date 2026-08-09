@@ -56,6 +56,18 @@ export async function saveBusinessCard(id, patch) {
   return data
 }
 
+// Card logos/photos need to render on the public, unauthenticated /card/:slug
+// page, so they live in the public `card-assets` bucket (unlike delivery
+// orders, which stay private) -- write access is still org-scoped by RLS,
+// same {org_id}/... path convention as everywhere else in the app.
+export async function uploadCardAsset(orgId, cardId, file) {
+  const safe = file.name.replace(/[^\w.\-]+/g, '_')
+  const path = `${orgId}/${cardId}/${Date.now()}-${safe}`
+  const up = await supabase.storage.from('card-assets').upload(path, file, { upsert: false })
+  if (up.error) throw up.error
+  return supabase.storage.from('card-assets').getPublicUrl(path).data.publicUrl
+}
+
 export const slugify = (s) =>
   String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
