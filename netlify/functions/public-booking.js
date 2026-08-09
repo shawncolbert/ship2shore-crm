@@ -205,7 +205,10 @@ async function notifyReferrer(referrer, { fullName, email, phone, serviceName, s
   }
 }
 
-const MAX_PHOTO_BYTES = 8 * 1024 * 1024
+// A Netlify function's request body caps around 6MB, and the client already
+// compresses+resizes before sending -- this is a backstop against a request
+// that skipped the client-side compression somehow, not the primary guard.
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024
 
 // Best-effort vehicle-photo upload attached to the booking's contact/job --
 // mirrors the storage + attachments-row pattern public-upload.js already

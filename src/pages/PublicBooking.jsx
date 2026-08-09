@@ -40,7 +40,14 @@ function upcomingDays(roundTheClock) {
 const fmtSlot = (iso) =>
   new Date(iso).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' })
 
-const MAX_PHOTO_BYTES = 8 * 1024 * 1024
+// Netlify functions cap the request body around 6MB, and base64 inflates a
+// file by ~33% -- so the actual raw-file ceiling has to stay well under
+// that, not just under some round "8MB" number that sounds safe but isn't.
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024
+// A generous ceiling on what we'll even attempt to load into a canvas for
+// compression -- real phone photos are nowhere near this; it's just a
+// backstop against something absurd hanging the browser.
+const MAX_SELECT_BYTES = 25 * 1024 * 1024
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -48,6 +55,35 @@ function fileToBase64(file) {
     reader.onload = () => resolve(String(reader.result).split(',')[1] || '')
     reader.onerror = () => reject(new Error('Could not read that photo.'))
     reader.readAsDataURL(file)
+  })
+}
+
+// Phone camera photos routinely run 3-8MB, well past what a Netlify
+// function can accept in one request -- downscale + re-encode as JPEG so a
+// normal photo actually makes it through instead of getting rejected.
+function compressImage(file, maxDim = 1600, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      let { width, height } = img
+      if (width > maxDim || height > maxDim) {
+        const scale = maxDim / Math.max(width, height)
+        width = Math.round(width * scale)
+        height = Math.round(height * scale)
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+      canvas.toBlob((blob) => {
+        if (!blob) { reject(new Error('Could not process that photo.')); return }
+        resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }))
+      }, 'image/jpeg', quality)
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that photo.')) }
+    img.src = url
   })
 }
 
@@ -99,7 +135,20 @@ export default function PublicBooking() {
     try {
       let photo
       if (photoFile) {
-        photo = { filename: photoFile.name, contentType: photoFile.type, dataBase64: await fileToBase64(photoFile) }
+        let toSend = photoFile
+        try {
+          toSend = await compressImage(photoFile)
+        } catch {
+          // Compression failing (e.g. an odd file type) just means we try
+          // sending the original -- the size check right below still guards
+          // against that being too big for the request to actually go through.
+        }
+        if (toSend.size > MAX_PHOTO_BYTES) {
+          setErr('That photo is too large even after compression — try a different photo.')
+          setStatus('error')
+          return
+        }
+        photo = { filename: toSend.name, contentType: toSend.type, dataBase64: await fileToBase64(toSend) }
       }
       await callBooking('book', orgSlug, ref, {
         service_code: serviceCode, start_at: slot,
@@ -223,10 +272,11 @@ export default function PublicBooking() {
                 <input type="file" accept="image/*"
                   onChange={(e) => {
                     const f = e.target.files?.[0] || null
-                    if (f && f.size > MAX_PHOTO_BYTES) { setErr('That photo is too large (max 8 MB).'); e.target.value = ''; setPhotoFile(null); return }
+                    if (f && f.size > MAX_SELECT_BYTES) { setErr('That photo is too large to use — try a different one.'); e.target.value = ''; setPhotoFile(null); return }
                     setErr(''); setPhotoFile(f)
                   }}
                   className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-ink" />
+                <p className="mt-1 text-xs text-muted">We'll resize it automatically before sending.</p>
               </div>
             )}
           </div>
