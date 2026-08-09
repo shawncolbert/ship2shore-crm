@@ -1,25 +1,31 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchMyExternalCards, createExternalCard, updateExternalCard, deleteExternalCard, setExternalCardActive } from '../lib/externalCards'
-import { fetchMyOrgId } from '../lib/supabase'
+import { createDriverCard } from '../lib/driverOnboarding'
+import { fetchMyOrgId, fetchServices } from '../lib/supabase'
 
 const card = 'rounded-xl border border-line bg-surface p-5'
 const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
 const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
 const input = 'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent'
 const label = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-muted'
+const help = 'mt-1 text-xs text-muted'
 
 // Click-tracking for digital business cards you already built and host
 // elsewhere -- NOT the in-app card builder (that's Settings -> Business
 // Card). Each row here is just a name + the real URL; the trackable /go/
 // link counts a click, then bounces straight there.
+// null | 'choose' | 'driver' | 'external'
 export default function ExternalCardLinks() {
   const qc = useQueryClient()
   const { data: cards, isLoading } = useQuery({ queryKey: ['externalCards'], queryFn: fetchMyExternalCards })
   const { data: orgId } = useQuery({ queryKey: ['myOrgId'], queryFn: fetchMyOrgId })
-  const [showNew, setShowNew] = useState(false)
+  const [mode, setMode] = useState(null)
+  const [justCreated, setJustCreated] = useState(null)
 
   const totalClicks = (cards || []).reduce((sum, c) => sum + (c.click_count || 0), 0)
+  const close = () => { setMode(null); setJustCreated(null) }
+  const refresh = () => qc.invalidateQueries({ queryKey: ['externalCards'] })
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -27,11 +33,11 @@ export default function ExternalCardLinks() {
         <div>
           <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Digital Business Cards</h1>
           <p className="max-w-xl text-sm text-muted">
-            Cards you've already built and host elsewhere — this just tracks clicks. Share the trackable link
-            instead of the raw URL and every visit gets counted here.
+            Set up a new driver's card entirely here — Call/Text/Email, a Book Now link that routes leads to
+            them automatically, and an on/off switch if you ever need to cut them off.
           </p>
         </div>
-        <button onClick={() => setShowNew(true)} className={btnAccent}>+ Add a card</button>
+        <button onClick={() => setMode('choose')} className={btnAccent}>+ Add a card</button>
       </header>
 
       {isLoading ? (
@@ -40,26 +46,62 @@ export default function ExternalCardLinks() {
         <>
           <p className="mb-4 text-sm text-muted">{cards?.length || 0} card{cards?.length === 1 ? '' : 's'} on file · {totalClicks} click{totalClicks === 1 ? '' : 's'} total</p>
 
-          {showNew && (
+          {mode === 'choose' && (
+            <div className={`${card} mb-4`}>
+              <h2 className="mb-1 text-sm font-semibold text-ink">What are you setting up?</h2>
+              <p className="mb-4 text-xs text-muted">Pick one — you can always add the other kind later.</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button onClick={() => setMode('driver')} className="rounded-xl border-2 border-accent bg-canvas p-4 text-left hover:bg-accent/5">
+                  <div className="text-sm font-bold text-ink">Set up a new card here (recommended)</div>
+                  <p className="mt-1 text-xs text-muted">
+                    I build the whole card for you — contact buttons, a Book Now link that routes leads to
+                    the right person, and a real on/off switch you fully control.
+                  </p>
+                </button>
+                <button onClick={() => setMode('external')} className="rounded-xl border border-line bg-canvas p-4 text-left hover:bg-canvas/70">
+                  <div className="text-sm font-bold text-ink">Just track clicks on a card I already built</div>
+                  <p className="mt-1 text-xs text-muted">
+                    For a card hosted somewhere else entirely (e.g. Netlify). This only counts clicks — no
+                    booking routing, and the on/off switch can't reach it.
+                  </p>
+                </button>
+              </div>
+              <button onClick={close} className="mt-3 text-xs font-medium text-muted hover:text-ink">Cancel</button>
+            </div>
+          )}
+
+          {mode === 'driver' && !justCreated && (
+            <NewDriverCardForm
+              orgId={orgId}
+              onClose={close}
+              onCreated={(result) => { setJustCreated(result); refresh() }}
+            />
+          )}
+
+          {justCreated && (
+            <DriverCardCreatedSummary result={justCreated} onDone={close} />
+          )}
+
+          {mode === 'external' && (
             <NewCardForm
-              onClose={() => setShowNew(false)}
+              onClose={close}
               onSave={async (form) => {
                 await createExternalCard({ orgId, ...form })
-                qc.invalidateQueries({ queryKey: ['externalCards'] })
-                setShowNew(false)
+                refresh()
+                close()
               }}
             />
           )}
 
           <div className="space-y-3">
-            {cards?.length === 0 && !showNew && (
-              <p className="text-sm text-muted">No cards yet. Add one to start tracking clicks.</p>
+            {cards?.length === 0 && !mode && (
+              <p className="text-sm text-muted">No cards yet. Add one to get started.</p>
             )}
             {cards?.map((c) => (
               <CardRow
                 key={c.id}
                 c={c}
-                onUpdated={() => qc.invalidateQueries({ queryKey: ['externalCards'] })}
+                onUpdated={refresh}
               />
             ))}
           </div>
@@ -149,6 +191,153 @@ function CardRow({ c, onUpdated }) {
         </button>
         <button onClick={() => setEditing(true)} className={btn}>Edit</button>
         <button onClick={remove} className="rounded-lg p-2 text-muted hover:bg-red-50 hover:text-red-500">🗑️</button>
+      </div>
+    </div>
+  )
+}
+
+function NewDriverCardForm({ orgId, onClose, onCreated }) {
+  const { data: services, isLoading: loadingServices } = useQuery({ queryKey: ['services'], queryFn: fetchServices })
+  const [fullName, setFullName] = useState('')
+  const [title, setTitle] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [serviceCodes, setServiceCodes] = useState([])
+  const [roundTheClock, setRoundTheClock] = useState(false)
+  const [bookingLabel, setBookingLabel] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const toggleService = (code) => {
+    setServiceCodes((codes) => (codes.includes(code) ? codes.filter((c) => c !== code) : [...codes, code]))
+  }
+
+  const save = async () => {
+    if (!fullName.trim()) { setErr('Name is required.'); return }
+    if (!phone.trim() && !email.trim()) { setErr("Enter at least a phone or email — that's how leads reach them."); return }
+    setSaving(true); setErr('')
+    try {
+      const result = await createDriverCard(orgId, {
+        fullName: fullName.trim(), title: title.trim() || null, phone: phone.trim() || null, email: email.trim() || null,
+        serviceCodes, roundTheClock, bookingLabel: bookingLabel.trim() || null,
+      })
+      onCreated(result)
+    } catch (e) {
+      setErr(e.message || String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className={`${card} mb-4 space-y-4`}>
+      <div>
+        <h2 className="text-sm font-semibold text-ink">Set up a new card</h2>
+        <p className="text-xs text-muted">Fill this in once — the card, contact buttons, booking link, and lead routing all get created together.</p>
+      </div>
+      {err && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-port">⚠️ {err}</p>}
+
+      <div>
+        <label className={label}>Name or business name</label>
+        <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={input} placeholder="e.g. Tilly's Classics" />
+        <p className={help}>Shows as the big name on their card and in your Digital Business Cards list.</p>
+      </div>
+
+      <div>
+        <label className={label}>Title / role (optional)</label>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} className={input} placeholder="e.g. Vehicle Dispatch" />
+        <p className={help}>A short line under their name on the card, like a job title.</p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className={label}>Phone</label>
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} className={input} placeholder="(555) 555-5555" />
+          <p className={help}>Their Call/Text buttons, and the number shown to customers if they need to call to confirm a booking.</p>
+        </div>
+        <div>
+          <label className={label}>Email</label>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} className={input} placeholder="name@email.com" />
+          <p className={help}>Where "you've got a new lead" alerts go the moment someone books through their card.</p>
+        </div>
+      </div>
+
+      <div>
+        <label className={label}>Services they're allowed to offer</label>
+        {loadingServices ? (
+          <p className="text-xs text-muted">Loading your service list…</p>
+        ) : !services?.length ? (
+          <p className="text-xs text-muted">You haven't added any services yet (Settings → Services). Leave this blank to allow everything for now.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {services.map((s) => (
+              <button
+                key={s.code} type="button" onClick={() => toggleService(s.code)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  serviceCodes.includes(s.code) ? 'border-accent bg-accent text-ink' : 'border-line bg-canvas text-ink hover:bg-canvas/70'
+                }`}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+        )}
+        <p className={help}>Leave none selected to let their card offer every service you sell. Customers never see prices on this kind of card.</p>
+      </div>
+
+      <div>
+        <label className={label}>Booking page header (optional)</label>
+        <input value={bookingLabel} onChange={(e) => setBookingLabel(e.target.value)} className={input} placeholder={fullName ? `e.g. ${fullName} Dispatch` : 'e.g. Tilly\'s Dispatch'} />
+        <p className={help}>What shows at the top of the booking page when a customer clicks their Book Now button (e.g. "Book with ___"). Defaults to their name if left blank.</p>
+      </div>
+
+      <label className="flex items-center gap-2 text-sm text-ink">
+        <input type="checkbox" checked={roundTheClock} onChange={(e) => setRoundTheClock(e.target.checked)} className="h-4 w-4 rounded border-line" />
+        Available 24/7 (unchecked = standard Mon–Fri business hours)
+      </label>
+
+      <div className="flex justify-end gap-2 border-t border-line pt-3">
+        <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:bg-canvas hover:text-ink">Cancel</button>
+        <button onClick={save} disabled={saving} className={btnAccent}>{saving ? 'Creating…' : 'Create card'}</button>
+      </div>
+    </div>
+  )
+}
+
+function DriverCardCreatedSummary({ result, onDone }) {
+  const { card: bizCard, link } = result
+  const cardUrl = `${window.location.origin}/card/${bizCard.slug}`
+  const [copyFlag, setCopyFlag] = useState('')
+
+  const copy = async (text, which) => {
+    try { await navigator.clipboard.writeText(text); setCopyFlag(which); setTimeout(() => setCopyFlag(''), 1800) }
+    catch { /* noop */ }
+  }
+
+  return (
+    <div className={`${card} mb-4 space-y-4 border-2 border-starboard`}>
+      <div className="flex items-center gap-2">
+        <span className="text-lg">✅</span>
+        <h2 className="text-sm font-bold text-ink">{bizCard.full_name}'s card is live</h2>
+      </div>
+      <p className="text-sm text-muted">
+        This is the one link to actually give them — it's their whole card. It already includes their
+        Book Now button, so you don't need to send anything else.
+      </p>
+      <div>
+        <label className={label}>Their card link</label>
+        <div className="flex items-center gap-2">
+          <input readOnly value={cardUrl} className={`${input} font-[family-name:var(--font-mono)] text-xs`} />
+          <button onClick={() => copy(cardUrl, 'card')} className={btn}>{copyFlag === 'card' ? '✓ Copied' : 'Copy'}</button>
+        </div>
+        <p className={help}>Text or email them this. It works on any phone — no app needed.</p>
+      </div>
+      <p className="text-xs text-muted">
+        You can edit anything about this card later in Settings → Business Card Builder, and switch it on/off
+        anytime right below in this list.
+      </p>
+      <div className="flex justify-end border-t border-line pt-3">
+        <button onClick={onDone} className={btnAccent}>Done</button>
       </div>
     </div>
   )
