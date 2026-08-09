@@ -134,7 +134,7 @@ function CardRow({ c, onUpdated }) {
           title={active ? "Turn off this card's booking link and click redirect" : 'Turn this card back on'}
           className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${active ? 'bg-starboard' : 'bg-line'}`}
         >
-          <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${active ? 'translate-x-5' : 'translate-x-0'}`} />
         </button>
         <button onClick={() => setEditing(true)} className={btn}>Edit</button>
         <button onClick={remove} className="rounded-lg p-2 text-muted hover:bg-red-50 hover:text-red-500">🗑️</button>
