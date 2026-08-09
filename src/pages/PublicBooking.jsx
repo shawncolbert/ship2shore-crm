@@ -40,6 +40,17 @@ function upcomingDays(roundTheClock) {
 const fmtSlot = (iso) =>
   new Date(iso).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' })
 
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '')
+    reader.onerror = () => reject(new Error('Could not read that photo.'))
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function PublicBooking() {
   const { orgSlug } = useParams()
   const [searchParams] = useSearchParams()
@@ -54,8 +65,14 @@ export default function PublicBooking() {
   const [slot, setSlot] = useState('')
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [form, setForm] = useState({ full_name: '', email: '', phone: '', notes: '' })
+  const [photoFile, setPhotoFile] = useState(null)
   const [status, setStatus] = useState('idle') // idle | submitting | done | error
   const [err, setErr] = useState('')
+
+  // Vehicle-transport jobs need the car's details and a photo up front, not
+  // a generic note -- keeps the same form for every service without a
+  // separate page per driver.
+  const isVehicleService = serviceCode === 'vehicle_transport'
 
   useEffect(() => {
     callBooking('services', orgSlug, ref).then((r) => {
@@ -80,10 +97,14 @@ export default function PublicBooking() {
     if (!serviceCode || !slot || !form.full_name.trim() || !form.email.trim()) return
     setStatus('submitting'); setErr('')
     try {
+      let photo
+      if (photoFile) {
+        photo = { filename: photoFile.name, contentType: photoFile.type, dataBase64: await fileToBase64(photoFile) }
+      }
       await callBooking('book', orgSlug, ref, {
         service_code: serviceCode, start_at: slot,
         full_name: form.full_name.trim(), email: form.email.trim(), phone: form.phone.trim() || null,
-        notes: form.notes.trim() || null,
+        notes: form.notes.trim() || null, photo,
       })
       setStatus('done')
     } catch (e2) {
@@ -186,11 +207,28 @@ export default function PublicBooking() {
               <input type="tel" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                 className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Notes (optional)</label>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+                {isVehicleService ? 'Vehicle details (optional)' : 'Notes (optional)'}
+              </label>
               <input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder={isVehicleService ? 'Make, model, year, and VIN number' : ''}
                 className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
             </div>
+            {isVehicleService && (
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+                  Photo of the vehicle (optional)
+                </label>
+                <input type="file" accept="image/*"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null
+                    if (f && f.size > MAX_PHOTO_BYTES) { setErr('That photo is too large (max 8 MB).'); e.target.value = ''; setPhotoFile(null); return }
+                    setErr(''); setPhotoFile(f)
+                  }}
+                  className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-ink" />
+              </div>
+            )}
           </div>
 
           <button type="submit" disabled={status === 'submitting' || !slot || !form.full_name.trim() || !form.email.trim()}

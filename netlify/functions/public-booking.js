@@ -180,7 +180,7 @@ async function listServices(orgId, ref) {
 // Best-effort "you've got a lead" ping to the driver whose card sent this
 // booking. Deliberately not logged into the CRM's conversations/messages --
 // it's an internal heads-up to the driver, not a message to the customer.
-async function notifyReferrer(referrer, { fullName, email, phone, serviceName, startAt, port }) {
+async function notifyReferrer(referrer, { fullName, email, phone, serviceName, startAt, port, photoSaved }) {
   if (!referrer?.notify_email) return
   try {
     const from = process.env.GMAIL_ADDRESS
@@ -195,6 +195,7 @@ async function notifyReferrer(referrer, { fullName, email, phone, serviceName, s
       `Service: ${serviceName}\n` +
       `Requested time: ${when} Pacific\n` +
       `${port ? `Port: ${port}\n` : ''}` +
+      `${photoSaved ? `Vehicle photo: attached — see the customer's file in Ship2Shore Dispatch\n` : ''}` +
       `\nThis is already logged in Ship2Shore Dispatch.`
     await gmailSend(at, buildRaw({ from, to: referrer.notify_email, subject, body }))
   } catch {
@@ -203,8 +204,35 @@ async function notifyReferrer(referrer, { fullName, email, phone, serviceName, s
   }
 }
 
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024
+
+// Best-effort vehicle-photo upload attached to the booking's contact/job --
+// mirrors the storage + attachments-row pattern public-upload.js already
+// uses for customer document uploads. Never blocks or fails the booking
+// itself; a bad/oversized photo just means no photo gets attached.
+async function savePhoto(orgId, contactId, opportunityId, photo) {
+  if (!photo?.dataBase64) return false
+  try {
+    const buf = Buffer.from(photo.dataBase64, 'base64')
+    if (buf.length === 0 || buf.length > MAX_PHOTO_BYTES) return false
+    const safe = String(photo.filename || 'vehicle-photo.jpg').replace(/[^\w.\-]+/g, '_').slice(0, 120)
+    const path = `${orgId}/${contactId}/${Date.now()}-${safe}`
+    const up = await admin.storage.from('delivery-orders')
+      .upload(path, buf, { contentType: photo.contentType || 'application/octet-stream', upsert: false })
+    if (up.error) return false
+    const { error } = await admin.from('attachments').insert({
+      org_id: orgId, contact_id: contactId, opportunity_id: opportunityId,
+      file_name: photo.filename || 'vehicle-photo.jpg', file_path: path,
+      mime_type: photo.contentType || null, size_bytes: buf.length, kind: 'vehicle_photo',
+    })
+    return !error
+  } catch {
+    return false
+  }
+}
+
 async function bookSlot(orgId, payload) {
-  const { service_code, port, start_at, full_name, email, phone, notes, ref } = payload
+  const { service_code, port, start_at, full_name, email, phone, notes, ref, photo } = payload
   if (!service_code || !start_at || !full_name || !email) {
     return { status: 400, body: { error: 'Missing required fields.' } }
   }
@@ -289,17 +317,19 @@ async function bookSlot(orgId, payload) {
     })
   }
 
+  const photoSaved = await savePhoto(orgId, contactId, opp.id, photo)
+
   if (referrer) {
     await admin.from('activities').insert({
       org_id: orgId, contact_id: contactId, type: 'note', body: `Lead source: ${referrer.name}'s card`,
     })
     await notifyReferrer(referrer, {
       fullName: String(full_name).trim(), email: cleanEmail, phone: cleanPhone,
-      serviceName: service.name, startAt: startAt.toISOString(), port,
+      serviceName: service.name, startAt: startAt.toISOString(), port, photoSaved,
     })
   }
 
-  return { status: 200, body: { ok: true, contact_id: contactId, opportunity_id: opp.id, start_at: startAt.toISOString() } }
+  return { status: 200, body: { ok: true, contact_id: contactId, opportunity_id: opp.id, start_at: startAt.toISOString(), photoSaved } }
 }
 
 export const handler = async (event) => {
