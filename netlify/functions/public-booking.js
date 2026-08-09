@@ -139,7 +139,7 @@ async function resolveReferrer(orgId, ref) {
   if (!ref) return null
   const { data } = await admin
     .from('external_card_links')
-    .select('slug, name, notify_email, round_the_clock, booking_label, service_codes, phone')
+    .select('slug, name, notify_email, round_the_clock, booking_label, service_codes, phone, service_label')
     .eq('org_id', orgId).eq('slug', ref).maybeSingle()
   return data || null
 }
@@ -164,6 +164,15 @@ async function listServices(orgId, ref) {
   // payload itself (not just hidden in the UI) so it never reaches the
   // customer's browser at all.
   if (referrer) services = services.map(({ code, name }) => ({ code, name }))
+
+  // A card restricted to exactly one service can show its own wording for
+  // it (e.g. Val's card says "Vehicle Transport and Dispatch" for the same
+  // underlying vehicle_transport service Tilly's card just calls "Vehicle
+  // Transport") -- the service_code itself never changes, so this is purely
+  // cosmetic and doesn't affect which service actually gets booked.
+  if (referrer?.service_label && services.length === 1) {
+    services = [{ ...services[0], name: referrer.service_label }]
+  }
 
   // booking_label is customer-facing page branding ("Tilly's Dispatch") --
   // deliberately separate from `name` (the card's own display name, "Tilly's
