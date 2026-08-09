@@ -128,7 +128,9 @@ export default function PublicBooking() {
               <select value={serviceCode} onChange={(e) => setServiceCode(e.target.value)}
                 className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent">
                 {services.map((s) => (
-                  <option key={s.code} value={s.code}>{s.name} — ${Number(s.default_rate || 0).toFixed(0)}</option>
+                  <option key={s.code} value={s.code}>
+                    {s.default_rate != null ? `${s.name} — $${Number(s.default_rate).toFixed(0)}` : s.name}
+                  </option>
                 ))}
               </select>
             )}

@@ -139,7 +139,7 @@ async function resolveReferrer(orgId, ref) {
   if (!ref) return null
   const { data } = await admin
     .from('external_card_links')
-    .select('slug, name, notify_email, round_the_clock, booking_label')
+    .select('slug, name, notify_email, round_the_clock, booking_label, service_codes')
     .eq('org_id', orgId).eq('slug', ref).maybeSingle()
   return data || null
 }
@@ -150,13 +150,28 @@ async function listServices(orgId, ref) {
     .from('services').select('code, name, default_rate').eq('org_id', orgId).eq('active', true).order('name')
   if (error) return { error: error.message }
   const referrer = await resolveReferrer(orgId, ref)
+
+  // A driver's card only offers the service(s) that driver actually does
+  // (e.g. Eloy's card shouldn't offer Tilly's vehicle-transport service).
+  // An empty/unset service_codes means "no restriction" -- used by
+  // Ship2Shore's own card, which offers everything.
+  let services = data || []
+  if (referrer?.service_codes?.length) {
+    const allowed = new Set(referrer.service_codes)
+    services = services.filter((s) => allowed.has(s.code))
+  }
+  // Referred bookings never see internal pricing -- strip it from the
+  // payload itself (not just hidden in the UI) so it never reaches the
+  // customer's browser at all.
+  if (referrer) services = services.map(({ code, name }) => ({ code, name }))
+
   // booking_label is customer-facing page branding ("Tilly's Dispatch") --
   // deliberately separate from `name` (the card's own display name, "Tilly's
   // Classics", used for click-tracking and the "Lead source" activity note)
   // so a customer never sees "Ship2Shore Dispatch" on what should read as
   // that driver's own booking page.
   return {
-    services: data || [],
+    services,
     orgName: referrer?.booking_label || referrer?.name || org?.name || 'us',
     roundTheClock: !!referrer?.round_the_clock,
   }
@@ -197,6 +212,11 @@ async function bookSlot(orgId, payload) {
   const { data: service } = await admin
     .from('services').select('code, name, default_rate').eq('org_id', orgId).eq('code', service_code).eq('active', true).maybeSingle()
   if (!service) return { status: 400, body: { error: 'Unknown service.' } }
+
+  const referrer = await resolveReferrer(orgId, ref)
+  if (referrer?.service_codes?.length && !referrer.service_codes.includes(service_code)) {
+    return { status: 400, body: { error: 'That service is not offered through this booking link.' } }
+  }
 
   const startAt = new Date(start_at)
   if (Number.isNaN(startAt.getTime())) return { status: 400, body: { error: 'Bad start time.' } }
@@ -269,7 +289,6 @@ async function bookSlot(orgId, payload) {
     })
   }
 
-  const referrer = await resolveReferrer(orgId, ref)
   if (referrer) {
     await admin.from('activities').insert({
       org_id: orgId, contact_id: contactId, type: 'note', body: `Lead source: ${referrer.name}'s card`,
