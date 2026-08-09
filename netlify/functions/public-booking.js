@@ -139,7 +139,7 @@ async function resolveReferrer(orgId, ref) {
   if (!ref) return null
   const { data } = await admin
     .from('external_card_links')
-    .select('slug, name, notify_email, round_the_clock, booking_label, service_codes')
+    .select('slug, name, notify_email, round_the_clock, booking_label, service_codes, phone')
     .eq('org_id', orgId).eq('slug', ref).maybeSingle()
   return data || null
 }
@@ -174,6 +174,7 @@ async function listServices(orgId, ref) {
     services,
     orgName: referrer?.booking_label || referrer?.name || org?.name || 'us',
     roundTheClock: !!referrer?.round_the_clock,
+    driverPhone: referrer?.phone || null,
   }
 }
 
