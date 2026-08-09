@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import {
   fetchContact, fetchMyOrgId, fetchAttachments, uploadDeliveryOrder,
   signedAttachmentUrl, deleteAttachment, createUploadLink, updateContact,
-  sendEmail, markAttachmentViewed,
+  sendEmail, markAttachmentViewed, deleteAppointment,
 } from '../lib/supabase'
 import { calendlyPrefillUrl, mailtoUrl } from '../lib/config'
 import Badge from '../components/Badge'
@@ -21,6 +21,7 @@ const h2 = 'mb-3 text-xs font-semibold uppercase tracking-wide text-muted'
 
 export default function ContactDetail() {
   const { id } = useParams()
+  const qc = useQueryClient()
   const [emailOpen, setEmailOpen] = useState(false)
   const { data, isLoading, error } = useQuery({ queryKey: ['contact', id], queryFn: () => fetchContact(id) })
 
@@ -28,6 +29,12 @@ export default function ContactDetail() {
   if (error) return <div className="p-8 text-sm text-port">Couldn’t load this contact.</div>
 
   const { contact, jobs, appointments, activities } = data
+
+  const removeAppointment = async (a) => {
+    if (!confirm(`Delete this appointment (${a.title || a.service_code || 'Appointment'} — ${fmtDate(a.start_at)})? This can't be undone.`)) return
+    await deleteAppointment(a.id)
+    qc.invalidateQueries({ queryKey: ['contact', id] })
+  }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -83,9 +90,13 @@ export default function ContactDetail() {
             ) : (
               <ul className="divide-y divide-line">
                 {appointments.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between py-2 text-sm">
+                  <li key={a.id} className="flex items-center justify-between gap-2 py-2 text-sm">
                     <span className="text-ink">{a.title || a.service_code || 'Appointment'}</span>
-                    <span className="text-xs text-muted">{fmtDate(a.start_at)}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="text-xs text-muted">{fmtDate(a.start_at)}</span>
+                      <button onClick={() => removeAppointment(a)} title="Delete this appointment"
+                        className="rounded p-1 text-muted hover:bg-red-50 hover:text-red-500">🗑️</button>
+                    </span>
                   </li>
                 ))}
               </ul>

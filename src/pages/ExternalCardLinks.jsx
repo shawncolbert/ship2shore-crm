@@ -72,7 +72,9 @@ export default function ExternalCardLinks() {
 function CardRow({ c, onUpdated }) {
   const [editing, setEditing] = useState(false)
   const [copyFlag, setCopyFlag] = useState(false)
+  const [toggling, setToggling] = useState(false)
   const trackedUrl = `${window.location.origin}/go/${c.slug}`
+  const active = c.active !== false
 
   const copyLink = async () => {
     try { await navigator.clipboard.writeText(trackedUrl); setCopyFlag(true); setTimeout(() => setCopyFlag(false), 1800) }
@@ -83,6 +85,13 @@ function CardRow({ c, onUpdated }) {
     if (!confirm(`Remove ${c.name}? This only removes the tracking link — it does not touch the actual card.`)) return
     await deleteExternalCard(c.id)
     onUpdated()
+  }
+
+  const toggleActive = async () => {
+    if (active && !confirm(`Turn off ${c.name}'s card? Their booking link will stop accepting new leads and their /go/ link will stop redirecting until you turn it back on.`)) return
+    setToggling(true)
+    try { await updateExternalCard(c.id, { active: !active }); onUpdated() }
+    finally { setToggling(false) }
   }
 
   if (editing) {
@@ -96,9 +105,14 @@ function CardRow({ c, onUpdated }) {
   }
 
   return (
-    <div className={`${card} flex flex-wrap items-center justify-between gap-3`}>
+    <div className={`${card} flex flex-wrap items-center justify-between gap-3 ${active ? '' : 'opacity-60'}`}>
       <div className="min-w-0 flex-1">
-        <div className="font-medium text-ink">{c.name}</div>
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-ink">{c.name}</span>
+          {!active && (
+            <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-port">Off</span>
+          )}
+        </div>
         <a href={c.target_url} target="_blank" rel="noreferrer" className="block truncate text-xs text-muted hover:underline">
           {c.target_url}
         </a>
@@ -114,6 +128,14 @@ function CardRow({ c, onUpdated }) {
           <div className="text-xl font-bold text-ink">{c.click_count ?? 0}</div>
           <div className="text-[10px] uppercase tracking-wide text-muted">Clicks</div>
         </div>
+        <button
+          onClick={toggleActive}
+          disabled={toggling}
+          title={active ? "Turn off this card's booking link and click redirect" : 'Turn this card back on'}
+          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${active ? 'bg-starboard' : 'bg-line'}`}
+        >
+          <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        </button>
         <button onClick={() => setEditing(true)} className={btn}>Edit</button>
         <button onClick={remove} className="rounded-lg p-2 text-muted hover:bg-red-50 hover:text-red-500">🗑️</button>
       </div>

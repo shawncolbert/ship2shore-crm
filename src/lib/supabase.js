@@ -286,6 +286,14 @@ export async function cancelOpportunity(id) {
   if (apptErr) throw apptErr
 }
 
+// Permanently removes an appointment record from a contact's history --
+// e.g. clearing out old/stale entries. Does not touch the linked job
+// (opportunity), only the calendar/appointment row itself.
+export async function deleteAppointment(id) {
+  const { error } = await supabase.from('appointments').delete().eq('id', id)
+  if (error) throw error
+}
+
 // Ship billing number that rides along with a job. Capped at 16 chars;
 // blank clears it. Stays on the opportunity through every stage.
 export async function setOpportunityBilling(id, billingNumber) {

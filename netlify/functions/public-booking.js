@@ -139,7 +139,7 @@ async function resolveReferrer(orgId, ref) {
   if (!ref) return null
   const { data } = await admin
     .from('external_card_links')
-    .select('slug, name, notify_email, round_the_clock, booking_label, service_codes, phone, service_label')
+    .select('slug, name, notify_email, round_the_clock, booking_label, service_codes, phone, service_label, active')
     .eq('org_id', orgId).eq('slug', ref).maybeSingle()
   return data || null
 }
@@ -150,6 +150,7 @@ async function listServices(orgId, ref) {
     .from('services').select('code, name, default_rate').eq('org_id', orgId).eq('active', true).order('name')
   if (error) return { error: error.message }
   const referrer = await resolveReferrer(orgId, ref)
+  if (referrer && referrer.active === false) return { error: 'This booking link is no longer active.' }
 
   // A driver's card only offers the service(s) that driver actually does
   // (e.g. Eloy's card shouldn't offer Tilly's vehicle-transport service).
@@ -271,6 +272,9 @@ async function bookSlot(orgId, payload) {
   if (!service) return { status: 400, body: { error: 'Unknown service.' } }
 
   const referrer = await resolveReferrer(orgId, ref)
+  if (referrer && referrer.active === false) {
+    return { status: 410, body: { error: 'This booking link is no longer active.' } }
+  }
   if (referrer?.service_codes?.length && !referrer.service_codes.includes(service_code)) {
     return { status: 400, body: { error: 'That service is not offered through this booking link.' } }
   }

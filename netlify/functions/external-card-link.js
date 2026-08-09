@@ -25,9 +25,10 @@ export const handler = async (event) => {
 
   try {
     const { data, error } = await admin
-      .from('external_card_links').select('target_url').eq('slug', slug).maybeSingle()
+      .from('external_card_links').select('target_url, active').eq('slug', slug).maybeSingle()
     if (error) return json(500, { error: error.message })
     if (!data) return json(404, { error: 'This link is not set up.' })
+    if (data.active === false) return json(410, { error: 'This card is no longer active.' })
 
     // Best-effort count -- a failed increment should never block the redirect,
     // but it must still be awaited: the function's execution context can be
