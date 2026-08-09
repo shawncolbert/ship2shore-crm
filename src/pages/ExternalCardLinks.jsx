@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchMyExternalCards, createExternalCard, updateExternalCard, deleteExternalCard } from '../lib/externalCards'
+import { fetchMyExternalCards, createExternalCard, updateExternalCard, deleteExternalCard, setExternalCardActive } from '../lib/externalCards'
 import { fetchMyOrgId } from '../lib/supabase'
 
 const card = 'rounded-xl border border-line bg-surface p-5'
@@ -88,9 +88,14 @@ function CardRow({ c, onUpdated }) {
   }
 
   const toggleActive = async () => {
-    if (active && !confirm(`Turn off ${c.name}'s card? Their booking link will stop accepting new leads and their /go/ link will stop redirecting until you turn it back on.`)) return
+    if (active) {
+      const warning = c.business_card_id
+        ? `Turn off ${c.name}'s card? Their whole card stops working -- booking link, tracked link, and every button (Call/Text/Email/Save/Share) on their card page -- until you turn it back on.`
+        : `Turn off ${c.name}'s card? This stops their booking link and tracked /go/ link -- but this card has no matching in-app card, so I have no way to disable Call/Text/Email/Save/Share on the actual external site. Those will keep working regardless.`
+      if (!confirm(warning)) return
+    }
     setToggling(true)
-    try { await updateExternalCard(c.id, { active: !active }); onUpdated() }
+    try { await setExternalCardActive(c, !active); onUpdated() }
     finally { setToggling(false) }
   }
 
@@ -111,6 +116,12 @@ function CardRow({ c, onUpdated }) {
           <span className="font-medium text-ink">{c.name}</span>
           {!active && (
             <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-port">Off</span>
+          )}
+          {!c.business_card_id && (
+            <span title="No in-app card linked -- Call/Text/Email/Save/Share on the external site can't be switched off from here"
+              className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-600">
+              External only
+            </span>
           )}
         </div>
         <a href={c.target_url} target="_blank" rel="noreferrer" className="block truncate text-xs text-muted hover:underline">

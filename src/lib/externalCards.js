@@ -43,3 +43,19 @@ export async function deleteExternalCard(id) {
   const { error } = await supabase.from('external_card_links').delete().eq('id', id)
   if (error) throw error
 }
+
+// The on/off switch is meant to fully kill a card, not just its booking
+// link -- when this card has a matching in-app card (business_card_id),
+// unpublishing it too is what actually stops Call/Text/Email/Save/Share,
+// since those only exist because the public card page got served data in
+// the first place. There's no way to reach into an externally-hosted card
+// (one with no business_card_id) the same way -- that limitation is real
+// and worth surfacing to the tenant, not silently no-oping.
+export async function setExternalCardActive(cardRow, active) {
+  await updateExternalCard(cardRow.id, { active })
+  if (cardRow.business_card_id) {
+    const { error } = await supabase
+      .from('business_cards').update({ is_published: active }).eq('id', cardRow.business_card_id)
+    if (error) throw error
+  }
+}
