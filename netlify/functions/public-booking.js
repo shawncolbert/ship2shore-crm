@@ -180,7 +180,7 @@ async function listServices(orgId, ref) {
 // Best-effort "you've got a lead" ping to the driver whose card sent this
 // booking. Deliberately not logged into the CRM's conversations/messages --
 // it's an internal heads-up to the driver, not a message to the customer.
-async function notifyReferrer(referrer, { fullName, email, phone, serviceName, startAt, port, photoSaved }) {
+async function notifyReferrer(referrer, { fullName, email, phone, serviceName, startAt, port, notes, photoUrl }) {
   if (!referrer?.notify_email) return
   try {
     const from = process.env.GMAIL_ADDRESS
@@ -195,7 +195,8 @@ async function notifyReferrer(referrer, { fullName, email, phone, serviceName, s
       `Service: ${serviceName}\n` +
       `Requested time: ${when} Pacific\n` +
       `${port ? `Port: ${port}\n` : ''}` +
-      `${photoSaved ? `Vehicle photo: attached — see the customer's file in Ship2Shore Dispatch\n` : ''}` +
+      `${notes ? `Vehicle details: ${notes}\n` : ''}` +
+      `${photoUrl ? `Vehicle photo: ${photoUrl}\n` : ''}` +
       `\nThis is already logged in Ship2Shore Dispatch.`
     await gmailSend(at, buildRaw({ from, to: referrer.notify_email, subject, body }))
   } catch {
@@ -209,25 +210,40 @@ const MAX_PHOTO_BYTES = 8 * 1024 * 1024
 // Best-effort vehicle-photo upload attached to the booking's contact/job --
 // mirrors the storage + attachments-row pattern public-upload.js already
 // uses for customer document uploads. Never blocks or fails the booking
-// itself; a bad/oversized photo just means no photo gets attached.
+// itself; a bad/oversized photo just means no photo gets attached. Returns
+// the storage path (so a signed link can be emailed to a driver who has no
+// CRM login) on success, or null.
 async function savePhoto(orgId, contactId, opportunityId, photo) {
-  if (!photo?.dataBase64) return false
+  if (!photo?.dataBase64) return null
   try {
     const buf = Buffer.from(photo.dataBase64, 'base64')
-    if (buf.length === 0 || buf.length > MAX_PHOTO_BYTES) return false
+    if (buf.length === 0 || buf.length > MAX_PHOTO_BYTES) return null
     const safe = String(photo.filename || 'vehicle-photo.jpg').replace(/[^\w.\-]+/g, '_').slice(0, 120)
     const path = `${orgId}/${contactId}/${Date.now()}-${safe}`
     const up = await admin.storage.from('delivery-orders')
       .upload(path, buf, { contentType: photo.contentType || 'application/octet-stream', upsert: false })
-    if (up.error) return false
+    if (up.error) return null
     const { error } = await admin.from('attachments').insert({
       org_id: orgId, contact_id: contactId, opportunity_id: opportunityId,
       file_name: photo.filename || 'vehicle-photo.jpg', file_path: path,
       mime_type: photo.contentType || null, size_bytes: buf.length, kind: 'vehicle_photo',
     })
-    return !error
+    return error ? null : path
   } catch {
-    return false
+    return null
+  }
+}
+
+// A signed link a driver with no CRM login can open directly from the
+// notification email. 30 days is generous lead time for a job to actually
+// get picked up and photographed/compared against.
+async function signedPhotoUrl(path) {
+  if (!path) return null
+  try {
+    const { data } = await admin.storage.from('delivery-orders').createSignedUrl(path, 60 * 60 * 24 * 30)
+    return data?.signedUrl || null
+  } catch {
+    return null
   }
 }
 
@@ -317,19 +333,20 @@ async function bookSlot(orgId, payload) {
     })
   }
 
-  const photoSaved = await savePhoto(orgId, contactId, opp.id, photo)
+  const photoPath = await savePhoto(orgId, contactId, opp.id, photo)
 
   if (referrer) {
     await admin.from('activities').insert({
       org_id: orgId, contact_id: contactId, type: 'note', body: `Lead source: ${referrer.name}'s card`,
     })
+    const photoUrl = await signedPhotoUrl(photoPath)
     await notifyReferrer(referrer, {
       fullName: String(full_name).trim(), email: cleanEmail, phone: cleanPhone,
-      serviceName: service.name, startAt: startAt.toISOString(), port, photoSaved,
+      serviceName: service.name, startAt: startAt.toISOString(), port, notes, photoUrl,
     })
   }
 
-  return { status: 200, body: { ok: true, contact_id: contactId, opportunity_id: opp.id, start_at: startAt.toISOString(), photoSaved } }
+  return { status: 200, body: { ok: true, contact_id: contactId, opportunity_id: opp.id, start_at: startAt.toISOString(), photoSaved: !!photoPath } }
 }
 
 export const handler = async (event) => {
