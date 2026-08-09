@@ -40,6 +40,15 @@ function upcomingDays(roundTheClock) {
 const fmtSlot = (iso) =>
   new Date(iso).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' })
 
+// Shown on the confirmation screen for a driver-card-referred booking, as a
+// fallback in case the lead-alert email gets missed -- the customer can just
+// call whoever picks up instead of waiting.
+const FALLBACK_CONTACTS = [
+  { name: "Tilly", phone: '(310) 933-2336' },
+  { name: 'Eloy', phone: '(310) 503-7114' },
+  { name: 'Val', phone: '(909) 200-9411' },
+]
+
 // Netlify functions cap the request body around 6MB, and base64 inflates a
 // file by ~33% -- so the actual raw-file ceiling has to stay well under
 // that, not just under some round "8MB" number that sounds safe but isn't.
@@ -176,6 +185,22 @@ export default function PublicBooking() {
             {days.find((d) => d.key === dateKey)?.label}.
           </p>
           <p className="mt-2 text-sm text-muted">We’ll email {form.email} to confirm. Thanks for booking with {orgName}!</p>
+          {ref && (
+            <div className="mt-5 rounded-lg border border-line bg-canvas p-4 text-left">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Please call to confirm</p>
+              <p className="mt-1 text-sm text-muted">
+                If you don't hear back shortly, feel free to call directly:
+              </p>
+              <ul className="mt-2 space-y-1">
+                {FALLBACK_CONTACTS.map((c) => (
+                  <li key={c.name} className="text-sm">
+                    <span className="text-ink">{c.name}: </span>
+                    <a href={`tel:${c.phone.replace(/[^\d+]/g, '')}`} className="text-accent hover:underline">{c.phone}</a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </div>
     )
