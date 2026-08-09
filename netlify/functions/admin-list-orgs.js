@@ -14,7 +14,7 @@ export const handler = async (event) => {
 
   const { data, error } = await admin
     .from('organizations')
-    .select('id, name, slug, logo_url, primary_color, custom_domain, created_at')
+    .select('id, name, slug, logo_url, primary_color, custom_domain, enabled_features, created_at')
     .order('created_at', { ascending: false })
   if (error) return json(500, { error: error.message })
 

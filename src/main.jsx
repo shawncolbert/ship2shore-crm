@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import FeatureGate from './components/FeatureGate'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Contacts from './pages/Contacts'
@@ -64,26 +65,26 @@ function App() {
           <ProtectedRoute>
             <Layout>
               <Routes>
-                <Route index element={<Dashboard />} />
-                <Route path="help" element={<Help />} />
-                <Route path="inbox" element={<Inbox />} />
-                <Route path="contacts" element={<Contacts />} />
-                <Route path="contacts/:id" element={<ContactDetail />} />
-                <Route path="pipeline" element={<Pipeline />} />
-                <Route path="calendar" element={<Calendar />} />
-                <Route path="documents" element={<Documents />} />
-                <Route path="do-fix" element={<DeliveryOrderFix />} />
-                <Route path="automations" element={<Automations />} />
-                <Route path="payment-settings" element={<PaymentSettings />} />
-                <Route path="services" element={<Services />} />
-                <Route path="settings/pipeline-stages" element={<PipelineStages />} />
-                <Route path="settings/business-card" element={<BusinessCardSettings />} />
-                <Route path="settings/card-links" element={<ExternalCardLinks />} />
-                <Route path="landing-pages" element={<LandingPages />} />
-                <Route path="landing-pages/:id" element={<LandingPageEditor />} />
-                <Route path="funnels" element={<Funnels />} />
-                <Route path="social-posts" element={<SocialPosts />} />
-                <Route path="agent" element={<Agent />} />
+                <Route index element={<FeatureGate featureKey="dashboard"><Dashboard /></FeatureGate>} />
+                <Route path="help" element={<FeatureGate featureKey="help"><Help /></FeatureGate>} />
+                <Route path="inbox" element={<FeatureGate featureKey="inbox"><Inbox /></FeatureGate>} />
+                <Route path="contacts" element={<FeatureGate featureKey="contacts"><Contacts /></FeatureGate>} />
+                <Route path="contacts/:id" element={<FeatureGate featureKey="contacts"><ContactDetail /></FeatureGate>} />
+                <Route path="pipeline" element={<FeatureGate featureKey="pipeline"><Pipeline /></FeatureGate>} />
+                <Route path="calendar" element={<FeatureGate featureKey="calendar"><Calendar /></FeatureGate>} />
+                <Route path="documents" element={<FeatureGate featureKey="documents"><Documents /></FeatureGate>} />
+                <Route path="do-fix" element={<FeatureGate featureKey="do_fix"><DeliveryOrderFix /></FeatureGate>} />
+                <Route path="automations" element={<FeatureGate featureKey="automations"><Automations /></FeatureGate>} />
+                <Route path="payment-settings" element={<FeatureGate featureKey="payments"><PaymentSettings /></FeatureGate>} />
+                <Route path="services" element={<FeatureGate featureKey="services"><Services /></FeatureGate>} />
+                <Route path="settings/pipeline-stages" element={<FeatureGate featureKey="pipeline_stages"><PipelineStages /></FeatureGate>} />
+                <Route path="settings/business-card" element={<FeatureGate featureKey="business_card_builder"><BusinessCardSettings /></FeatureGate>} />
+                <Route path="settings/card-links" element={<FeatureGate featureKey="digital_business_cards"><ExternalCardLinks /></FeatureGate>} />
+                <Route path="landing-pages" element={<FeatureGate featureKey="landing_pages"><LandingPages /></FeatureGate>} />
+                <Route path="landing-pages/:id" element={<FeatureGate featureKey="landing_pages"><LandingPageEditor /></FeatureGate>} />
+                <Route path="funnels" element={<FeatureGate featureKey="funnels"><Funnels /></FeatureGate>} />
+                <Route path="social-posts" element={<FeatureGate featureKey="social_posts"><SocialPosts /></FeatureGate>} />
+                <Route path="agent" element={<FeatureGate featureKey="ai_assistant"><Agent /></FeatureGate>} />
                 <Route path="admin/orgs" element={<AdminOrgs />} />
               </Routes>
             </Layout>

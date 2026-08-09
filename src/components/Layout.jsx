@@ -3,26 +3,27 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import { fetchMyProfile, fetchMyOrg, fetchNewBookingCount } from '../lib/supabase'
+import { isFeatureEnabled } from '../lib/features'
 
 const nav = [
-  { to: '/help', label: 'Help / Getting Started' },
-  { to: '/agent', label: 'AI Assistant' },
-  { to: '/', label: 'Dashboard', end: true },
-  { to: '/settings/card-links', label: 'Digital Business Cards' },
-  { to: '/inbox', label: 'Inbox' },
-  { to: '/contacts', label: 'Contacts' },
-  { to: '/pipeline', label: 'Pipeline' },
-  { to: '/settings/pipeline-stages', label: 'Pipeline Stages' },
-  { to: '/calendar', label: 'Calendar' },
-  { to: '/documents', label: 'Documents' },
-  { to: '/do-fix', label: 'DO / Contract Editor' },
-  { to: '/automations', label: 'Automations' },
-  { to: '/services', label: 'Services' },
-  { to: '/settings/business-card', label: 'Business Card Builder' },
-  { to: '/payment-settings', label: 'Payments' },
-  { to: '/landing-pages', label: 'Landing Pages' },
-  { to: '/funnels', label: 'Funnels' },
-  { to: '/social-posts', label: 'Social Posts' },
+  { to: '/help', label: 'Help / Getting Started', key: 'help' },
+  { to: '/agent', label: 'AI Assistant', key: 'ai_assistant' },
+  { to: '/', label: 'Dashboard', end: true, key: 'dashboard' },
+  { to: '/settings/card-links', label: 'Digital Business Cards', key: 'digital_business_cards' },
+  { to: '/inbox', label: 'Inbox', key: 'inbox' },
+  { to: '/contacts', label: 'Contacts', key: 'contacts' },
+  { to: '/pipeline', label: 'Pipeline', key: 'pipeline' },
+  { to: '/settings/pipeline-stages', label: 'Pipeline Stages', key: 'pipeline_stages' },
+  { to: '/calendar', label: 'Calendar', key: 'calendar' },
+  { to: '/documents', label: 'Documents', key: 'documents' },
+  { to: '/do-fix', label: 'DO / Contract Editor', key: 'do_fix' },
+  { to: '/automations', label: 'Automations', key: 'automations' },
+  { to: '/services', label: 'Services', key: 'services' },
+  { to: '/settings/business-card', label: 'Business Card Builder', key: 'business_card_builder' },
+  { to: '/payment-settings', label: 'Payments', key: 'payments' },
+  { to: '/landing-pages', label: 'Landing Pages', key: 'landing_pages' },
+  { to: '/funnels', label: 'Funnels', key: 'funnels' },
+  { to: '/social-posts', label: 'Social Posts', key: 'social_posts' },
 ]
 
 // Falls back to the Ship2Shore identity while the org loads or if branding
@@ -51,7 +52,12 @@ function Brand() {
 
 function NavItems({ onNavigate }) {
   const { data: profile } = useQuery({ queryKey: ['myProfile'], queryFn: fetchMyProfile })
-  const items = profile?.platform_admin ? [...nav, { to: '/admin/orgs', label: 'Organizations' }] : nav
+  const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
+  // Platform-admin-only "Organizations" link is never gated by an org's own
+  // feature flags -- it's how the platform admin manages every org,
+  // including turning their own features on/off.
+  const visible = nav.filter((item) => isFeatureEnabled(org, item.key))
+  const items = profile?.platform_admin ? [...visible, { to: '/admin/orgs', label: 'Organizations' }] : visible
 
   // Jobs sitting in "New Booking" that haven't been triaged yet -- catches
   // bookings that came in through the public booking widget or a funnel

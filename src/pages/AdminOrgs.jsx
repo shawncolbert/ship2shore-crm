@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchOrgs, createOrg, inviteUser, fetchOrgStats } from '../lib/admin'
+import { fetchOrgs, createOrg, inviteUser, fetchOrgStats, setOrgFeature } from '../lib/admin'
 import { fetchMyProfile } from '../lib/supabase'
+import { FEATURES, isFeatureEnabled } from '../lib/features'
 
 const ROLES = [
   { value: 'owner', label: 'Owner' },
@@ -26,6 +27,7 @@ export default function AdminOrgs() {
 
   const [showNewOrg, setShowNewOrg] = useState(false)
   const [inviteFor, setInviteFor] = useState(null) // org id currently showing an invite form
+  const [featuresFor, setFeaturesFor] = useState(null) // org id currently showing its feature toggles
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['adminOrgs'] })
@@ -96,13 +98,25 @@ export default function AdminOrgs() {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => setInviteFor(inviteFor === org.id ? null : org.id)}
-                  className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:border-accent"
-                >
-                  Invite user
-                </button>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    onClick={() => setFeaturesFor(featuresFor === org.id ? null : org.id)}
+                    className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:border-accent"
+                  >
+                    Features
+                  </button>
+                  <button
+                    onClick={() => setInviteFor(inviteFor === org.id ? null : org.id)}
+                    className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:border-accent"
+                  >
+                    Invite user
+                  </button>
+                </div>
               </div>
+
+              {featuresFor === org.id && (
+                <OrgFeaturesPanel org={org} onChanged={invalidate} />
+              )}
 
             <div className="mt-3 space-y-1">
               {org.members?.length === 0 && <p className="text-xs text-muted">No members yet.</p>}
@@ -120,6 +134,52 @@ export default function AdminOrgs() {
                 <InviteForm orgId={org.id} onClose={() => setInviteFor(null)} onInvited={invalidate} />
               )}
             </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Which sidebar items this org sees, one switch per feature. A missing key
+// means "on" -- see isFeatureEnabled -- so a brand-new org with an empty
+// enabled_features starts with everything visible, and toggling here only
+// ever needs to write the features actually turned off.
+function OrgFeaturesPanel({ org, onChanged }) {
+  const [pending, setPending] = useState(null) // featureKey currently saving
+
+  const toggle = async (featureKey) => {
+    const next = !isFeatureEnabled(org, featureKey)
+    setPending(featureKey)
+    try {
+      await setOrgFeature({ orgId: org.id, featureKey, enabled: next })
+      onChanged()
+    } finally {
+      setPending(null)
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-canvas p-4">
+      <p className="mb-3 text-xs text-muted">
+        What {org.name} sees in their sidebar. Off means the whole feature — sidebar link and the page
+        itself — is unreachable for every user in this org.
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {FEATURES.map((f) => {
+          const on = isFeatureEnabled(org, f.key)
+          return (
+            <button
+              key={f.key}
+              onClick={() => toggle(f.key)}
+              disabled={pending === f.key}
+              className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-left text-xs font-medium text-ink disabled:opacity-50"
+            >
+              <span>{f.label}</span>
+              <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${on ? 'bg-starboard' : 'bg-line'}`}>
+                <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0'}`} />
+              </span>
+            </button>
           )
         })}
       </div>

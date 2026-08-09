@@ -124,7 +124,7 @@ export async function fetchMyOrg() {
   const orgId = await fetchMyOrgId()
   const { data, error } = await supabase
     .from('organizations')
-    .select('id, name, slug, logo_url, primary_color')
+    .select('id, name, slug, logo_url, primary_color, enabled_features')
     .eq('id', orgId)
     .single()
   if (error) throw error

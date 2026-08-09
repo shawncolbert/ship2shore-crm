@@ -37,3 +37,8 @@ export async function fetchOrgStats() {
   const { stats } = await authedFetch('admin-org-stats')
   return stats
 }
+
+export async function setOrgFeature({ orgId, featureKey, enabled }) {
+  const { organization } = await authedFetch('admin-update-org-features', { orgId, featureKey, enabled })
+  return organization
+}
