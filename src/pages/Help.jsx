@@ -54,13 +54,30 @@ const SECTIONS = [
   {
     id: 'business-card',
     title: 'Digital Business Cards',
+    nav: '/settings/card-links',
+    body: `One shareable page per driver — Call/Text/Email buttons, a "save to phone contacts" button, and
+      a Book Now link that routes leads straight to that driver. Click "+ Add a card" → "Set up a new card
+      here" and fill in one form (name, phone, email, which services they're allowed to offer, hours);
+      everything — the card, the booking link, and lead-alert routing — gets created together. You'll land
+      on a screen with one link to copy and hand the driver; that link is their whole card. Every card also
+      has an on/off switch right in the list: flip it off and the whole card stops working — booking,
+      contact buttons, everything — until you flip it back on (handy if you ever need to cut someone off).
+      You can also track clicks on a card built somewhere else entirely (e.g. an old Netlify site), but the
+      on/off switch and lead routing can't reach one of those — only cards set up here get the full
+      protection. A separate "Business Card Builder" page lets you hand-edit any card's look (colors, logo,
+      photo) directly. When a customer books a Vehicle Transport job through any card's Book Now link, the
+      booking form automatically also asks for the vehicle's make/model/year/VIN and a photo — no setup
+      needed, that kicks in on its own whenever that service is selected.`,
+  },
+  {
+    id: 'business-card-builder',
+    title: 'Business Card Builder',
     nav: '/settings/business-card',
-    body: `One shareable, mobile web page per driver — contact info, a "save to phone contacts" button,
-      your booking link, payment handles, and a QR code — all editable without touching code. Click
-      "+ New driver card" for each driver, fill it in, hit Publish, then use "Copy my public link" or
-      "Copy QR image" to put it on a text signature, a truck decal, a printed card, anywhere. Nothing is
-      public until you publish it. Each card tracks its own shares, contact-saves, and QR scans right on
-      its tile, so you can see which drivers' cards are actually getting used.`,
+    body: `The actual editor behind every card — branding colors, logo/photo upload, credential badges,
+      and every field on the card. Cards created through Digital Business Cards show up here automatically;
+      you don't need to start here unless you're fine-tuning how an existing card looks. A card only goes
+      live once "Publish" is on, and unpublishing it here is the same kill switch as the on/off toggle on
+      the Digital Business Cards page — either one fully takes the card down.`,
   },
   {
     id: 'landing-funnels',
@@ -175,8 +192,8 @@ export default function Help() {
           <li className={step}>
             <span className={stepNum}>4</span>
             <div>
-              <p className="text-sm font-semibold text-ink">Publish your digital business card</p>
-              <p className="text-sm text-muted">Go to <a href="/settings/business-card" className="text-accent hover:underline">Business Card</a>, fill it in, hit Publish, and copy your link or QR code to share.</p>
+              <p className="text-sm font-semibold text-ink">Set up your (or your drivers') digital business cards</p>
+              <p className="text-sm text-muted">Go to <a href="/settings/card-links" className="text-accent hover:underline">Digital Business Cards</a>, click "+ Add a card" → "Set up a new card here," fill in one form, and copy the link it gives you at the end.</p>
             </div>
           </li>
           <li className={step}>
