@@ -7,6 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import FeatureGate from './components/FeatureGate'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import ResetPassword from './pages/ResetPassword'
 import Contacts from './pages/Contacts'
 import ContactDetail from './pages/ContactDetail'
 import Pipeline from './pages/Pipeline'
@@ -44,6 +45,7 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       {/* Public customer upload link — no auth gate */}
       <Route path="/u/:token" element={<PublicUpload />} />
       {/* Public native booking widget — no auth gate, additive to Calendly.
