@@ -191,13 +191,14 @@ async function listServices(orgId, ref) {
 // Best-effort "you've got a lead" ping to the driver whose card sent this
 // booking. Deliberately not logged into the CRM's conversations/messages --
 // it's an internal heads-up to the driver, not a message to the customer.
-async function notifyReferrer(referrer, { fullName, email, phone, serviceName, startAt, port, notes, photoUrl, pickupAddress, dropoffAddress }) {
+async function notifyReferrer(referrer, { fullName, email, phone, serviceName, startAt, port, notes, photoUrl, pickupAddress, dropoffAddress, vehicleMake, vehicleModel, vehicleYear, vehicleVin }) {
   if (!referrer?.notify_email) return
   try {
     const from = process.env.GMAIL_ADDRESS
     const at = await googleAccessToken()
     const when = new Date(startAt).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', dateStyle: 'medium', timeStyle: 'short' })
     const subject = `New lead from your card: ${fullName}`
+    const vehicleLine = [vehicleYear, vehicleMake, vehicleModel].filter(Boolean).join(' ')
     const body =
       `You've got a new booking through your Ship2Shore card (${referrer.name}).\n\n` +
       `Name: ${fullName}\n` +
@@ -208,7 +209,9 @@ async function notifyReferrer(referrer, { fullName, email, phone, serviceName, s
       `${port ? `Port: ${port}\n` : ''}` +
       `${pickupAddress ? `Pickup: ${pickupAddress}\n` : ''}` +
       `${dropoffAddress ? `Drop-off: ${dropoffAddress}\n` : ''}` +
-      `${notes ? `Vehicle details: ${notes}\n` : ''}` +
+      `${vehicleLine ? `Vehicle: ${vehicleLine}\n` : ''}` +
+      `${vehicleVin ? `VIN: ${vehicleVin}\n` : ''}` +
+      `${notes ? `Notes: ${notes}\n` : ''}` +
       `${photoUrl ? `Vehicle photo: ${photoUrl}\n` : ''}` +
       `\nThis is already logged in Ship2Shore Dispatch.`
     await gmailSend(at, buildRaw({ from, to: referrer.notify_email, subject, body }))
@@ -264,7 +267,10 @@ async function signedPhotoUrl(path) {
 }
 
 async function bookSlot(orgId, payload) {
-  const { service_code, port, start_at, full_name, email, phone, notes, ref, photo, pickup_address, dropoff_address } = payload
+  const {
+    service_code, port, start_at, full_name, email, phone, notes, ref, photo, pickup_address, dropoff_address,
+    vehicle_make, vehicle_model, vehicle_year, vehicle_vin,
+  } = payload
   if (!service_code || !start_at || !full_name || !email) {
     return { status: 400, body: { error: 'Missing required fields.' } }
   }
@@ -336,6 +342,8 @@ async function bookSlot(orgId, payload) {
       title, service_code: service.code, port: port || null, value: service.default_rate,
       status: 'open', scheduled_at: startAt.toISOString(),
       pickup_address: pickup_address || null, dropoff_address: dropoff_address || null,
+      vehicle_make: vehicle_make || null, vehicle_model: vehicle_model || null,
+      vehicle_year: vehicle_year || null, vehicle_vin: vehicle_vin || null,
     })
     .select('id').single()
   if (oppErr || !opp) return { status: 500, body: { error: 'Could not create booking.', detail: oppErr?.message } }
@@ -345,6 +353,8 @@ async function bookSlot(orgId, payload) {
     source: 'in_app', external_id: null, title, port: port || null, service_code: service.code,
     start_at: startAt.toISOString(), end_at: endAt.toISOString(), status: 'scheduled',
     pickup_address: pickup_address || null, dropoff_address: dropoff_address || null,
+    vehicle_make: vehicle_make || null, vehicle_model: vehicle_model || null,
+    vehicle_year: vehicle_year || null, vehicle_vin: vehicle_vin || null,
   })
   if (apptErr) return { status: 500, body: { error: 'Could not create appointment.', detail: apptErr.message } }
 
@@ -359,6 +369,12 @@ async function bookSlot(orgId, payload) {
       body: `Pickup: ${pickup_address || '—'} → Drop-off: ${dropoff_address || '—'}`,
     })
   }
+  if (vehicle_make || vehicle_model || vehicle_year || vehicle_vin) {
+    await admin.from('activities').insert({
+      org_id: orgId, contact_id: contactId, type: 'note',
+      body: `Vehicle: ${[vehicle_year, vehicle_make, vehicle_model].filter(Boolean).join(' ') || '—'} — VIN ${vehicle_vin || '—'}`,
+    })
+  }
 
   const photoPath = await savePhoto(orgId, contactId, opp.id, photo)
 
@@ -371,6 +387,7 @@ async function bookSlot(orgId, payload) {
       fullName: String(full_name).trim(), email: cleanEmail, phone: cleanPhone,
       serviceName: service.name, startAt: startAt.toISOString(), port, notes, photoUrl,
       pickupAddress: pickup_address, dropoffAddress: dropoff_address,
+      vehicleMake: vehicle_make, vehicleModel: vehicle_model, vehicleYear: vehicle_year, vehicleVin: vehicle_vin,
     })
   }
 

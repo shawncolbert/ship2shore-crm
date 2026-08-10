@@ -110,7 +110,10 @@ export default function PublicBooking() {
   const [slots, setSlots] = useState(null)
   const [slot, setSlot] = useState('')
   const [loadingSlots, setLoadingSlots] = useState(false)
-  const [form, setForm] = useState({ full_name: '', email: '', phone: '', notes: '', pickup_address: '', dropoff_address: '' })
+  const [form, setForm] = useState({
+    full_name: '', email: '', phone: '', notes: '', pickup_address: '', dropoff_address: '',
+    vehicle_make: '', vehicle_model: '', vehicle_year: '', vehicle_vin: '',
+  })
   const [photoFile, setPhotoFile] = useState(null)
   const [driverPhone, setDriverPhone] = useState(null)
   const [status, setStatus] = useState('idle') // idle | submitting | done | error
@@ -167,6 +170,8 @@ export default function PublicBooking() {
         full_name: form.full_name.trim(), email: form.email.trim(), phone: form.phone.trim() || null,
         notes: form.notes.trim() || null, photo,
         pickup_address: form.pickup_address.trim() || null, dropoff_address: form.dropoff_address.trim() || null,
+        vehicle_make: form.vehicle_make.trim() || null, vehicle_model: form.vehicle_model.trim() || null,
+        vehicle_year: form.vehicle_year.trim() || null, vehicle_vin: form.vehicle_vin.trim() || null,
       })
       setStatus('done')
     } catch (e2) {
@@ -292,14 +297,36 @@ export default function PublicBooking() {
                 </div>
               </>
             )}
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
-                {isVehicleService ? 'Vehicle details (optional)' : 'Notes (optional)'}
-              </label>
-              <input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                placeholder={isVehicleService ? 'Make, model, year, and VIN number' : ''}
-                className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
-            </div>
+            {isVehicleService ? (
+              <>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Make (optional)</label>
+                  <input value={form.vehicle_make} onChange={(e) => setForm((f) => ({ ...f, vehicle_make: e.target.value }))}
+                    className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Model (optional)</label>
+                  <input value={form.vehicle_model} onChange={(e) => setForm((f) => ({ ...f, vehicle_model: e.target.value }))}
+                    className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Year (optional)</label>
+                  <input value={form.vehicle_year} onChange={(e) => setForm((f) => ({ ...f, vehicle_year: e.target.value }))}
+                    className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">VIN Number (optional)</label>
+                  <input value={form.vehicle_vin} onChange={(e) => setForm((f) => ({ ...f, vehicle_vin: e.target.value }))}
+                    className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
+                </div>
+              </>
+            ) : (
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Notes (optional)</label>
+                <input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                  className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
+              </div>
+            )}
             {isVehicleService && (
               <div className="sm:col-span-2">
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
