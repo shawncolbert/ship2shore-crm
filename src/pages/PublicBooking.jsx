@@ -87,10 +87,20 @@ function compressImage(file, maxDim = 1600, quality = 0.8) {
   })
 }
 
+// Placeholder ahead of a future Mapbox integration -- plain text only, no
+// autocomplete/geocoding/distance calc. Only these three driver cards asked
+// for pickup/drop-off capture; everyone else's form stays exactly as-is.
+const ADDRESS_FIELDS_REFS = new Set([
+  'tillys-classics',
+  'team-auto-transport-dispatch',
+  'warrior-auto-transport',
+])
+
 export default function PublicBooking() {
   const { orgSlug } = useParams()
   const [searchParams] = useSearchParams()
   const ref = searchParams.get('ref')
+  const showAddressFields = ref && ADDRESS_FIELDS_REFS.has(ref)
   const [roundTheClock, setRoundTheClock] = useState(false)
   const days = useMemo(() => upcomingDays(roundTheClock), [roundTheClock])
   const [services, setServices] = useState(null)
@@ -100,7 +110,7 @@ export default function PublicBooking() {
   const [slots, setSlots] = useState(null)
   const [slot, setSlot] = useState('')
   const [loadingSlots, setLoadingSlots] = useState(false)
-  const [form, setForm] = useState({ full_name: '', email: '', phone: '', notes: '' })
+  const [form, setForm] = useState({ full_name: '', email: '', phone: '', notes: '', pickup_address: '', dropoff_address: '' })
   const [photoFile, setPhotoFile] = useState(null)
   const [driverPhone, setDriverPhone] = useState(null)
   const [status, setStatus] = useState('idle') // idle | submitting | done | error
@@ -156,6 +166,7 @@ export default function PublicBooking() {
         service_code: serviceCode, start_at: slot,
         full_name: form.full_name.trim(), email: form.email.trim(), phone: form.phone.trim() || null,
         notes: form.notes.trim() || null, photo,
+        pickup_address: form.pickup_address.trim() || null, dropoff_address: form.dropoff_address.trim() || null,
       })
       setStatus('done')
     } catch (e2) {
@@ -267,6 +278,20 @@ export default function PublicBooking() {
               <input type="tel" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                 className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
             </div>
+            {showAddressFields && (
+              <>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Pickup Address (optional)</label>
+                  <input value={form.pickup_address} onChange={(e) => setForm((f) => ({ ...f, pickup_address: e.target.value }))}
+                    className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Drop-off Address (optional)</label>
+                  <input value={form.dropoff_address} onChange={(e) => setForm((f) => ({ ...f, dropoff_address: e.target.value }))}
+                    className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
+                </div>
+              </>
+            )}
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
                 {isVehicleService ? 'Vehicle details (optional)' : 'Notes (optional)'}

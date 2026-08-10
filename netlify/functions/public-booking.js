@@ -191,7 +191,7 @@ async function listServices(orgId, ref) {
 // Best-effort "you've got a lead" ping to the driver whose card sent this
 // booking. Deliberately not logged into the CRM's conversations/messages --
 // it's an internal heads-up to the driver, not a message to the customer.
-async function notifyReferrer(referrer, { fullName, email, phone, serviceName, startAt, port, notes, photoUrl }) {
+async function notifyReferrer(referrer, { fullName, email, phone, serviceName, startAt, port, notes, photoUrl, pickupAddress, dropoffAddress }) {
   if (!referrer?.notify_email) return
   try {
     const from = process.env.GMAIL_ADDRESS
@@ -206,6 +206,8 @@ async function notifyReferrer(referrer, { fullName, email, phone, serviceName, s
       `Service: ${serviceName}\n` +
       `Requested time: ${when} Pacific\n` +
       `${port ? `Port: ${port}\n` : ''}` +
+      `${pickupAddress ? `Pickup: ${pickupAddress}\n` : ''}` +
+      `${dropoffAddress ? `Drop-off: ${dropoffAddress}\n` : ''}` +
       `${notes ? `Vehicle details: ${notes}\n` : ''}` +
       `${photoUrl ? `Vehicle photo: ${photoUrl}\n` : ''}` +
       `\nThis is already logged in Ship2Shore Dispatch.`
@@ -262,7 +264,7 @@ async function signedPhotoUrl(path) {
 }
 
 async function bookSlot(orgId, payload) {
-  const { service_code, port, start_at, full_name, email, phone, notes, ref, photo } = payload
+  const { service_code, port, start_at, full_name, email, phone, notes, ref, photo, pickup_address, dropoff_address } = payload
   if (!service_code || !start_at || !full_name || !email) {
     return { status: 400, body: { error: 'Missing required fields.' } }
   }
@@ -333,6 +335,7 @@ async function bookSlot(orgId, payload) {
       org_id: orgId, contact_id: contactId, pipeline_id: pipeline.id, stage_id: stage.id,
       title, service_code: service.code, port: port || null, value: service.default_rate,
       status: 'open', scheduled_at: startAt.toISOString(),
+      pickup_address: pickup_address || null, dropoff_address: dropoff_address || null,
     })
     .select('id').single()
   if (oppErr || !opp) return { status: 500, body: { error: 'Could not create booking.', detail: oppErr?.message } }
@@ -341,12 +344,19 @@ async function bookSlot(orgId, payload) {
     org_id: orgId, contact_id: contactId, opportunity_id: opp.id,
     source: 'in_app', external_id: null, title, port: port || null, service_code: service.code,
     start_at: startAt.toISOString(), end_at: endAt.toISOString(), status: 'scheduled',
+    pickup_address: pickup_address || null, dropoff_address: dropoff_address || null,
   })
   if (apptErr) return { status: 500, body: { error: 'Could not create appointment.', detail: apptErr.message } }
 
   if (notes) {
     await admin.from('activities').insert({
       org_id: orgId, contact_id: contactId, type: 'note', body: `Booking note: ${String(notes).slice(0, 1000)}`,
+    })
+  }
+  if (pickup_address || dropoff_address) {
+    await admin.from('activities').insert({
+      org_id: orgId, contact_id: contactId, type: 'note',
+      body: `Pickup: ${pickup_address || '—'} → Drop-off: ${dropoff_address || '—'}`,
     })
   }
 
@@ -360,6 +370,7 @@ async function bookSlot(orgId, payload) {
     await notifyReferrer(referrer, {
       fullName: String(full_name).trim(), email: cleanEmail, phone: cleanPhone,
       serviceName: service.name, startAt: startAt.toISOString(), port, notes, photoUrl,
+      pickupAddress: pickup_address, dropoffAddress: dropoff_address,
     })
   }
 
