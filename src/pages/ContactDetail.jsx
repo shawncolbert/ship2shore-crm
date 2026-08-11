@@ -13,8 +13,10 @@ import EmailComposer from '../components/EmailComposer'
 const money = (n) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(n || 0))
 const fmtDate = (d) => (d ? new Date(d).toLocaleString() : '—')
-const directionsUrl = (from, to) =>
+const googleDirectionsUrl = (from, to) =>
   `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}`
+const appleDirectionsUrl = (from, to) =>
+  `https://maps.apple.com/?saddr=${encodeURIComponent(from)}&daddr=${encodeURIComponent(to)}&dirflg=d`
 
 const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
 const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
@@ -108,13 +110,22 @@ export default function ContactDetail() {
                           {a.distance_miles != null && ` (${a.distance_miles} mi)`}
                         </span>
                         {a.pickup_address && a.dropoff_address && (
-                          <a
-                            href={directionsUrl(a.pickup_address, a.dropoff_address)}
-                            target="_blank" rel="noreferrer"
-                            className="font-semibold text-accent hover:underline"
-                          >
-                            Get Directions ↗
-                          </a>
+                          <>
+                            <a
+                              href={googleDirectionsUrl(a.pickup_address, a.dropoff_address)}
+                              target="_blank" rel="noreferrer"
+                              className="font-semibold text-accent hover:underline"
+                            >
+                              Google Maps ↗
+                            </a>
+                            <a
+                              href={appleDirectionsUrl(a.pickup_address, a.dropoff_address)}
+                              target="_blank" rel="noreferrer"
+                              className="font-semibold text-accent hover:underline"
+                            >
+                              Apple Maps ↗
+                            </a>
+                          </>
                         )}
                       </div>
                     )}

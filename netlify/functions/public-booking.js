@@ -224,7 +224,8 @@ async function notifyReferrer(referrer, { fullName, email, phone, serviceName, s
       `${dropoffAddress ? `Drop-off: ${dropoffAddress}\n` : ''}` +
       `${distanceMiles != null ? `Distance: ${distanceMiles} mi\n` : ''}` +
       `${pickupAddress && dropoffAddress
-        ? `Get directions: https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(pickupAddress)}&destination=${encodeURIComponent(dropoffAddress)}\n`
+        ? `Directions (Google Maps): https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(pickupAddress)}&destination=${encodeURIComponent(dropoffAddress)}\n` +
+          `Directions (Apple Maps): https://maps.apple.com/?saddr=${encodeURIComponent(pickupAddress)}&daddr=${encodeURIComponent(dropoffAddress)}&dirflg=d\n`
         : ''}` +
       `${vehicleLine ? `Vehicle: ${vehicleLine}\n` : ''}` +
       `${vehicleVin ? `VIN: ${vehicleVin}\n` : ''}` +
