@@ -13,6 +13,8 @@ import EmailComposer from '../components/EmailComposer'
 const money = (n) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(n || 0))
 const fmtDate = (d) => (d ? new Date(d).toLocaleString() : '—')
+const directionsUrl = (from, to) =>
+  `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}`
 
 const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
 const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
@@ -90,13 +92,32 @@ export default function ContactDetail() {
             ) : (
               <ul className="divide-y divide-line">
                 {appointments.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between gap-2 py-2 text-sm">
-                    <span className="text-ink">{a.title || a.service_code || 'Appointment'}</span>
-                    <span className="flex items-center gap-2">
-                      <span className="text-xs text-muted">{fmtDate(a.start_at)}</span>
-                      <button onClick={() => removeAppointment(a)} title="Delete this appointment"
-                        className="rounded p-1 text-muted hover:bg-red-50 hover:text-red-500">🗑️</button>
-                    </span>
+                  <li key={a.id} className="py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-ink">{a.title || a.service_code || 'Appointment'}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="text-xs text-muted">{fmtDate(a.start_at)}</span>
+                        <button onClick={() => removeAppointment(a)} title="Delete this appointment"
+                          className="rounded p-1 text-muted hover:bg-red-50 hover:text-red-500">🗑️</button>
+                      </span>
+                    </div>
+                    {(a.pickup_address || a.dropoff_address) && (
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                        <span>
+                          {a.pickup_address || '—'} → {a.dropoff_address || '—'}
+                          {a.distance_miles != null && ` (${a.distance_miles} mi)`}
+                        </span>
+                        {a.pickup_address && a.dropoff_address && (
+                          <a
+                            href={directionsUrl(a.pickup_address, a.dropoff_address)}
+                            target="_blank" rel="noreferrer"
+                            className="font-semibold text-accent hover:underline"
+                          >
+                            Get Directions ↗
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

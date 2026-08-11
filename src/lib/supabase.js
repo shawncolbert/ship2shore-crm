@@ -209,7 +209,7 @@ export async function fetchContact(id) {
       .select('id, title, service_code, port, value, status, scheduled_at, stage_id, stages(name)')
       .eq('contact_id', id).order('created_at', { ascending: false }),
     supabase.from('appointments')
-      .select('id, title, port, service_code, start_at, status')
+      .select('id, title, port, service_code, start_at, status, pickup_address, dropoff_address, distance_miles')
       .eq('contact_id', id).order('start_at', { ascending: false }),
     supabase.from('activities')
       .select('id, type, body, created_at')
