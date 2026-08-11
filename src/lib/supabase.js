@@ -592,6 +592,14 @@ export async function deleteMessage(id) {
   if (error) throw error
 }
 
+// Removes a whole thread -- e.g. an ad/spam email that created a
+// conversation. messages.conversation_id cascades, so this takes the
+// thread's messages with it in one delete.
+export async function deleteConversation(id) {
+  const { error } = await supabase.from('conversations').delete().eq('id', id)
+  if (error) throw error
+}
+
 // Live-updates: fire the callback whenever a message row changes.
 export function subscribeMessages(onChange) {
   const channel = supabase

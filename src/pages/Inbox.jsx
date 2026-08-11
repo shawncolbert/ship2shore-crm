@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchConversations, fetchMessages, subscribeMessages, sendEmail,
+  fetchConversations, fetchMessages, subscribeMessages, sendEmail, deleteConversation,
 } from '../lib/supabase'
 
 const fmtTime = (d) =>
@@ -27,6 +27,14 @@ export default function Inbox() {
 
   const active = convos?.find((c) => c.id === activeId)
 
+  const removeConversation = async (c) => {
+    const who = c.contacts?.full_name || c.contacts?.email || 'this conversation'
+    if (!confirm(`Delete the thread with ${who}? This can't be undone.`)) return
+    await deleteConversation(c.id)
+    if (activeId === c.id) setActiveId(null)
+    qc.invalidateQueries({ queryKey: ['conversations'] })
+  }
+
   return (
     <div className="flex h-full">
       {/* Conversation list — full width on mobile; hidden once a thread is open */}
@@ -47,10 +55,13 @@ export default function Inbox() {
             </div>
           )}
           {convos?.map((c) => (
-            <button
+            <div
               key={c.id}
+              role="button"
+              tabIndex={0}
               onClick={() => setActiveId(c.id)}
-              className={`flex w-full items-start gap-2 border-b border-line px-4 py-3 text-left hover:bg-canvas ${
+              onKeyDown={(e) => { if (e.key === 'Enter') setActiveId(c.id) }}
+              className={`group flex w-full items-start gap-2 border-b border-line px-4 py-3 text-left hover:bg-canvas ${
                 activeId === c.id ? 'bg-canvas' : ''
               }`}
             >
@@ -67,14 +78,21 @@ export default function Inbox() {
                   <span className="truncate text-xs text-muted">{c.contacts?.company || c.contacts?.email}</span>
                 </span>
               </span>
-            </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); removeConversation(c) }}
+                title="Delete this conversation"
+                className="shrink-0 rounded p-1 text-muted opacity-0 hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
+              >
+                🗑️
+              </button>
+            </div>
           ))}
         </div>
       </div>
 
       {/* Thread */}
       {active ? (
-        <Thread conversation={active} onBack={() => setActiveId(null)} />
+        <Thread conversation={active} onBack={() => setActiveId(null)} onDelete={() => removeConversation(active)} />
       ) : (
         <div className="hidden flex-1 items-center justify-center text-sm text-muted md:flex">
           Select a conversation.
@@ -95,7 +113,7 @@ function ChannelTag({ channel }) {
   )
 }
 
-function Thread({ conversation, onBack }) {
+function Thread({ conversation, onBack, onDelete }) {
   const qc = useQueryClient()
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
@@ -145,10 +163,17 @@ function Thread({ conversation, onBack }) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="truncate font-medium text-ink">{conversation.contacts?.full_name || conversation.contacts?.email}</div>
           <div className="truncate text-xs text-muted">{conversation.contacts?.email}</div>
         </div>
+        <button
+          onClick={onDelete}
+          title="Delete this conversation"
+          className="rounded p-1.5 text-muted hover:bg-red-50 hover:text-red-500"
+        >
+          🗑️
+        </button>
       </div>
 
       <div className="flex-1 space-y-3 overflow-auto bg-canvas px-5 py-4">
