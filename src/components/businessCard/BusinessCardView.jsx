@@ -79,7 +79,16 @@ export default function BusinessCardView({ card, mode = 'public', onSubmitLead }
   const share = async () => {
     const shareData = { title: card.full_name || card.brand_name || 'Digital card', url: publicUrl }
     if (navigator.share) {
-      try { await navigator.share(shareData); logEvent('share'); return } catch { /* user cancelled or unsupported */ }
+      try {
+        await navigator.share(shareData)
+        logEvent('share')
+      } catch (err) {
+        // AbortError just means the person closed the share sheet without
+        // picking anything -- normal, and shouldn't silently dump a "Link
+        // copied" toast on them. Any other failure still gets the fallback.
+        if (err?.name !== 'AbortError') copyText(publicUrl, 'Link copied.')
+      }
+      return
     }
     copyText(publicUrl, 'Link copied.')
     logEvent('share')

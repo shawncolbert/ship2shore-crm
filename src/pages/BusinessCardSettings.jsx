@@ -169,7 +169,8 @@ function BusinessCardEditor({ initialCard, onSaved }) {
   const publicUrl = `${window.location.origin}/card/${form.slug}`
 
   const copyLink = async () => {
-    try { await navigator.clipboard.writeText(publicUrl); setSaved(false); flashCopy('link') } catch { /* noop */ }
+    try { await navigator.clipboard.writeText(publicUrl); setSaved(false); setErr(''); flashCopy('link') }
+    catch { setErr('Could not copy — long-press the link above to copy it manually.') }
   }
   const copyQr = async () => {
     if (!qrPngUrl) return
