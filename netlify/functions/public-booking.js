@@ -139,9 +139,21 @@ async function resolveReferrer(orgId, ref) {
   if (!ref) return null
   const { data } = await admin
     .from('external_card_links')
-    .select('slug, name, notify_email, round_the_clock, booking_label, service_codes, phone, service_label, active')
+    .select('slug, name, notify_email, round_the_clock, booking_label, service_codes, phone, service_label, active, business_card_id')
     .eq('org_id', orgId).eq('slug', ref).maybeSingle()
   return data || null
+}
+
+// Pickup/drop-off capture + the Mapbox distance calc are opt-in per driver
+// card (toggle lives in the card builder). Only a ref backed by an actual
+// in-app card goes through that toggle -- the direct no-ref link and any
+// ref not yet linked to a card (e.g. an external, not-yet-built one) keep
+// the old default-on behavior so nothing regresses silently.
+async function resolveShowMapping(referrer) {
+  if (!referrer?.business_card_id) return true
+  const { data } = await admin
+    .from('business_cards').select('show_mapping').eq('id', referrer.business_card_id).maybeSingle()
+  return !!data?.show_mapping
 }
 
 async function listServices(orgId, ref) {
@@ -185,6 +197,7 @@ async function listServices(orgId, ref) {
     orgName: referrer?.booking_label || referrer?.name || org?.name || 'us',
     roundTheClock: !!referrer?.round_the_clock,
     driverPhone: referrer?.phone || null,
+    showMapping: await resolveShowMapping(referrer),
   }
 }
 

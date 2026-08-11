@@ -87,15 +87,6 @@ function compressImage(file, maxDim = 1600, quality = 0.8) {
   })
 }
 
-// Pickup/drop-off capture, on by default for the direct Ship2Shore booking
-// link (no ref) plus these driver cards. Eloy's and Tre's referral cards
-// deliberately stay off -- everyone else's form is untouched.
-const ADDRESS_FIELDS_REFS = new Set([
-  'tillys-classics',
-  'team-auto-transport-dispatch',
-  'warrior-auto-transport',
-])
-
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
 async function mapboxSuggest(query, signal) {
@@ -169,7 +160,7 @@ export default function PublicBooking() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const ref = searchParams.get('ref')
-  const showAddressFields = !ref || ADDRESS_FIELDS_REFS.has(ref)
+  const [showAddressFields, setShowAddressFields] = useState(!ref)
   const [pickupCoords, setPickupCoords] = useState(null)
   const [dropoffCoords, setDropoffCoords] = useState(null)
   const [distanceMiles, setDistanceMiles] = useState(null)
@@ -204,6 +195,7 @@ export default function PublicBooking() {
       setOrgName(r.orgName || 'us')
       setRoundTheClock(!!r.roundTheClock)
       setDriverPhone(r.driverPhone || null)
+      setShowAddressFields(!!r.showMapping)
     }).catch((e) => setErr(e.message))
   }, [orgSlug, ref])
 

@@ -325,6 +325,21 @@ function BusinessCardEditor({ initialCard, onSaved }) {
 
           <section className={card}>
             <div className="flex items-center justify-between">
+              <h2 className={sectionTitle}>Pickup / drop-off mapping</h2>
+              <label className="flex items-center gap-2 text-xs font-medium text-muted">
+                <input type="checkbox" checked={!!form.show_mapping} onChange={setBool('show_mapping')} />
+                Enabled
+              </label>
+            </div>
+            <p className="text-xs text-muted">
+              When on, this card's booking link (the one on its "{form.secondary_cta_label || 'Book Now'}" button)
+              asks the customer for a pickup address and drop-off address with live autocomplete, and shows the
+              calculated driving distance. Off by default for new cards.
+            </p>
+          </section>
+
+          <section className={card}>
+            <div className="flex items-center justify-between">
               <h2 className={sectionTitle}>Tools & documents</h2>
               <input value={form.tools_section_label || ''} onChange={set('tools_section_label')} className={`${input} w-40`} placeholder="Section title" />
             </div>
