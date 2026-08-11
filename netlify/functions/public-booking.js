@@ -191,7 +191,7 @@ async function listServices(orgId, ref) {
 // Best-effort "you've got a lead" ping to the driver whose card sent this
 // booking. Deliberately not logged into the CRM's conversations/messages --
 // it's an internal heads-up to the driver, not a message to the customer.
-async function notifyReferrer(referrer, { fullName, email, phone, serviceName, startAt, port, notes, photoUrl, pickupAddress, dropoffAddress, vehicleMake, vehicleModel, vehicleYear, vehicleVin }) {
+async function notifyReferrer(referrer, { fullName, email, phone, serviceName, startAt, port, notes, photoUrl, pickupAddress, dropoffAddress, distanceMiles, vehicleMake, vehicleModel, vehicleYear, vehicleVin }) {
   if (!referrer?.notify_email) return
   try {
     const from = process.env.GMAIL_ADDRESS
@@ -209,6 +209,7 @@ async function notifyReferrer(referrer, { fullName, email, phone, serviceName, s
       `${port ? `Port: ${port}\n` : ''}` +
       `${pickupAddress ? `Pickup: ${pickupAddress}\n` : ''}` +
       `${dropoffAddress ? `Drop-off: ${dropoffAddress}\n` : ''}` +
+      `${distanceMiles != null ? `Distance: ${distanceMiles} mi\n` : ''}` +
       `${vehicleLine ? `Vehicle: ${vehicleLine}\n` : ''}` +
       `${vehicleVin ? `VIN: ${vehicleVin}\n` : ''}` +
       `${notes ? `Notes: ${notes}\n` : ''}` +
@@ -269,7 +270,7 @@ async function signedPhotoUrl(path) {
 async function bookSlot(orgId, payload) {
   const {
     service_code, port, start_at, full_name, email, phone, notes, ref, photo, pickup_address, dropoff_address,
-    vehicle_make, vehicle_model, vehicle_year, vehicle_vin,
+    distance_miles, vehicle_make, vehicle_model, vehicle_year, vehicle_vin,
   } = payload
   if (!service_code || !start_at || !full_name || !email) {
     return { status: 400, body: { error: 'Missing required fields.' } }
@@ -307,6 +308,7 @@ async function bookSlot(orgId, payload) {
 
   const cleanEmail = String(email).trim().toLowerCase()
   const cleanPhone = phone ? String(phone).trim() : null
+  const cleanDistanceMiles = Number.isFinite(Number(distance_miles)) && distance_miles != null ? Number(distance_miles) : null
 
   const { data: existingContact } = await admin
     .from('contacts').select('id, phone').eq('org_id', orgId).eq('email', cleanEmail).maybeSingle()
@@ -342,6 +344,7 @@ async function bookSlot(orgId, payload) {
       title, service_code: service.code, port: port || null, value: service.default_rate,
       status: 'open', scheduled_at: startAt.toISOString(),
       pickup_address: pickup_address || null, dropoff_address: dropoff_address || null,
+      distance_miles: cleanDistanceMiles,
       vehicle_make: vehicle_make || null, vehicle_model: vehicle_model || null,
       vehicle_year: vehicle_year || null, vehicle_vin: vehicle_vin || null,
     })
@@ -353,6 +356,7 @@ async function bookSlot(orgId, payload) {
     source: 'in_app', external_id: null, title, port: port || null, service_code: service.code,
     start_at: startAt.toISOString(), end_at: endAt.toISOString(), status: 'scheduled',
     pickup_address: pickup_address || null, dropoff_address: dropoff_address || null,
+    distance_miles: cleanDistanceMiles,
     vehicle_make: vehicle_make || null, vehicle_model: vehicle_model || null,
     vehicle_year: vehicle_year || null, vehicle_vin: vehicle_vin || null,
   })
@@ -366,7 +370,7 @@ async function bookSlot(orgId, payload) {
   if (pickup_address || dropoff_address) {
     await admin.from('activities').insert({
       org_id: orgId, contact_id: contactId, type: 'note',
-      body: `Pickup: ${pickup_address || '—'} → Drop-off: ${dropoff_address || '—'}`,
+      body: `Pickup: ${pickup_address || '—'} → Drop-off: ${dropoff_address || '—'}${cleanDistanceMiles != null ? ` (${cleanDistanceMiles} mi)` : ''}`,
     })
   }
   if (vehicle_make || vehicle_model || vehicle_year || vehicle_vin) {
@@ -386,7 +390,7 @@ async function bookSlot(orgId, payload) {
     await notifyReferrer(referrer, {
       fullName: String(full_name).trim(), email: cleanEmail, phone: cleanPhone,
       serviceName: service.name, startAt: startAt.toISOString(), port, notes, photoUrl,
-      pickupAddress: pickup_address, dropoffAddress: dropoff_address,
+      pickupAddress: pickup_address, dropoffAddress: dropoff_address, distanceMiles: cleanDistanceMiles,
       vehicleMake: vehicle_make, vehicleModel: vehicle_model, vehicleYear: vehicle_year, vehicleVin: vehicle_vin,
     })
   }

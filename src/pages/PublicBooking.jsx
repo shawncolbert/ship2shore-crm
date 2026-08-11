@@ -87,21 +87,93 @@ function compressImage(file, maxDim = 1600, quality = 0.8) {
   })
 }
 
-// Placeholder ahead of a future Mapbox integration -- plain text only, no
-// autocomplete/geocoding/distance calc. Only these three driver cards asked
-// for pickup/drop-off capture; everyone else's form stays exactly as-is.
+// Pickup/drop-off capture, on by default for the direct Ship2Shore booking
+// link (no ref) plus these driver cards. Eloy's and Tre's referral cards
+// deliberately stay off -- everyone else's form is untouched.
 const ADDRESS_FIELDS_REFS = new Set([
   'tillys-classics',
   'team-auto-transport-dispatch',
   'warrior-auto-transport',
 ])
 
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
+
+async function mapboxSuggest(query, signal) {
+  if (!MAPBOX_TOKEN || query.trim().length < 3) return []
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&autocomplete=true&country=us&types=address,place&limit=5`
+  const res = await fetch(url, { signal })
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.features || []
+}
+
+// Straight-line distance is useless for a driving quote -- calls Mapbox
+// Directions (driving profile) for actual road miles between two picked
+// (not just typed) points.
+async function mapboxDrivingMiles(from, to) {
+  if (!MAPBOX_TOKEN || !from || !to) return null
+  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${from[0]},${from[1]};${to[0]},${to[1]}?access_token=${MAPBOX_TOKEN}&overview=false`
+  const res = await fetch(url)
+  if (!res.ok) return null
+  const data = await res.json()
+  const meters = data.routes?.[0]?.distance
+  return typeof meters === 'number' ? meters / 1609.344 : null
+}
+
+function AddressField({ label, value, onChange, onPick }) {
+  const [suggestions, setSuggestions] = useState([])
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (value.trim().length < 3) { setSuggestions([]); return }
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      mapboxSuggest(value, controller.signal).then(setSuggestions).catch(() => {})
+    }, 300)
+    return () => { clearTimeout(timer); controller.abort() }
+  }, [value])
+
+  return (
+    <div className="relative">
+      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">{label}</label>
+      <input
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        autoComplete="off"
+        className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+      />
+      {open && suggestions.length > 0 && (
+        <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-line bg-surface shadow-lg">
+          {suggestions.map((s) => (
+            <li key={s.id}>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { onPick(s); setSuggestions([]); setOpen(false) }}
+                className="block w-full px-3 py-2 text-left text-sm text-ink hover:bg-canvas"
+              >
+                {s.place_name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export default function PublicBooking() {
   const { orgSlug } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const ref = searchParams.get('ref')
-  const showAddressFields = ref && ADDRESS_FIELDS_REFS.has(ref)
+  const showAddressFields = !ref || ADDRESS_FIELDS_REFS.has(ref)
+  const [pickupCoords, setPickupCoords] = useState(null)
+  const [dropoffCoords, setDropoffCoords] = useState(null)
+  const [distanceMiles, setDistanceMiles] = useState(null)
+  const [distanceLoading, setDistanceLoading] = useState(false)
   const [roundTheClock, setRoundTheClock] = useState(false)
   const days = useMemo(() => upcomingDays(roundTheClock), [roundTheClock])
   const [services, setServices] = useState(null)
@@ -144,6 +216,16 @@ export default function PublicBooking() {
       .finally(() => setLoadingSlots(false))
   }, [dateKey, orgSlug, ref])
 
+  useEffect(() => {
+    if (!pickupCoords || !dropoffCoords) { setDistanceMiles(null); return }
+    let cancelled = false
+    setDistanceLoading(true)
+    mapboxDrivingMiles(pickupCoords, dropoffCoords)
+      .then((miles) => { if (!cancelled) setDistanceMiles(miles) })
+      .finally(() => { if (!cancelled) setDistanceLoading(false) })
+    return () => { cancelled = true }
+  }, [pickupCoords, dropoffCoords])
+
   async function submit(e) {
     e.preventDefault()
     if (!serviceCode || !slot || !form.full_name.trim() || !form.email.trim()) return
@@ -171,6 +253,7 @@ export default function PublicBooking() {
         full_name: form.full_name.trim(), email: form.email.trim(), phone: form.phone.trim() || null,
         notes: form.notes.trim() || null, photo,
         pickup_address: form.pickup_address.trim() || null, dropoff_address: form.dropoff_address.trim() || null,
+        distance_miles: distanceMiles != null ? Number(distanceMiles.toFixed(1)) : null,
         vehicle_make: form.vehicle_make.trim() || null, vehicle_model: form.vehicle_model.trim() || null,
         vehicle_year: form.vehicle_year.trim() || null, vehicle_vin: form.vehicle_vin.trim() || null,
       })
@@ -293,16 +376,23 @@ export default function PublicBooking() {
             </div>
             {showAddressFields && (
               <>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Pickup Address (optional)</label>
-                  <input value={form.pickup_address} onChange={(e) => setForm((f) => ({ ...f, pickup_address: e.target.value }))}
-                    className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Drop-off Address (optional)</label>
-                  <input value={form.dropoff_address} onChange={(e) => setForm((f) => ({ ...f, dropoff_address: e.target.value }))}
-                    className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
-                </div>
+                <AddressField
+                  label="Pickup Address (optional)"
+                  value={form.pickup_address}
+                  onChange={(v) => { setForm((f) => ({ ...f, pickup_address: v })); setPickupCoords(null) }}
+                  onPick={(s) => { setForm((f) => ({ ...f, pickup_address: s.place_name })); setPickupCoords(s.center) }}
+                />
+                <AddressField
+                  label="Drop-off Address (optional)"
+                  value={form.dropoff_address}
+                  onChange={(v) => { setForm((f) => ({ ...f, dropoff_address: v })); setDropoffCoords(null) }}
+                  onPick={(s) => { setForm((f) => ({ ...f, dropoff_address: s.place_name })); setDropoffCoords(s.center) }}
+                />
+                {(distanceLoading || distanceMiles != null) && (
+                  <div className="sm:col-span-2 text-sm text-muted">
+                    {distanceLoading ? 'Calculating distance…' : `Estimated distance: ${distanceMiles.toFixed(1)} miles`}
+                  </div>
+                )}
               </>
             )}
             {isVehicleService ? (
