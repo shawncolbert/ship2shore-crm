@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 
 async function callBooking(action, orgSlug, ref, payload = {}) {
   const res = await fetch('/.netlify/functions/public-booking', {
@@ -98,6 +98,7 @@ const ADDRESS_FIELDS_REFS = new Set([
 
 export default function PublicBooking() {
   const { orgSlug } = useParams()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const ref = searchParams.get('ref')
   const showAddressFields = ref && ADDRESS_FIELDS_REFS.has(ref)
@@ -211,6 +212,13 @@ export default function PublicBooking() {
   return (
     <div className="min-h-screen bg-canvas p-4 sm:p-8">
       <div className="mx-auto w-full max-w-lg rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-8">
+        <button
+          type="button"
+          onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
+          className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-muted hover:text-ink"
+        >
+          ← Back
+        </button>
         <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Book with {orgName}</h1>
         <p className="mt-1 text-sm text-muted">Pick a service and a time — we’ll take it from there.</p>
 
