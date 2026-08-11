@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, Fragment } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import {
@@ -73,17 +73,7 @@ export default function ContactDetail() {
             {jobs.length === 0 ? (
               <p className="text-sm text-muted">No jobs yet.</p>
             ) : (
-              <ul className="divide-y divide-line">
-                {jobs.map((j) => (
-                  <li key={j.id} className="flex items-center justify-between py-2 text-sm">
-                    <span className="text-ink">
-                      {j.title || j.service_code || 'Job'}
-                      <span className="ml-2 text-xs text-muted">{j.stages?.name}</span>
-                    </span>
-                    <span className="font-[family-name:var(--font-mono)] text-ink">{money(j.value)}</span>
-                  </li>
-                ))}
-              </ul>
+              <JobsTable jobs={jobs} />
             )}
           </div>
 
@@ -209,6 +199,64 @@ const DOC_REQUEST_PRESETS = {
     subject: '',
     body: () => '',
   },
+}
+
+// Compact by default -- one row per job, tap to expand for the fields that
+// don't fit on a line (status, service, port, scheduled date) instead of
+// spreading every job out full-height on the page all the time.
+function JobsTable({ jobs }) {
+  const [expanded, setExpanded] = useState(() => new Set())
+  const toggle = (id) => setExpanded((s) => {
+    const next = new Set(s)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-line text-left text-xs font-semibold uppercase tracking-wide text-muted">
+            <th className="w-5 py-1.5"></th>
+            <th className="py-1.5 pr-2">Job</th>
+            <th className="py-1.5 pr-2">Stage</th>
+            <th className="py-1.5 pr-0 text-right">Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {jobs.map((j) => {
+            const isOpen = expanded.has(j.id)
+            return (
+              <Fragment key={j.id}>
+                <tr
+                  onClick={() => toggle(j.id)}
+                  className="cursor-pointer border-b border-line hover:bg-canvas"
+                >
+                  <td className="py-2 text-muted">{isOpen ? '▾' : '▸'}</td>
+                  <td className="py-2 pr-2 text-ink">{j.title || j.service_code || 'Job'}</td>
+                  <td className="py-2 pr-2 text-xs text-muted">{j.stages?.name || '—'}</td>
+                  <td className="py-2 pr-0 text-right font-[family-name:var(--font-mono)] text-ink">{money(j.value)}</td>
+                </tr>
+                {isOpen && (
+                  <tr className="border-b border-line bg-canvas/50">
+                    <td />
+                    <td colSpan={3} className="py-2 pr-2">
+                      <div className="grid gap-x-4 gap-y-1 text-xs text-muted sm:grid-cols-2">
+                        <div>Status: <span className="text-ink">{j.status || '—'}</span></div>
+                        <div>Service: <span className="text-ink">{j.service_code || '—'}</span></div>
+                        <div>Port: <span className="text-ink">{j.port || '—'}</span></div>
+                        <div>Scheduled: <span className="text-ink">{fmtDate(j.scheduled_at)}</span></div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 function DeliveryOrders({ contact, jobs }) {
