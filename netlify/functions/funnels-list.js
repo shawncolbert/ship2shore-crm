@@ -18,7 +18,7 @@ export const handler = async (event) => {
   // Get funnels for this org
   const { data: funnels, error } = await admin
     .from('funnels')
-    .select('id, name, description, published, slug')
+    .select('id, name, description, published, slug, theme')
     .eq('org_id', orgId)
     .order('created_at', { ascending: false })
 

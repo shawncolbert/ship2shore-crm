@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { fetchLandingPage, createLandingPage, updateLandingPage } from '../lib/supabase'
 import { BLOCK_TYPES, newBlock, toEmbedUrl, SPACER_SIZES } from '../lib/landingBlocks'
 import LandingBlockView from '../components/LandingBlockView'
+import { PUBLIC_THEMES, getPublicTheme } from '../lib/publicThemes'
 
 const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
 const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
@@ -22,6 +23,7 @@ export default function LandingPageEditor() {
   const [slug, setSlug] = useState('')
   const [slugTouched, setSlugTouched] = useState(false)
   const [published, setPublished] = useState(false)
+  const [theme, setTheme] = useState('classic')
   const [blocks, setBlocks] = useState([])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -32,7 +34,7 @@ export default function LandingPageEditor() {
     let cancelled = false
     fetchLandingPage(id).then((p) => {
       if (cancelled) return
-      setTitle(p.title); setSlug(p.slug); setPublished(p.published)
+      setTitle(p.title); setSlug(p.slug); setPublished(p.published); setTheme(p.theme || 'classic')
       setBlocks((p.blocks || []).map((b) => ({ id: b.id || crypto.randomUUID(), ...b })))
       setLoading(false)
     }).catch((e) => { setErr(e.message); setLoading(false) })
@@ -80,7 +82,7 @@ export default function LandingPageEditor() {
     if (!title.trim() || !slug.trim()) { setErr('Title and slug are required.'); setSettingsOpen(true); return }
     setSaving(true); setErr('')
     try {
-      const payload = { title: title.trim(), slug: slugify(slug), published, blocks }
+      const payload = { title: title.trim(), slug: slugify(slug), published, theme, blocks }
       if (isNew) {
         const created = await createLandingPage(payload)
         navigate(`/landing-pages/${created.id}`, { replace: true })
@@ -148,6 +150,25 @@ export default function LandingPageEditor() {
               {published ? 'Live for anyone with the link' : 'Not visible to the public until published'}
             </span>
           </div>
+          <div className="mt-4 max-w-2xl">
+            <label className={label}>Accent color</label>
+            <div className="flex flex-wrap gap-1.5">
+              {PUBLIC_THEMES.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setTheme(t.key)}
+                  title={t.label}
+                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                    theme === t.key ? 'border-accent bg-accent/10 text-ink' : 'border-line bg-surface text-muted hover:text-ink'
+                  }`}
+                >
+                  <span className="h-3 w-3 rounded-full" style={{ background: t.accent }} />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -164,6 +185,7 @@ export default function LandingPageEditor() {
                 count={blocks.length}
                 dragging={draggedIndex === i}
                 dropTarget={dragOverIndex === i}
+                theme={theme}
                 onChange={(patch) => updateBlock(block.id, patch)}
                 onRemove={() => removeBlock(block.id)}
                 onMove={(dir) => moveBlock(i, dir)}
@@ -269,7 +291,7 @@ const PANEL_EDITED = new Set(['hero', 'features', 'stats', 'testimonial', 'conta
 // the public renderer gives them.
 const Gutter = ({ children }) => <div className="mx-auto max-w-3xl px-6 sm:px-8">{children}</div>
 
-function BlockCanvasItem({ block, index, count, dragging, dropTarget, onChange, onRemove, onMove, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function BlockCanvasItem({ block, index, count, dragging, dropTarget, theme, onChange, onRemove, onMove, onDragStart, onDragOver, onDrop, onDragEnd }) {
   const typeLabel = BLOCK_TYPES.find((t) => t.value === block.type)?.label || block.type
   const [panelOpen, setPanelOpen] = useState(false)
 
@@ -286,7 +308,7 @@ function BlockCanvasItem({ block, index, count, dragging, dropTarget, onChange, 
 
       {PANEL_EDITED.has(block.type) && (
         <>
-          <LandingBlockView block={block} />
+          <LandingBlockView block={block} theme={theme} />
           {panelOpen && <BlockPanel block={block} onChange={onChange} onClose={() => setPanelOpen(false)} />}
         </>
       )}
@@ -315,7 +337,7 @@ function BlockCanvasItem({ block, index, count, dragging, dropTarget, onChange, 
 
       {block.type === 'image' && <Gutter><ImageBlockEditor block={block} onChange={onChange} /></Gutter>}
       {block.type === 'video' && <Gutter><VideoBlockEditor block={block} onChange={onChange} /></Gutter>}
-      {block.type === 'cta' && <Gutter><CtaBlockEditor block={block} onChange={onChange} /></Gutter>}
+      {block.type === 'cta' && <Gutter><CtaBlockEditor block={block} onChange={onChange} theme={theme} /></Gutter>}
 
       {block.type === 'divider' && <Gutter><hr className="my-4 border-gray-200" /></Gutter>}
 
@@ -519,15 +541,16 @@ function VideoBlockEditor({ block, onChange }) {
   )
 }
 
-function CtaBlockEditor({ block, onChange }) {
+function CtaBlockEditor({ block, onChange, theme }) {
+  const { accent, accentText } = getPublicTheme(theme)
   return (
     <div className="mb-4">
-      <div className="inline-block rounded-xl bg-[#e8a317] px-8 py-4">
+      <div className="inline-block rounded-xl px-8 py-4" style={{ background: accent }}>
         <input
           value={block.label}
           onChange={(e) => onChange({ label: e.target.value })}
-          className="bg-transparent text-center text-base font-bold text-[#1a1a1a] outline-none placeholder:text-[#1a1a1a]/50"
-          style={{ width: `${Math.max(8, (block.label || '').length)}ch` }}
+          className="bg-transparent text-center text-base font-bold outline-none"
+          style={{ width: `${Math.max(8, (block.label || '').length)}ch`, color: accentText }}
           placeholder="Button label"
         />
       </div>

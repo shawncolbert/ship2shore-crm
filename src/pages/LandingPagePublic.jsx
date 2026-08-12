@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import LandingBlockView, { Prose } from '../components/LandingBlockView'
+import { getPublicTheme, accentTint } from '../lib/publicThemes'
 
 async function callLandingPageApi(payload) {
   const res = await fetch('/.netlify/functions/public-landing-page', {
@@ -52,6 +53,7 @@ export default function LandingPagePublic() {
   }
 
   const blocks = data.blocks || []
+  const { accent, accentText } = getPublicTheme(data.theme)
   // The lead form is a single instance anchored at the last CTA. A hero button
   // near the top and a closing button further down are the same request, so
   // both open the one form and scroll it into view rather than sprouting a
@@ -65,9 +67,9 @@ export default function LandingPagePublic() {
         <div key={block.id || i}>
           {block.type === 'cta'
             ? (i === leadIndex
-                ? <LeadAnchor block={block} slug={slug} bookingHref={bookingHref} formRef={formRef} open={leadOpen} onOpen={openLead} />
-                : <LandingBlockView block={block} onCta={handleCta} />)
-            : <LandingBlockView block={block} onCta={handleCta} />}
+                ? <LeadAnchor block={block} slug={slug} bookingHref={bookingHref} formRef={formRef} open={leadOpen} onOpen={openLead} accent={accent} accentText={accentText} />
+                : <LandingBlockView block={block} onCta={handleCta} theme={data.theme} />)
+            : <LandingBlockView block={block} onCta={handleCta} theme={data.theme} />}
         </div>
       ))}
     </div>
@@ -75,12 +77,13 @@ export default function LandingPagePublic() {
 }
 
 // The one CTA that actually hosts the form. Others just scroll here.
-function LeadAnchor({ block, slug, bookingHref, formRef, open, onOpen }) {
+function LeadAnchor({ block, slug, bookingHref, formRef, open, onOpen, accent, accentText }) {
   if (block.target === 'booking') {
     return (
       <Prose>
         <a href={bookingHref}
-          className="mb-4 mt-2 inline-block rounded-xl bg-[#e8a317] px-8 py-4 text-center text-base font-bold text-[#0c2231] hover:brightness-95">
+          style={{ background: accent, color: accentText }}
+          className="mb-4 mt-2 inline-block rounded-xl px-8 py-4 text-center text-base font-bold hover:brightness-95">
           {block.label || 'Book Now'}
         </a>
       </Prose>
@@ -91,18 +94,19 @@ function LeadAnchor({ block, slug, bookingHref, formRef, open, onOpen }) {
       <div ref={formRef} className="mb-4 mt-2 scroll-mt-8">
         {!open ? (
           <button onClick={onOpen}
-            className="rounded-xl bg-[#e8a317] px-8 py-4 text-base font-bold text-[#0c2231] shadow-sm hover:brightness-95">
+            style={{ background: accent, color: accentText }}
+            className="rounded-xl px-8 py-4 text-base font-bold shadow-sm hover:brightness-95">
             {block.label || 'Contact us'}
           </button>
         ) : (
-          <LeadForm slug={slug} />
+          <LeadForm slug={slug} accent={accent} accentText={accentText} />
         )}
       </div>
     </Prose>
   )
 }
 
-function LeadForm({ slug }) {
+function LeadForm({ slug, accent, accentText }) {
   const [form, setForm] = useState({ full_name: '', email: '', phone: '', notes: '' })
   const [sending, setSending] = useState(false)
   const [err, setErr] = useState('')
@@ -126,37 +130,41 @@ function LeadForm({ slug }) {
 
   if (done) {
     return (
-      <div className="rounded-xl border-2 border-[#e8a317] bg-[#fdf6e8] p-6 text-center">
+      <div className="rounded-xl border-2 p-6 text-center" style={{ borderColor: accent, background: accentTint(accent) }}>
         <p className="font-semibold text-gray-900">Thanks — we'll be in touch shortly.</p>
       </div>
     )
   }
+
+  const focusStyle = { '--tw-ring-color': accent }
+  const inputClass = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2'
 
   return (
     <form onSubmit={submit} className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-5">
       {err && <p className="text-sm text-red-600">{err}</p>}
       <div>
         <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Name</label>
-        <input className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#e8a317]"
+        <input className={inputClass} style={focusStyle}
           value={form.full_name} onChange={(e) => set('full_name', e.target.value)} required />
       </div>
       <div>
         <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Email</label>
-        <input type="email" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#e8a317]"
+        <input type="email" className={inputClass} style={focusStyle}
           value={form.email} onChange={(e) => set('email', e.target.value)} required />
       </div>
       <div>
         <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Phone (optional)</label>
-        <input className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#e8a317]"
+        <input className={inputClass} style={focusStyle}
           value={form.phone} onChange={(e) => set('phone', e.target.value)} />
       </div>
       <div>
         <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Message (optional)</label>
-        <textarea rows={3} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#e8a317]"
+        <textarea rows={3} className={inputClass} style={focusStyle}
           value={form.notes} onChange={(e) => set('notes', e.target.value)} />
       </div>
       <button type="submit" disabled={sending}
-        className="w-full rounded-lg bg-[#e8a317] px-4 py-3 text-sm font-bold text-[#1a1a1a] hover:brightness-95 disabled:opacity-50">
+        style={{ background: accent, color: accentText }}
+        className="w-full rounded-lg px-4 py-3 text-sm font-bold hover:brightness-95 disabled:opacity-50">
         {sending ? 'Sending…' : 'Send'}
       </button>
     </form>

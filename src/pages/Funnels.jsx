@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
+import { PUBLIC_THEMES } from '../lib/publicThemes'
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -71,7 +72,10 @@ export default function Funnels() {
         {funnels?.map((funnel) => (
           <div key={funnel.id} className="flex items-center justify-between rounded-lg border border-line bg-surface p-4">
             <div className="flex-1">
-              <div className="font-medium text-ink">{funnel.name}</div>
+              <div className="flex items-center gap-1.5 font-medium text-ink">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: PUBLIC_THEMES.find((t) => t.key === funnel.theme)?.accent || PUBLIC_THEMES[0].accent }} />
+                {funnel.name}
+              </div>
               {funnel.description && <div className="mt-0.5 text-xs text-muted">{funnel.description}</div>}
               <div className="mt-1.5 flex gap-3">
                 {funnel.published && (
@@ -113,12 +117,36 @@ export default function Funnels() {
 function FunnelEditor({ funnelId, onClose, onSaved }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [theme, setTheme] = useState('classic')
   const [steps, setSteps] = useState([
     { title: 'Contact Info', description: 'Tell us who you are', fields: ['full_name', 'email', 'phone'] },
     { title: 'Details', description: 'What do you need?', fields: ['service_type', 'budget'] },
   ])
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
+  const [prefilling, setPrefilling] = useState(!!funnelId)
+
+  // Loads the funnel's current name/description/theme/steps for editing --
+  // without this, saving an existing funnel silently overwrote it with the
+  // blank "new funnel" defaults above, wiping whatever theme/steps it had.
+  useEffect(() => {
+    if (!funnelId) { setPrefilling(false); return }
+    let cancelled = false
+    ;(async () => {
+      const { data: funnel, error: fErr } = await supabase
+        .from('funnels').select('name, description, theme').eq('id', funnelId).maybeSingle()
+      const { data: funnelSteps, error: sErr } = await supabase
+        .from('funnel_steps').select('title, description, fields').eq('funnel_id', funnelId).order('step_number', { ascending: true })
+      if (cancelled) return
+      if (fErr || sErr || !funnel) { setErr((fErr || sErr)?.message || 'Could not load this funnel.'); setPrefilling(false); return }
+      setName(funnel.name || '')
+      setDescription(funnel.description || '')
+      setTheme(funnel.theme || 'classic')
+      if (funnelSteps?.length) setSteps(funnelSteps)
+      setPrefilling(false)
+    })()
+    return () => { cancelled = true }
+  }, [funnelId])
 
   const handleSave = async () => {
     if (!name.trim()) { setErr('Funnel name is required'); return }
@@ -134,7 +162,7 @@ function FunnelEditor({ funnelId, onClose, onSaved }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token || ''}`,
         },
-        body: JSON.stringify({ funnelId, name, description, steps }),
+        body: JSON.stringify({ funnelId, name, description, steps, theme }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to save funnel')
@@ -148,6 +176,14 @@ function FunnelEditor({ funnelId, onClose, onSaved }) {
 
   const addStep = () => setSteps([...steps, { title: `Step ${steps.length + 1}`, description: '', fields: [] }])
   const removeStep = (i) => setSteps(steps.filter((_, idx) => idx !== i))
+
+  if (prefilling) {
+    return (
+      <div className="mb-6 rounded-xl border border-line bg-surface p-5">
+        <p className="text-sm text-muted">Loading funnel…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="mb-6 rounded-xl border border-line bg-surface p-5">
@@ -170,6 +206,26 @@ function FunnelEditor({ funnelId, onClose, onSaved }) {
           onChange={(e) => setDescription(e.target.value)}
           className="rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
         />
+      </div>
+
+      <div className="mt-3">
+        <h3 className="mb-1.5 text-xs font-semibold text-ink">Accent color</h3>
+        <div className="flex flex-wrap gap-1.5">
+          {PUBLIC_THEMES.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTheme(t.key)}
+              title={t.label}
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                theme === t.key ? 'border-accent bg-accent/10 text-ink' : 'border-line bg-canvas text-muted hover:text-ink'
+              }`}
+            >
+              <span className="h-3 w-3 rounded-full" style={{ background: t.accent }} />
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mt-4 space-y-3">

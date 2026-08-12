@@ -14,7 +14,7 @@ export const handler = async (event) => {
   // Get published funnel by slug
   const { data: funnel, error: funnelErr } = await admin
     .from('funnels')
-    .select('id, name, description, slug, published')
+    .select('id, name, description, slug, published, theme')
     .eq('slug', slug)
     .eq('published', true)
     .single()

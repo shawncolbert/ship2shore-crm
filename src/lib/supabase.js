@@ -962,7 +962,7 @@ export async function deleteAutomationRule(id) {
 export async function fetchLandingPages() {
   const { data, error } = await supabase
     .from('landing_pages')
-    .select('id, slug, title, published, updated_at')
+    .select('id, slug, title, published, theme, updated_at')
     .order('updated_at', { ascending: false })
   if (error) throw error
   return data || []
@@ -976,11 +976,11 @@ export async function fetchLandingPage(id) {
   return data
 }
 
-export async function createLandingPage({ slug, title, published, blocks }) {
+export async function createLandingPage({ slug, title, published, theme, blocks }) {
   const orgId = await fetchMyOrgId()
   const { data, error } = await supabase
     .from('landing_pages')
-    .insert({ org_id: orgId, slug, title, published: !!published, blocks: blocks || [] })
+    .insert({ org_id: orgId, slug, title, published: !!published, theme: theme || 'classic', blocks: blocks || [] })
     .select('*').single()
   if (error) {
     if (error.code === '23505') throw new Error('That slug is already taken — pick another.')

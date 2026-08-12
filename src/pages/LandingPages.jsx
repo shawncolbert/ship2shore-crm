@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { fetchLandingPages, deleteLandingPage } from '../lib/supabase'
 import NewLandingPageModal from '../components/NewLandingPageModal'
 import { LANDING_TEMPLATES } from '../lib/landingTemplates'
+import { PUBLIC_THEMES } from '../lib/publicThemes'
 
 const card = 'rounded-xl border border-line bg-surface p-5'
 const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600'
@@ -57,6 +58,7 @@ export default function LandingPages() {
           <div key={p.id} className={`${card} flex flex-wrap items-center justify-between gap-3`}>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: PUBLIC_THEMES.find((t) => t.key === p.theme)?.accent || PUBLIC_THEMES[0].accent }} />
                 <Link to={`/landing-pages/${p.id}`} className="truncate font-medium text-ink hover:text-accent">
                   {p.title}
                 </Link>

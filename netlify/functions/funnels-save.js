@@ -11,7 +11,9 @@ export const handler = async (event) => {
   const user = await userFromToken(token)
   if (!user) return json(401, { error: 'Unauthorized' })
 
-  const { funnelId: incomingFunnelId, name, description, steps } = JSON.parse(event.body || '{}')
+  const { funnelId: incomingFunnelId, name, description, steps, theme } = JSON.parse(event.body || '{}')
+  const THEME_KEYS = ['classic', 'ocean', 'crimson', 'forest', 'aurora', 'slate']
+  const cleanTheme = THEME_KEYS.includes(theme) ? theme : 'classic'
 
   if (!name?.trim()) return json(400, { error: 'Name required' })
   if (!steps?.length || steps.length < 2) return json(400, { error: 'At least 2 steps required' })
@@ -30,7 +32,7 @@ export const handler = async (event) => {
       // Update existing funnel
       const { error: updateErr } = await admin
         .from('funnels')
-        .update({ name, description, updated_at: new Date().toISOString() })
+        .update({ name, description, theme: cleanTheme, updated_at: new Date().toISOString() })
         .eq('id', funnelId)
         .eq('org_id', orgId)
 
@@ -47,6 +49,7 @@ export const handler = async (event) => {
           name,
           description,
           slug,
+          theme: cleanTheme,
           published: false,
         })
         .select()

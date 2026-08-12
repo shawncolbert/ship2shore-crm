@@ -6,9 +6,7 @@
  * page.
  */
 import { toEmbedUrl, SPACER_SIZES } from '../lib/landingBlocks'
-
-const GOLD = '#e8a317'
-const INK = '#0c2231'
+import { getPublicTheme, PUBLIC_INK } from '../lib/publicThemes'
 
 // Prose blocks sit in a readable column; full-bleed ones handle their own width.
 export const Prose = ({ children }) => (
@@ -19,12 +17,12 @@ export const Prose = ({ children }) => (
    background itself. If the image is missing, slow, or its host disappears,
    the hero is still a deliberate-looking dark gradient with legible type --
    it never collapses into unreadable text on white. */
-function Hero({ block, onCta }) {
+function Hero({ block, onCta, accent, accentText }) {
   const hasImage = Boolean(block.image)
   return (
     <section
       className="relative isolate overflow-hidden"
-      style={{ background: `linear-gradient(135deg, ${INK} 0%, #123047 55%, #0a1b28 100%)` }}
+      style={{ background: `linear-gradient(135deg, ${PUBLIC_INK} 0%, #123047 55%, #0a1b28 100%)` }}
     >
       {hasImage && (
         <img
@@ -42,7 +40,7 @@ function Hero({ block, onCta }) {
       />
       <div className="mx-auto max-w-4xl px-6 py-20 text-center sm:px-8 sm:py-28">
         {block.eyebrow && (
-          <p className="mb-4 text-xs font-bold uppercase tracking-[0.22em]" style={{ color: GOLD }}>
+          <p className="mb-4 text-xs font-bold uppercase tracking-[0.22em]" style={{ color: accent }}>
             {block.eyebrow}
           </p>
         )}
@@ -61,7 +59,7 @@ function Hero({ block, onCta }) {
             type="button"
             onClick={() => onCta?.(block.ctaTarget)}
             className="mt-8 inline-block rounded-xl px-8 py-4 text-base font-bold shadow-lg transition hover:brightness-95"
-            style={{ background: GOLD, color: INK }}
+            style={{ background: accent, color: accentText }}
           >
             {block.ctaLabel}
           </button>
@@ -94,15 +92,15 @@ function Features({ block }) {
   )
 }
 
-function Stats({ block }) {
+function Stats({ block, accent }) {
   const items = (block.items || []).filter((i) => i.value || i.label)
   if (!items.length) return null
   return (
-    <section style={{ background: INK }} className="px-6 py-10 sm:px-8 sm:py-12">
+    <section style={{ background: PUBLIC_INK }} className="px-6 py-10 sm:px-8 sm:py-12">
       <div className="mx-auto grid max-w-4xl gap-8 text-center sm:grid-cols-3">
         {items.map((item, i) => (
           <div key={i}>
-            <div className="text-3xl font-extrabold sm:text-4xl" style={{ color: GOLD }}>{item.value}</div>
+            <div className="text-3xl font-extrabold sm:text-4xl" style={{ color: accent }}>{item.value}</div>
             <div className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-white/60">{item.label}</div>
           </div>
         ))}
@@ -111,12 +109,12 @@ function Stats({ block }) {
   )
 }
 
-function Testimonial({ block }) {
+function Testimonial({ block, accent }) {
   if (!block.quote) return null
   return (
     <section className="bg-gray-50 px-6 py-14 sm:px-8 sm:py-16">
       <figure className="mx-auto max-w-3xl text-center">
-        <div className="mb-4 text-4xl leading-none" style={{ color: GOLD }} aria-hidden="true">❝</div>
+        <div className="mb-4 text-4xl leading-none" style={{ color: accent }} aria-hidden="true">❝</div>
         <blockquote className="text-lg font-medium leading-relaxed text-gray-800 sm:text-xl">
           {block.quote}
         </blockquote>
@@ -136,7 +134,7 @@ function Contact({ block }) {
   const bits = [block.phone, block.email, block.area].filter(Boolean)
   if (!block.business && !bits.length) return null
   return (
-    <footer style={{ background: INK }} className="px-6 py-12 text-center sm:px-8">
+    <footer style={{ background: PUBLIC_INK }} className="px-6 py-12 text-center sm:px-8">
       {block.business && (
         <div className="text-lg font-bold tracking-tight text-white">{block.business}</div>
       )}
@@ -149,16 +147,17 @@ function Contact({ block }) {
   )
 }
 
-export default function LandingBlockView({ block, onCta }) {
+export default function LandingBlockView({ block, onCta, theme }) {
+  const { accent, accentText } = getPublicTheme(theme)
   switch (block.type) {
     case 'hero':
-      return <Hero block={block} onCta={onCta} />
+      return <Hero block={block} onCta={onCta} accent={accent} accentText={accentText} />
     case 'features':
       return <Features block={block} />
     case 'stats':
-      return <Stats block={block} />
+      return <Stats block={block} accent={accent} />
     case 'testimonial':
-      return <Testimonial block={block} />
+      return <Testimonial block={block} accent={accent} />
     case 'contact':
       return <Contact block={block} />
 
@@ -197,7 +196,7 @@ export default function LandingBlockView({ block, onCta }) {
             type="button"
             onClick={() => onCta?.(block.target)}
             className="mb-4 mt-2 rounded-xl px-8 py-4 text-base font-bold shadow-sm transition hover:brightness-95"
-            style={{ background: GOLD, color: INK }}
+            style={{ background: accent, color: accentText }}
           >
             {block.label || 'Contact us'}
           </button>
