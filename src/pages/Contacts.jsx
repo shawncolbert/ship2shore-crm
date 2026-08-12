@@ -25,12 +25,20 @@ export default function Contacts() {
           </h1>
           <p className="text-sm text-muted">Brokers, dispatchers, and clients.</p>
         </div>
-        <button
-          onClick={() => setShowNew(true)}
-          className="shrink-0 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-accent-600"
-        >
-          + New contact
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <Link
+            to="/contacts/import"
+            className="rounded-md border border-line bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-canvas"
+          >
+            Import
+          </Link>
+          <button
+            onClick={() => setShowNew(true)}
+            className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-accent-600"
+          >
+            + New contact
+          </button>
+        </div>
       </header>
 
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -54,7 +62,8 @@ export default function Contacts() {
           <div className="p-10 text-center">
             <p className="text-sm font-medium text-ink">No contacts yet</p>
             <p className="mt-1 text-sm text-muted">
-              Import your master list to fill the pipeline. We’ll wire that up next.
+              Import your master list to fill the pipeline —{' '}
+              <Link to="/contacts/import" className="font-medium text-accent hover:underline">upload a CSV or vCard</Link>.
             </p>
           </div>
         )}

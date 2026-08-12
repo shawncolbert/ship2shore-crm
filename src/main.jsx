@@ -9,6 +9,7 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import ResetPassword from './pages/ResetPassword'
 import Contacts from './pages/Contacts'
+import ImportContacts from './pages/ImportContacts'
 import ContactDetail from './pages/ContactDetail'
 import Pipeline from './pages/Pipeline'
 import Dashboard from './pages/Dashboard'
@@ -71,6 +72,7 @@ function App() {
                 <Route path="help" element={<FeatureGate featureKey="help"><Help /></FeatureGate>} />
                 <Route path="inbox" element={<FeatureGate featureKey="inbox"><Inbox /></FeatureGate>} />
                 <Route path="contacts" element={<FeatureGate featureKey="contacts"><Contacts /></FeatureGate>} />
+                <Route path="contacts/import" element={<FeatureGate featureKey="contacts"><ImportContacts /></FeatureGate>} />
                 <Route path="contacts/:id" element={<FeatureGate featureKey="contacts"><ContactDetail /></FeatureGate>} />
                 <Route path="pipeline" element={<FeatureGate featureKey="pipeline"><Pipeline /></FeatureGate>} />
                 <Route path="calendar" element={<FeatureGate featureKey="calendar"><Calendar /></FeatureGate>} />
