@@ -17,6 +17,7 @@ import Inbox from './pages/Inbox'
 import Documents from './pages/Documents'
 import Automations from './pages/Automations'
 import PaymentSettings from './pages/PaymentSettings'
+import Appearance from './pages/Appearance'
 import Services from './pages/Services'
 import PipelineStages from './pages/PipelineStages'
 import AdminOrgs from './pages/AdminOrgs'
@@ -36,7 +37,12 @@ import PublicFunnel from './pages/PublicFunnel'
 import SocialPosts from './pages/SocialPosts'
 import Agent from './pages/Agent'
 import Help from './pages/Help'
+import { bootstrapTheme } from './lib/theme'
 import './index.css'
+
+// Apply any cached theme before the first paint, so a returning user's
+// dashboard doesn't flash light/classic for a frame while the org loads.
+bootstrapTheme()
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } },
@@ -80,6 +86,7 @@ function App() {
                 <Route path="do-fix" element={<FeatureGate featureKey="do_fix"><DeliveryOrderFix /></FeatureGate>} />
                 <Route path="automations" element={<FeatureGate featureKey="automations"><Automations /></FeatureGate>} />
                 <Route path="payment-settings" element={<FeatureGate featureKey="payments"><PaymentSettings /></FeatureGate>} />
+                <Route path="settings/appearance" element={<FeatureGate featureKey="appearance"><Appearance /></FeatureGate>} />
                 <Route path="services" element={<FeatureGate featureKey="services"><Services /></FeatureGate>} />
                 <Route path="settings/pipeline-stages" element={<FeatureGate featureKey="pipeline_stages"><PipelineStages /></FeatureGate>} />
                 <Route path="settings/business-card" element={<FeatureGate featureKey="business_card_builder"><BusinessCardSettings /></FeatureGate>} />

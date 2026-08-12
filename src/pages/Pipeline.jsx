@@ -761,7 +761,7 @@ function AmountField({ value, paid, onSave, onInteractStart, onInteractEnd }) {
         onClick={commit}
         disabled={saving}
         title="Save amount"
-        className="shrink-0 rounded bg-ink px-1.5 py-0.5 text-[11px] font-semibold text-white hover:bg-ink-700 disabled:opacity-50"
+        className="shrink-0 rounded bg-brand px-1.5 py-0.5 text-[11px] font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
       >
         {saving ? '…' : '✓'}
       </button>
@@ -898,7 +898,7 @@ function BillingField({ value, onSave, onInteractStart, onInteractEnd }) {
         disabled={saving}
         title="Save billing number"
         className={`shrink-0 rounded px-2 py-1 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
-          saved ? 'bg-starboard text-white' : 'bg-ink text-white hover:bg-ink-700'
+          saved ? 'bg-starboard text-white' : 'bg-brand text-white hover:bg-brand-600'
         }`}
       >
         {saved ? 'Saved ✓' : saving ? '…' : 'Enter'}

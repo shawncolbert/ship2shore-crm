@@ -25,6 +25,7 @@ export const FEATURES = [
   { key: 'services', label: 'Services', path: '/services' },
   { key: 'business_card_builder', label: 'Business Card Builder', path: '/settings/business-card' },
   { key: 'payments', label: 'Payments', path: '/payment-settings' },
+  { key: 'appearance', label: 'Appearance', path: '/settings/appearance' },
   { key: 'landing_pages', label: 'Landing Pages', path: '/landing-pages' },
   { key: 'funnels', label: 'Funnels', path: '/funnels' },
   { key: 'social_posts', label: 'Social Posts', path: '/social-posts' },

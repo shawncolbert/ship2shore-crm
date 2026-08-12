@@ -220,7 +220,7 @@ function InsertPoint({ onInsert }) {
 function Controls({ index, count, onRemove, onMove, onDragStart, onDragEnd, typeLabel, onEdit }) {
   return (
     <div className="pointer-events-none absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover/block:pointer-events-auto group-hover/block:opacity-100">
-      <span className="rounded-full bg-ink px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">{typeLabel}</span>
+      <span className="rounded-full bg-brand px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">{typeLabel}</span>
       {onEdit && (
         <button className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-ink" onClick={onEdit} title="Edit this section">
           Edit
@@ -230,13 +230,13 @@ function Controls({ index, count, onRemove, onMove, onDragStart, onDragEnd, type
         draggable
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        className="cursor-grab rounded-full bg-ink px-1.5 py-0.5 text-[11px] text-white active:cursor-grabbing"
+        className="cursor-grab rounded-full bg-brand px-1.5 py-0.5 text-[11px] text-white active:cursor-grabbing"
         title="Drag to reorder"
       >
         ⠿
       </span>
-      <button className="rounded-full bg-ink px-1.5 py-0.5 text-[11px] text-white disabled:opacity-40" disabled={index === 0} onClick={() => onMove(-1)} title="Move up">↑</button>
-      <button className="rounded-full bg-ink px-1.5 py-0.5 text-[11px] text-white disabled:opacity-40" disabled={index === count - 1} onClick={() => onMove(1)} title="Move down">↓</button>
+      <button className="rounded-full bg-brand px-1.5 py-0.5 text-[11px] text-white disabled:opacity-40" disabled={index === 0} onClick={() => onMove(-1)} title="Move up">↑</button>
+      <button className="rounded-full bg-brand px-1.5 py-0.5 text-[11px] text-white disabled:opacity-40" disabled={index === count - 1} onClick={() => onMove(1)} title="Move down">↓</button>
       <button className="rounded-full bg-port px-1.5 py-0.5 text-[11px] text-white" onClick={onRemove} title="Remove block">✕</button>
     </div>
   )

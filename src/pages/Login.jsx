@@ -41,7 +41,7 @@ export default function Login() {
 
   if (forgotMode) {
     return (
-      <div className="flex h-full items-center justify-center bg-ink p-6">
+      <div className="flex h-full items-center justify-center bg-brand p-6">
         <div className="w-full max-w-sm">
           <div className="mb-8 text-center">
             <div className="font-[family-name:var(--font-display)] text-2xl font-bold text-white">
@@ -102,7 +102,7 @@ export default function Login() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center bg-ink p-6">
+    <div className="flex h-full items-center justify-center bg-brand p-6">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="font-[family-name:var(--font-display)] text-2xl font-bold text-white">

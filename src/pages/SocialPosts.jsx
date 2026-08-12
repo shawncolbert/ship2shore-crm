@@ -115,7 +115,7 @@ export default function SocialPosts() {
           <button
             onClick={handleConnectTiktok}
             disabled={connecting}
-            className="shrink-0 rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
           >
             {connecting ? 'Redirecting…' : 'Connect TikTok'}
           </button>

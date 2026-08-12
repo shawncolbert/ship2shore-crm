@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import { fetchMyProfile, fetchMyOrg, fetchNewBookingCount } from '../lib/supabase'
 import { isFeatureEnabled } from '../lib/features'
+import { applyTheme, cacheTheme } from '../lib/theme'
 
 const nav = [
   { to: '/help', label: 'Help / Getting Started', key: 'help' },
@@ -21,6 +22,7 @@ const nav = [
   { to: '/services', label: 'Services', key: 'services' },
   { to: '/settings/business-card', label: 'Business Card Builder', key: 'business_card_builder' },
   { to: '/payment-settings', label: 'Payments', key: 'payments' },
+  { to: '/settings/appearance', label: 'Appearance', key: 'appearance' },
   { to: '/landing-pages', label: 'Landing Pages', key: 'landing_pages' },
   { to: '/funnels', label: 'Funnels', key: 'funnels' },
   { to: '/social-posts', label: 'Social Posts', key: 'social_posts' },
@@ -102,6 +104,16 @@ export default function Layout({ children }) {
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
 
+  // Applies the signed-in org's saved appearance and caches it so the next
+  // load's synchronous bootstrap (main.jsx) can paint it without a flash.
+  // Runs here (not in main.jsx) because it needs the authenticated org row.
+  const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
+  useEffect(() => {
+    if (!org) return
+    applyTheme(org.theme_mode, org.theme_preset)
+    cacheTheme(org.theme_mode, org.theme_preset)
+  }, [org?.theme_mode, org?.theme_preset])
+
   const handleSignOut = async () => {
     setMenuOpen(false)
     await signOut()
@@ -123,7 +135,7 @@ export default function Layout({ children }) {
   return (
     <div className="flex h-full flex-col md:flex-row">
       {/* Mobile top bar */}
-      <header className="flex items-center justify-between bg-ink px-4 py-3 md:hidden">
+      <header className="flex items-center justify-between bg-brand px-4 py-3 md:hidden">
         <Brand />
         <button
           onClick={() => setMenuOpen(true)}
@@ -140,7 +152,7 @@ export default function Layout({ children }) {
       {menuOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMenuOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex w-64 max-w-[80%] flex-col bg-ink text-white/90 shadow-xl">
+          <aside className="absolute inset-y-0 left-0 flex w-64 max-w-[80%] flex-col bg-brand text-white/90 shadow-xl">
             <div className="flex items-center justify-between px-5 py-4">
               <Brand />
               <button
@@ -160,7 +172,7 @@ export default function Layout({ children }) {
       )}
 
       {/* Desktop sidebar */}
-      <aside className="hidden w-56 shrink-0 flex-col bg-ink text-white/90 md:flex">
+      <aside className="hidden w-56 shrink-0 flex-col bg-brand text-white/90 md:flex">
         <div className="px-5 py-6">
           <Brand />
         </div>

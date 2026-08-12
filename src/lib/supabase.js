@@ -124,8 +124,24 @@ export async function fetchMyOrg() {
   const orgId = await fetchMyOrgId()
   const { data, error } = await supabase
     .from('organizations')
-    .select('id, name, slug, logo_url, primary_color, enabled_features')
+    .select('id, name, slug, logo_url, primary_color, enabled_features, theme_mode, theme_preset')
     .eq('id', orgId)
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Settings > Appearance -- any org member can change their own org's
+// dashboard theme (the "p_org_members" RLS policy already covers this
+// update). Separate from primary_color/logo_url branding, which stay
+// untouched here.
+export async function updateMyOrgTheme({ theme_mode, theme_preset }) {
+  const orgId = await fetchMyOrgId()
+  const { data, error } = await supabase
+    .from('organizations')
+    .update({ theme_mode, theme_preset })
+    .eq('id', orgId)
+    .select('id, theme_mode, theme_preset')
     .single()
   if (error) throw error
   return data

@@ -1,13 +1,15 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ink: #0c2231;        /* harbor navy - sidebar, headings */
+  --color-ink: #0c2231;        /* body text / headings -- flips light<->dark with theme_mode */
   --color-ink-700: #143142;
   --color-ink-500: #3a5567;
+  --color-brand: #0c2231;      /* harbor navy chrome (sidebar, badges, buttons) -- fixed across both modes */
+  --color-brand-600: #143142;
   --color-canvas: #f4f6f7;     /* fog white - app background */
   --color-surface: #ffffff;
   --color-line: #e2e8ec;       /* hairline borders */
-  --color-accent: #e8a317;     /* signal amber - primary actions, active nav */
+  --color-accent: #e8a317;     /* signal amber - primary actions, active nav -- flips with theme_preset */
   --color-accent-600: #cf8f0c;
   --color-starboard: #1fa97a;  /* green - won / paid */
   --color-port: #d9534f;       /* red - lost */
@@ -25,10 +27,57 @@ body {
   background: var(--color-canvas);
   color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 * { box-sizing: border-box; }
 
 /* Respect reduced-motion */
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Per-org dashboard appearance (Settings > Appearance). Two knobs:      */
+/*   data-mode    -- "light" (default, omitted) or "dark"                */
+/*   data-preset  -- accent color family; "classic" is the default and   */
+/*                   needs no override block since it's already @theme's */
+/*                   base accent above.                                  */
+/* --color-brand/-brand-600 (sidebar, chips, buttons) deliberately stay  */
+/* out of both blocks below -- chrome keeps its navy identity in dark    */
+/* mode too, only the content surfaces and text invert.                  */
+/* ------------------------------------------------------------------ */
+
+:root[data-mode="dark"] {
+  --color-ink: #e7edf2;
+  --color-canvas: #0e161d;
+  --color-surface: #16212a;
+  --color-line: #29343d;
+  --color-muted: #93a4b0;
+  --color-starboard: #3ddc9a;
+  --color-port: #f2726d;
+}
+
+:root[data-preset="ocean"] {
+  --color-accent: #2f8fd6;
+  --color-accent-600: #1f74b8;
+}
+
+:root[data-preset="crimson"] {
+  --color-accent: #c1440e;
+  --color-accent-600: #a3390c;
+}
+
+:root[data-preset="forest"] {
+  --color-accent: #0f8b8d;
+  --color-accent-600: #0c6d6e;
+}
+
+:root[data-preset="aurora"] {
+  --color-accent: #b23a9e;
+  --color-accent-600: #8f2d7d;
+}
+
+:root[data-preset="slate"] {
+  --color-accent: #4b5b66;
+  --color-accent-600: #37444d;
 }

@@ -18,8 +18,8 @@ export default function SegmentFilter({ value, onChange }) {
             onClick={() => onChange(s.key)}
             className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
               active
-                ? 'border-ink bg-ink text-white'
-                : 'border-line bg-surface text-muted hover:border-ink/40 hover:text-ink'
+                ? 'border-brand bg-brand text-white'
+                : 'border-line bg-surface text-muted hover:border-brand/40 hover:text-ink'
             }`}
           >
             {s.label}
