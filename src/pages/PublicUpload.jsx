@@ -44,7 +44,7 @@ export default function PublicUpload() {
           <div className="mt-6 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
             ✅ Received — thank you! Your delivery order was sent to Ship2Shore.
             <div className="mt-3">
-              <button className="rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas"
+              <button className="rounded-[var(--radius-btn)] border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas"
                 onClick={() => { setFile(null); setStatus('idle') }}>Upload another</button>
             </div>
           </div>

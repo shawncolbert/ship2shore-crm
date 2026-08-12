@@ -5,9 +5,9 @@ import {
   signedAttachmentUrl, deleteAttachment,
 } from '../lib/supabase'
 
-const card = 'rounded-xl border border-line bg-surface p-5'
-const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
-const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
+const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
+const btn = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
+const btnAccent = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
 
 const kindLabel = (k) =>
   k === 'gate_pass' ? 'Gate pass' : k === 'delivery_order' ? 'Delivery Order' : 'Shipping doc'

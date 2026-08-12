@@ -5,8 +5,8 @@ import { createLandingPage } from '../lib/supabase'
 
 const input = 'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent'
 const label = 'mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted'
-const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
-const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
+const btn = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
+const btnAccent = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-accent px-4 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
 
 // Apostrophes are dropped rather than turned into a separator, so
 // "Sparky's Arc Welding" reads as sparkys-arc-welding, not sparky-s-arc-welding.

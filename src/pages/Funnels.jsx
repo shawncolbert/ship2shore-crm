@@ -179,14 +179,14 @@ function FunnelEditor({ funnelId, onClose, onSaved }) {
 
   if (prefilling) {
     return (
-      <div className="mb-6 rounded-xl border border-line bg-surface p-5">
+      <div className="mb-6 rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]">
         <p className="text-sm text-muted">Loading funnel…</p>
       </div>
     )
   }
 
   return (
-    <div className="mb-6 rounded-xl border border-line bg-surface p-5">
+    <div className="mb-6 rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]">
       <h2 className="mb-3 text-sm font-semibold text-ink">
         {funnelId ? 'Edit Funnel' : 'New Funnel'}
       </h2>

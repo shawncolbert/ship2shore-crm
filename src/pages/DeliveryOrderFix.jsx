@@ -814,7 +814,7 @@ export default function DeliveryOrderFix() {
 
       {error && <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {error}</p>}
 
-      <div className="rounded-xl border border-line bg-surface p-5">
+      <div className="rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]">
         <label
           className="relative mb-4 block cursor-pointer rounded-xl border-2 border-dashed border-line bg-canvas px-4 py-8 text-center transition-colors hover:border-accent"
           onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-accent') }}
@@ -1046,7 +1046,7 @@ export default function DeliveryOrderFix() {
 
             {saveOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSaveOpen(false)}>
-                <div className="w-full max-w-sm rounded-xl border border-line bg-surface p-5" onClick={(e) => e.stopPropagation()}>
+                <div className="w-full max-w-sm rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]" onClick={(e) => e.stopPropagation()}>
                   <h2 className="mb-3 text-sm font-semibold text-ink">Save corrected file to customer's record</h2>
                   {saveErr && <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-xs text-port">⚠️ {saveErr}</p>}
 

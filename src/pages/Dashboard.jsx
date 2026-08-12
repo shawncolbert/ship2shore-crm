@@ -123,7 +123,7 @@ export default function Dashboard() {
               hint="Sent via their upload link" onClick={() => openDrillDown('newFiles')} />
           </div>
 
-          <div className="mt-6 rounded-xl border border-line bg-surface p-5">
+          <div className="mt-6 rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
                 Jobs by stage
@@ -190,7 +190,7 @@ function Stat({ label, value, mono, accent, hint, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="rounded-xl border border-line bg-surface p-5 text-left transition-colors hover:border-accent hover:bg-canvas"
+      className="rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)] text-left transition-colors hover:border-accent hover:bg-canvas"
     >
       <div className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</div>
       <div

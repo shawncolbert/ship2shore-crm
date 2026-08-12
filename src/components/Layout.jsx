@@ -80,12 +80,11 @@ function NavItems({ onNavigate }) {
           end={item.end}
           onClick={onNavigate}
           className={({ isActive }) =>
-            `flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              isActive
-                ? 'bg-accent text-ink'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
+            `flex items-center justify-between rounded-[var(--radius-btn)] px-3 py-2 text-sm font-medium transition-colors ${
+              isActive ? '' : 'text-white/70 hover:bg-white/10 hover:text-white'
             }`
           }
+          style={({ isActive }) => (isActive ? { background: 'var(--nav-active-bg)', color: 'var(--nav-active-text)' } : undefined)}
         >
           <span>{item.label}</span>
           {item.to === '/pipeline' && !!newBookingCount && (
@@ -135,7 +134,7 @@ export default function Layout({ children }) {
   return (
     <div className="flex h-full flex-col md:flex-row">
       {/* Mobile top bar */}
-      <header className="flex items-center justify-between bg-brand px-4 py-3 md:hidden">
+      <header className="flex items-center justify-between px-4 py-3 md:hidden" style={{ background: 'var(--sidebar-bg)' }}>
         <Brand />
         <button
           onClick={() => setMenuOpen(true)}
@@ -152,7 +151,7 @@ export default function Layout({ children }) {
       {menuOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMenuOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex w-64 max-w-[80%] flex-col bg-brand text-white/90 shadow-xl">
+          <aside className="absolute inset-y-0 left-0 flex w-64 max-w-[80%] flex-col text-white/90 shadow-xl" style={{ background: 'var(--sidebar-bg)' }}>
             <div className="flex items-center justify-between px-5 py-4">
               <Brand />
               <button
@@ -172,7 +171,7 @@ export default function Layout({ children }) {
       )}
 
       {/* Desktop sidebar */}
-      <aside className="hidden w-56 shrink-0 flex-col bg-brand text-white/90 md:flex">
+      <aside className="hidden w-56 shrink-0 flex-col text-white/90 md:flex" style={{ background: 'var(--sidebar-bg)' }}>
         <div className="px-5 py-6">
           <Brand />
         </div>

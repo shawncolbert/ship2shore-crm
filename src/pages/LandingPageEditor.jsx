@@ -5,8 +5,8 @@ import { BLOCK_TYPES, newBlock, toEmbedUrl, SPACER_SIZES } from '../lib/landingB
 import LandingBlockView from '../components/LandingBlockView'
 import { PUBLIC_THEMES, getPublicTheme } from '../lib/publicThemes'
 
-const btn = 'inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
-const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
+const btn = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
+const btnAccent = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
 const input = 'w-full rounded-lg border border-line bg-canvas px-2 py-1.5 text-sm text-ink outline-none focus:border-accent'
 const label = 'mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted'
 

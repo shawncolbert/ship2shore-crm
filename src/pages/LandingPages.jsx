@@ -6,8 +6,8 @@ import NewLandingPageModal from '../components/NewLandingPageModal'
 import { LANDING_TEMPLATES } from '../lib/landingTemplates'
 import { PUBLIC_THEMES } from '../lib/publicThemes'
 
-const card = 'rounded-xl border border-line bg-surface p-5'
-const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600'
+const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
+const btnAccent = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600'
 
 const fmt = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
 

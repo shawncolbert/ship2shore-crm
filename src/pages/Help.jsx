@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchMyOrg } from '../lib/supabase'
 
-const card = 'rounded-xl border border-line bg-surface p-5'
+const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
 const h2 = 'font-[family-name:var(--font-display)] text-lg font-bold text-ink'
 const step = 'flex gap-3'
 const stepNum = 'flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-ink'

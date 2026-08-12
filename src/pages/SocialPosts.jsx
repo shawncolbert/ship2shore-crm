@@ -186,7 +186,7 @@ function PostCard({ post, onUpdated }) {
   }[post.status] || post.status
 
   return (
-    <div className="rounded-xl border border-line bg-surface p-5">
+    <div className="rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1">
           {post.image_url && (
@@ -265,7 +265,7 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
   }
 
   return (
-    <div className="mb-6 rounded-xl border border-line bg-surface p-5">
+    <div className="mb-6 rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]">
       <h2 className="mb-3 text-sm font-semibold text-ink">Draft new post</h2>
       {err && <p className="mb-3 text-xs text-port">{err}</p>}
 

@@ -3,8 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchMyOrg, updateMyOrgTheme } from '../lib/supabase'
 import { applyTheme, cacheTheme, THEME_MODES, THEME_PRESETS } from '../lib/theme'
 
-const card = 'rounded-xl border border-line bg-surface p-5'
-const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
+const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
+const btnAccent = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
 const h2 = 'mb-3 text-xs font-semibold uppercase tracking-wide text-muted'
 
 export default function Appearance() {
@@ -60,8 +60,9 @@ export default function Appearance() {
       <header className="mb-6">
         <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Appearance</h1>
         <p className="max-w-lg text-sm text-muted">
-          Pick how your dashboard looks — light or dark, and an accent color that fits your business.
-          This changes the CRM for everyone in your organization; the sidebar branding always stays navy.
+          Pick a look for your dashboard — light or dark, and one of six layouts, each with its own sidebar
+          treatment, card shape, and accent color. Same functionality either way; this changes the CRM for
+          everyone in your organization.
         </p>
       </header>
 
@@ -86,21 +87,28 @@ export default function Appearance() {
         </div>
 
         <div className={card}>
-          <h2 className={h2}>Accent color</h2>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <h2 className={h2}>Layout</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {THEME_PRESETS.map((p) => (
               <button
                 key={p.key}
                 onClick={() => { setPreset(p.key); setSaved(false) }}
-                className={`rounded-lg border p-3 text-left transition-colors ${
-                  preset === p.key ? 'border-accent bg-accent/10' : 'border-line bg-canvas hover:border-accent/40'
+                className={`overflow-hidden rounded-lg border text-left transition-colors ${
+                  preset === p.key ? 'border-accent' : 'border-line hover:border-accent/40'
                 }`}
               >
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="h-4 w-4 shrink-0 rounded-full" style={{ background: p.swatch }} />
-                  <span className="text-sm font-semibold text-ink">{p.label}</span>
+                {/* Mini sidebar-shape preview -- this is the actual sidebar background,
+                    so the picker shows what you're choosing rather than just a color dot. */}
+                <div className="flex h-14 items-stretch">
+                  <div className="w-6 shrink-0" style={{ background: p.sidebar }} />
+                  <div className="flex flex-1 items-center justify-center bg-canvas">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: p.swatch }} />
+                  </div>
                 </div>
-                <p className="text-xs text-muted">{p.description}</p>
+                <div className={`p-3 ${preset === p.key ? 'bg-accent/10' : 'bg-surface'}`}>
+                  <span className="text-sm font-semibold text-ink">{p.label}</span>
+                  <p className="mt-0.5 text-xs text-muted">{p.description}</p>
+                </div>
               </button>
             ))}
           </div>

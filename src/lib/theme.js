@@ -1,22 +1,26 @@
-// Per-org CRM dashboard appearance -- dark/light mode plus one of 6 accent
-// presets, set on <html data-mode data-preset> so index.css's attribute
-// selectors take over the --color-* tokens app-wide. Independent of the
-// landing-page/funnel template system (that's a separate feature).
+// Per-org CRM dashboard appearance -- dark/light mode plus one of 6 full
+// layouts, set on <html data-mode data-preset> so index.css's attribute
+// selectors take over app-wide: accent color, sidebar treatment (solid,
+// gradient, or glass), card corner radius, and card shadow/glow. Each one
+// is meant to read as a genuinely different product skin, not just a
+// different accent dot. Independent of the landing-page/funnel template
+// system (that's a separate feature).
 
 export const THEME_MODES = [
   { key: 'light', label: 'Light' },
   { key: 'dark', label: 'Dark' },
 ]
 
-// `swatch` is the accent color shown in the picker; `label`/`description`
-// help an org pick something that fits their business, per Shawn's ask.
+// `swatch` is the accent color, `sidebar` the sidebar background (solid or
+// gradient) -- both shown in the picker preview. `label`/`description` help
+// an org pick something that fits their business, per Shawn's ask.
 export const THEME_PRESETS = [
-  { key: 'classic', label: 'Classic Amber', swatch: '#e8a317', description: "Ship2Shore's original look." },
-  { key: 'ocean', label: 'Ocean Blue', swatch: '#2f8fd6', description: 'Trusted, corporate -- freight, logistics.' },
-  { key: 'crimson', label: 'Crimson', swatch: '#c1440e', description: 'Bold, urgent -- dispatch, emergency services.' },
-  { key: 'forest', label: 'Forest Teal', swatch: '#0f8b8d', description: 'Calm, grounded -- marine, environmental.' },
-  { key: 'aurora', label: 'Aurora', swatch: '#b23a9e', description: 'Bold, creative -- photography, events.' },
-  { key: 'slate', label: 'Slate', swatch: '#4b5b66', description: 'Minimal, neutral -- consulting, admin.' },
+  { key: 'classic', label: 'Classic Amber', swatch: '#e8a317', sidebar: '#0c2231', description: "Ship2Shore's original look." },
+  { key: 'ocean', label: 'Ocean Blue', swatch: '#2f8fd6', sidebar: 'linear-gradient(180deg, #0c2231 0%, #123a5c 100%)', description: 'Trusted, corporate -- freight, logistics.' },
+  { key: 'crimson', label: 'Crimson', swatch: '#c1440e', sidebar: 'linear-gradient(180deg, #1a0f0c 0%, #3a140a 100%)', description: 'Bold, urgent -- dispatch, emergency services.' },
+  { key: 'forest', label: 'Forest Teal', swatch: '#0f8b8d', sidebar: 'linear-gradient(180deg, #06211f 0%, #0f3d3a 100%)', description: 'Calm, grounded -- marine, environmental.' },
+  { key: 'aurora', label: 'Aurora', swatch: '#b23a9e', sidebar: 'linear-gradient(160deg, #1a0b2e 0%, #3d1150 45%, #6b1e6b 100%)', description: 'Bold, glossy, modern -- photography, events, creative studios.' },
+  { key: 'slate', label: 'Slate', swatch: '#4b5b66', sidebar: '#2a3138', description: 'Minimal, flat, neutral -- consulting, admin.' },
 ]
 
 const CACHE_KEY = 's2s_theme'

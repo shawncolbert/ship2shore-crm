@@ -58,7 +58,7 @@ export default function EmailComposer({ contact, onClose }) {
         <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-4">
           <button onClick={onClose} className="rounded-md px-4 py-2 text-sm font-medium text-muted hover:bg-canvas hover:text-ink">Cancel</button>
           <button onClick={send} disabled={sending}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50">
+            className="rounded-[var(--radius-btn)] bg-accent px-4 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50">
             {sending ? 'Sending…' : '✉️ Send'}
           </button>
         </div>

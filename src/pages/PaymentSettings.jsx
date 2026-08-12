@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchPaymentSettings, savePaymentSettings } from '../lib/supabase'
 import { PAYMENT_METHODS } from '../lib/paymentRequest'
 
-const card = 'rounded-xl border border-line bg-surface p-5'
-const btnAccent = 'inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
+const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
+const btnAccent = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
 const input = 'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent'
 const label = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-muted'
 

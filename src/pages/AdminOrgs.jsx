@@ -76,7 +76,7 @@ export default function AdminOrgs() {
           const orgStat = stats?.find((s) => s.orgId === org.id)
           const createdDate = orgStat?.createdAt ? new Date(orgStat.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
           return (
-            <div key={org.id} className="rounded-xl border border-line bg-surface p-5">
+            <div key={org.id} className="rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <div className="font-semibold text-ink">{org.name}</div>
@@ -231,7 +231,7 @@ function NewOrgForm({ onClose, onCreated }) {
   })
 
   return (
-    <div className="mb-6 rounded-xl border border-line bg-surface p-5">
+    <div className="mb-6 rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]">
       <h2 className="mb-3 text-sm font-semibold text-ink">New organization</h2>
       {err && <p className="mb-2 text-xs text-port">{err}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
