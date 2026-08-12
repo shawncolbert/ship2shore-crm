@@ -6,27 +6,33 @@ import { fetchMyProfile, fetchMyOrg, fetchNewBookingCount } from '../lib/supabas
 import { isFeatureEnabled } from '../lib/features'
 import { applyTheme, cacheTheme } from '../lib/theme'
 
+// `group` only matters for the Aurora layout's sectioned sidebar (see
+// NavItems below) -- every other layout renders this same list flat, in
+// this same order, exactly as before.
 const nav = [
-  { to: '/help', label: 'Help / Getting Started', key: 'help' },
-  { to: '/agent', label: 'AI Assistant', key: 'ai_assistant' },
-  { to: '/', label: 'Dashboard', end: true, key: 'dashboard' },
-  { to: '/settings/card-links', label: 'Digital Business Cards', key: 'digital_business_cards' },
-  { to: '/inbox', label: 'Inbox', key: 'inbox' },
-  { to: '/contacts', label: 'Contacts', key: 'contacts' },
-  { to: '/pipeline', label: 'Pipeline', key: 'pipeline' },
-  { to: '/settings/pipeline-stages', label: 'Pipeline Stages', key: 'pipeline_stages' },
-  { to: '/calendar', label: 'Calendar', key: 'calendar' },
-  { to: '/documents', label: 'Documents', key: 'documents' },
-  { to: '/do-fix', label: 'DO / Contract Editor', key: 'do_fix' },
-  { to: '/automations', label: 'Automations', key: 'automations' },
-  { to: '/services', label: 'Services', key: 'services' },
-  { to: '/settings/business-card', label: 'Business Card Builder', key: 'business_card_builder' },
-  { to: '/payment-settings', label: 'Payments', key: 'payments' },
-  { to: '/settings/appearance', label: 'Appearance', key: 'appearance' },
-  { to: '/landing-pages', label: 'Landing Pages', key: 'landing_pages' },
-  { to: '/funnels', label: 'Funnels', key: 'funnels' },
-  { to: '/social-posts', label: 'Social Posts', key: 'social_posts' },
+  { to: '/help', label: 'Help / Getting Started', key: 'help', group: 'Overview' },
+  { to: '/agent', label: 'AI Assistant', key: 'ai_assistant', group: 'Overview' },
+  { to: '/', label: 'Dashboard', end: true, key: 'dashboard', group: 'Overview' },
+  { to: '/settings/card-links', label: 'Digital Business Cards', key: 'digital_business_cards', group: 'Marketing' },
+  { to: '/inbox', label: 'Inbox', key: 'inbox', group: 'Clients & Bookings' },
+  { to: '/contacts', label: 'Contacts', key: 'contacts', group: 'Clients & Bookings' },
+  { to: '/pipeline', label: 'Pipeline', key: 'pipeline', group: 'Clients & Bookings' },
+  { to: '/settings/pipeline-stages', label: 'Pipeline Stages', key: 'pipeline_stages', group: 'Clients & Bookings' },
+  { to: '/calendar', label: 'Calendar', key: 'calendar', group: 'Clients & Bookings' },
+  { to: '/documents', label: 'Documents', key: 'documents', group: 'Production' },
+  { to: '/do-fix', label: 'DO / Contract Editor', key: 'do_fix', group: 'Production' },
+  { to: '/automations', label: 'Automations', key: 'automations', group: 'Production' },
+  { to: '/services', label: 'Services', key: 'services', group: 'Money' },
+  { to: '/settings/business-card', label: 'Business Card Builder', key: 'business_card_builder', group: 'Marketing' },
+  { to: '/payment-settings', label: 'Payments', key: 'payments', group: 'Money' },
+  { to: '/settings/appearance', label: 'Appearance', key: 'appearance', group: 'Settings' },
+  { to: '/landing-pages', label: 'Landing Pages', key: 'landing_pages', group: 'Marketing' },
+  { to: '/funnels', label: 'Funnels', key: 'funnels', group: 'Marketing' },
+  { to: '/social-posts', label: 'Social Posts', key: 'social_posts', group: 'Marketing' },
 ]
+
+// Group display order for the Aurora layout's sectioned sidebar.
+const GROUP_ORDER = ['Overview', 'Clients & Bookings', 'Money', 'Production', 'Marketing', 'Settings']
 
 // Falls back to the Ship2Shore identity while the org loads or if branding
 // isn't set — white-label orgs override this via their organizations row
@@ -71,29 +77,51 @@ function NavItems({ onNavigate }) {
     refetchInterval: 60_000,
   })
 
+  const item = (it) => (
+    <NavLink
+      key={it.to}
+      to={it.to}
+      end={it.end}
+      onClick={onNavigate}
+      className={({ isActive }) =>
+        `flex items-center justify-between rounded-[var(--radius-btn)] px-3 py-2 text-sm font-medium transition-colors ${
+          isActive ? '' : 'text-white/70 hover:bg-white/10 hover:text-white'
+        }`
+      }
+      style={({ isActive }) => (isActive ? { background: 'var(--nav-active-bg)', color: 'var(--nav-active-text)' } : undefined)}
+    >
+      <span>{it.label}</span>
+      {it.to === '/pipeline' && !!newBookingCount && (
+        <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-ink">
+          {newBookingCount}
+        </span>
+      )}
+    </NavLink>
+  )
+
+  // Aurora is the one layout modeled directly on a reference dashboard whose
+  // sidebar groups nav under labeled sections -- every other layout keeps
+  // the flat list exactly as it always rendered.
+  if (org?.theme_preset === 'aurora') {
+    const byGroup = GROUP_ORDER.map((g) => ({ group: g, items: items.filter((it) => (it.group || 'Overview') === g) }))
+      .filter((g) => g.items.length)
+    return (
+      <nav className="flex-1 space-y-4 overflow-y-auto px-3 pb-2">
+        {byGroup.map(({ group, items: groupItems }) => (
+          <div key={group}>
+            <div className="mb-1 px-3 text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--color-accent)' }}>
+              {group}
+            </div>
+            <div className="space-y-0.5">{groupItems.map(item)}</div>
+          </div>
+        ))}
+      </nav>
+    )
+  }
+
   return (
     <nav className="flex-1 space-y-1 px-3">
-      {items.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.end}
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            `flex items-center justify-between rounded-[var(--radius-btn)] px-3 py-2 text-sm font-medium transition-colors ${
-              isActive ? '' : 'text-white/70 hover:bg-white/10 hover:text-white'
-            }`
-          }
-          style={({ isActive }) => (isActive ? { background: 'var(--nav-active-bg)', color: 'var(--nav-active-text)' } : undefined)}
-        >
-          <span>{item.label}</span>
-          {item.to === '/pipeline' && !!newBookingCount && (
-            <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-ink">
-              {newBookingCount}
-            </span>
-          )}
-        </NavLink>
-      ))}
+      {items.map(item)}
     </nav>
   )
 }

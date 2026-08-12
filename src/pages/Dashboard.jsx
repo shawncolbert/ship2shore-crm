@@ -3,11 +3,25 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchDashboardStats, fetchOpenPipelineJobs, fetchClosedJobs, fetchNewLeadsList, fetchJobsByStage,
-  fetchNewCustomerFiles, markAttachmentViewed,
+  fetchNewCustomerFiles, markAttachmentViewed, fetchMyOrg,
 } from '../lib/supabase'
 import { fetchMyExternalCards } from '../lib/externalCards'
+import { isFeatureEnabled } from '../lib/features'
 import DrillDownModal from '../components/DrillDownModal'
 import BookingSidebar from '../components/BookingSidebar'
+
+// Quick-action tiles for the Aurora layout's dashboard grid -- each a big
+// colorful icon badge linking straight to the feature, the way the
+// reference screenshot's dashboard laid out Client CRM / Bookings /
+// Invoices / Gallery Delivery as tiles rather than a plain nav list.
+const QUICK_ACTIONS = [
+  { to: '/contacts', label: 'Contacts', hint: 'Manage leads & clients', icon: '👥', bg: '#3d1150', key: 'contacts' },
+  { to: '/pipeline', label: 'Pipeline', hint: 'Track jobs in progress', icon: '📋', bg: '#6b1e6b', key: 'pipeline' },
+  { to: '/calendar', label: 'Calendar', hint: 'Bookings & availability', icon: '📅', bg: '#8f2d7d', key: 'calendar' },
+  { to: '/payment-settings', label: 'Payments', hint: 'Send & track payment requests', icon: '💳', bg: '#4a1a5c', key: 'payments' },
+  { to: '/documents', label: 'Documents', hint: 'Delivery orders & files', icon: '🗂️', bg: '#5c1e6e', key: 'documents' },
+  { to: '/landing-pages', label: 'Landing Pages', hint: 'Public marketing pages', icon: '🌐', bg: '#7a2470', key: 'landing_pages' },
+]
 
 const money = (n) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -56,6 +70,8 @@ export default function Dashboard() {
     queryKey: ['dashboard'],
     queryFn: fetchDashboardStats,
   })
+  const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
+  const isAurora = org?.theme_preset === 'aurora'
   const { data: newFilesCount } = useQuery({
     queryKey: ['newCustomerFilesCount'],
     queryFn: async () => (await fetchNewCustomerFiles()).length,
@@ -122,6 +138,33 @@ export default function Dashboard() {
             <Stat label="New files from customers" value={newFilesCount ?? '—'} accent={!!newFilesCount}
               hint="Sent via their upload link" onClick={() => openDrillDown('newFiles')} />
           </div>
+
+          {isAurora && (
+            <div className="mt-6">
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Quick actions</h2>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {QUICK_ACTIONS.filter((a) => isFeatureEnabled(org, a.key)).map((a) => (
+                  <button
+                    key={a.to}
+                    type="button"
+                    onClick={() => navigate(a.to)}
+                    className="flex items-center gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-4 text-left shadow-[var(--shadow-card)] transition-transform hover:-translate-y-0.5"
+                  >
+                    <span
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xl"
+                      style={{ background: a.bg }}
+                    >
+                      {a.icon}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-ink">{a.label}</span>
+                      <span className="block truncate text-xs text-muted">{a.hint}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="mt-6 rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]">
             <div className="mb-4 flex items-center justify-between">
