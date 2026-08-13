@@ -13,7 +13,12 @@ const SECTIONS = [
     nav: '/contacts',
     body: `Every customer and lead lives here. Search by name, phone, company, or email. Open a contact
       to see their full history — jobs, files, messages, and notes — all in one place. Add a new one with
-      the "+ New contact" button, and optionally drop a booking straight onto the pipeline at the same time.`,
+      the "+ New contact" button, and optionally drop a booking straight onto the pipeline at the same time.
+      Already have a list? Click "Import" to bring in a CSV export (from Google/Outlook/another CRM — you'll
+      map its columns to name/phone/email/company/notes before anything's saved) or a vCard (.vcf) file
+      (a single contact, or an iPhone "export all contacts" file with everyone in it). Either way, anyone
+      already in your org — matched by phone or email — is skipped automatically, so it's safe to re-import
+      the same file without creating duplicates.`,
   },
   {
     id: 'pipeline',
@@ -84,9 +89,14 @@ const SECTIONS = [
     title: 'Landing Pages & Funnels',
     nav: '/landing-pages',
     body: `Landing Pages are single scrollable pages you build block by block (headline, image, text, a "Book
-      Now" button) for ads or a link in your social bio. Funnels are short multi-step forms — a couple of
-      quick questions before someone becomes a lead on your pipeline. Both are optional; Services and the
-      Business Card are the two things worth setting up first.`,
+      Now" button) for ads or a link in your social bio — pick from ready-made, industry-specific templates
+      (photography, welding, real estate, plumbing, and more) with the copy already written, or start blank.
+      Funnels are short multi-step forms — a couple of quick questions before someone becomes a lead on your
+      pipeline. Both are optional; Services and the Business Card are the two things worth setting up first.
+      Every landing page and funnel also has its own accent color — six options (Classic Amber, Ocean Blue,
+      Crimson, Forest Teal, Aurora, Slate) — picked separately for each one in its own settings/editor, so a
+      photography-themed page and a logistics-themed page you're running at the same time don't have to look
+      alike. This is independent of your dashboard's own look below.`,
   },
   {
     id: 'payments',
@@ -147,6 +157,19 @@ const SECTIONS = [
     body: `A simple content calendar for drafting and scheduling social posts, separate from everything
       customer-facing above.`,
   },
+  {
+    id: 'appearance',
+    title: 'Appearance',
+    nav: '/settings/appearance',
+    body: `Your dashboard doesn't have to look like everyone else's. Pick from seven layouts — Classic Amber
+      (the default), Ocean Blue, Crimson, Forest Teal, Aurora, Slate, and Dispatch Suite — each with its own
+      sidebar treatment, card shape, and accent color, plus a light/dark mode toggle (Dispatch Suite is
+      always dark). Aurora and Dispatch Suite go further and reorganize the sidebar itself into labeled
+      sections, and add a quick-action tile grid to the Dashboard. Whatever you pick applies to everyone
+      signed into your organization — it's one shared setting, not a personal one — and takes effect the
+      moment you hit "Save appearance," no reload needed. This only changes how things look; every feature
+      above works identically no matter which layout is active.`,
+  },
 ]
 
 export default function Help() {
@@ -205,6 +228,13 @@ export default function Help() {
           </li>
           <li className={step}>
             <span className={stepNum}>6</span>
+            <div>
+              <p className="text-sm font-semibold text-ink">Make it look like your business</p>
+              <p className="text-sm text-muted">Go to <a href="/settings/appearance" className="text-accent hover:underline">Appearance</a> and pick one of seven dashboard layouts (plus light/dark mode) — applies for your whole organization, changes any time.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>7</span>
             <div>
               <p className="text-sm font-semibold text-ink">Need a teammate added, or something changed?</p>
               <p className="text-sm text-muted">Adding additional users to your account isn't self-serve yet — reach out and we'll get them set up.</p>
