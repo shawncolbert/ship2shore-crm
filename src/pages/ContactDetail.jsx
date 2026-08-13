@@ -511,6 +511,15 @@ function ContactDetails({ contact }) {
           ? <a className="text-accent hover:underline" href={`tel:${contact.phone}`}>{contact.phone}</a> : null} />
         <Row label="Email" value={contact.email
           ? <a className="text-accent hover:underline" href={mailtoUrl(contact)}>{contact.email}</a> : null} />
+        {contact.custom_fields?.title && <Row label="Title" value={contact.custom_fields.title} />}
+        {contact.custom_fields?.address && <Row label="Address" value={contact.custom_fields.address} />}
+        {contact.custom_fields?.website && (
+          <Row label="Website" value={
+            <a className="text-accent hover:underline" href={/^https?:\/\//i.test(contact.custom_fields.website) ? contact.custom_fields.website : `https://${contact.custom_fields.website}`} target="_blank" rel="noreferrer">
+              {contact.custom_fields.website}
+            </a>
+          } />
+        )}
         <Row label="Source" value={contact.source} />
       </dl>
       {contact.tags?.length > 0 && (

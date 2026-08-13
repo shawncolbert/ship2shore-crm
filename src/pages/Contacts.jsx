@@ -5,11 +5,13 @@ import { fetchContacts } from '../lib/supabase'
 import SegmentFilter from '../components/SegmentFilter'
 import Badge from '../components/Badge'
 import NewContactModal from '../components/NewContactModal'
+import BusinessCardScanner from '../components/BusinessCardScanner'
 
 export default function Contacts() {
   const [segment, setSegment] = useState(null)
   const [search, setSearch] = useState('')
   const [showNew, setShowNew] = useState(false)
+  const [showScanner, setShowScanner] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['contacts', segment, search],
@@ -32,6 +34,12 @@ export default function Contacts() {
           >
             Import
           </Link>
+          <button
+            onClick={() => setShowScanner(true)}
+            className="rounded-md border border-line bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-canvas"
+          >
+            📇 Scan card
+          </button>
           <button
             onClick={() => setShowNew(true)}
             className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-accent-600"
@@ -92,6 +100,7 @@ export default function Contacts() {
       </div>
 
       <NewContactModal open={showNew} onClose={() => setShowNew(false)} />
+      <BusinessCardScanner open={showScanner} onClose={() => setShowScanner(false)} />
     </div>
   )
 }

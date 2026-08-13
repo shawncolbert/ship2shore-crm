@@ -122,7 +122,7 @@ export function paymentPayUrl(method) {
 
 // vCard 3.0 text/plain -- fields are folded/escaped per spec (commas,
 // semicolons, and newlines inside a value must be backslash-escaped).
-function vEsc(s) {
+export function vEsc(s) {
   return String(s ?? '').replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n')
 }
 

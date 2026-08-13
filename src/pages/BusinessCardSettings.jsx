@@ -7,6 +7,7 @@ import {
 } from '../lib/businessCard'
 import { fetchMyOrgId } from '../lib/supabase'
 import BusinessCardView from '../components/businessCard/BusinessCardView'
+import BusinessCardScanner from '../components/BusinessCardScanner'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)] space-y-3'
 const btnAccent = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
@@ -25,6 +26,7 @@ export default function BusinessCardSettings() {
   const { data: orgId } = useQuery({ queryKey: ['myOrgId'], queryFn: fetchMyOrgId })
   const [selectedId, setSelectedId] = useState(null)
   const [creating, setCreating] = useState(false)
+  const [scannerOpen, setScannerOpen] = useState(false)
 
   useEffect(() => {
     if (cards?.length && !cards.some((c) => c.id === selectedId)) setSelectedId(cards[0].id)
@@ -63,10 +65,17 @@ export default function BusinessCardSettings() {
             One shareable card per driver — no code needed. Shares, downloads, and QR scans are counted per card below.
           </p>
         </div>
-        <button onClick={handleCreate} disabled={creating} className={btnAccent}>
-          {creating ? 'Creating…' : '+ New driver card'}
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button onClick={() => setScannerOpen(true)} className={btn}>
+            📇 Scan Business Card
+          </button>
+          <button onClick={handleCreate} disabled={creating} className={btnAccent}>
+            {creating ? 'Creating…' : '+ New driver card'}
+          </button>
+        </div>
       </header>
+
+      <BusinessCardScanner open={scannerOpen} onClose={() => setScannerOpen(false)} />
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((c) => (
