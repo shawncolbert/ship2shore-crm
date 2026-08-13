@@ -60,7 +60,7 @@ export default function Appearance() {
       <header className="mb-6">
         <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Appearance</h1>
         <p className="max-w-lg text-sm text-muted">
-          Pick a look for your dashboard — light or dark, and one of six layouts, each with its own sidebar
+          Pick a look for your dashboard — light or dark, and one of seven layouts, each with its own sidebar
           treatment, card shape, and accent color. Same functionality either way; this changes the CRM for
           everyone in your organization.
         </p>
@@ -71,19 +71,23 @@ export default function Appearance() {
       <div className="space-y-5">
         <div className={card}>
           <h2 className={h2}>Mode</h2>
-          <div className="flex gap-2">
-            {THEME_MODES.map((m) => (
-              <button
-                key={m.key}
-                onClick={() => { setMode(m.key); setSaved(false) }}
-                className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
-                  mode === m.key ? 'border-accent bg-accent/10 text-ink' : 'border-line bg-canvas text-muted hover:text-ink'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
+          {preset === 'dispatch_suite' ? (
+            <p className="text-sm text-muted">Dispatch Suite is always dark — this doesn't apply while it's selected.</p>
+          ) : (
+            <div className="flex gap-2">
+              {THEME_MODES.map((m) => (
+                <button
+                  key={m.key}
+                  onClick={() => { setMode(m.key); setSaved(false) }}
+                  className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                    mode === m.key ? 'border-accent bg-accent/10 text-ink' : 'border-line bg-canvas text-muted hover:text-ink'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className={card}>

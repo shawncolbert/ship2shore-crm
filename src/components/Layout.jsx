@@ -31,8 +31,21 @@ const nav = [
   { to: '/social-posts', label: 'Social Posts', key: 'social_posts', group: 'Marketing' },
 ]
 
-// Group display order for the Aurora layout's sectioned sidebar.
+// Group display order for the sectioned-sidebar layouts (Aurora, Dispatch Suite).
 const GROUP_ORDER = ['Overview', 'Clients & Bookings', 'Money', 'Production', 'Marketing', 'Settings']
+
+// Layouts whose sidebar groups nav under labeled sections instead of one
+// flat list -- every other layout renders `nav` flat, unchanged.
+const GROUPED_LAYOUTS = ['aurora', 'dispatch_suite']
+
+// Dispatch Suite's reference demo used its own group names for the ones
+// that map onto real Ship2Shore features (its "Rates & Services"/"Escort
+// Calendar" etc. don't exist as separate nav items here, so only the
+// section labels carry over, not fictional pages). Marketing has no
+// equivalent group in the demo -- kept under its existing label.
+const GROUP_LABELS = {
+  dispatch_suite: { 'Clients & Bookings': 'Dispatch & Clients', Settings: 'System' },
+}
 
 // Falls back to the Ship2Shore identity while the org loads or if branding
 // isn't set — white-label orgs override this via their organizations row
@@ -99,18 +112,19 @@ function NavItems({ onNavigate }) {
     </NavLink>
   )
 
-  // Aurora is the one layout modeled directly on a reference dashboard whose
-  // sidebar groups nav under labeled sections -- every other layout keeps
-  // the flat list exactly as it always rendered.
-  if (org?.theme_preset === 'aurora') {
+  // Aurora and Dispatch Suite are the layouts modeled directly on reference
+  // dashboards whose sidebar groups nav under labeled sections -- every
+  // other layout keeps the flat list exactly as it always rendered.
+  if (GROUPED_LAYOUTS.includes(org?.theme_preset)) {
+    const labels = GROUP_LABELS[org.theme_preset] || {}
     const byGroup = GROUP_ORDER.map((g) => ({ group: g, items: items.filter((it) => (it.group || 'Overview') === g) }))
       .filter((g) => g.items.length)
     return (
       <nav className="flex-1 space-y-4 overflow-y-auto px-3 pb-2">
         {byGroup.map(({ group, items: groupItems }) => (
           <div key={group}>
-            <div className="mb-1 px-3 text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--color-accent)' }}>
-              {group}
+            <div className="mb-1 px-3 text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--color-brass)' }}>
+              {labels[group] || group}
             </div>
             <div className="space-y-0.5">{groupItems.map(item)}</div>
           </div>

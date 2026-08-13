@@ -10,17 +10,19 @@ import { isFeatureEnabled } from '../lib/features'
 import DrillDownModal from '../components/DrillDownModal'
 import BookingSidebar from '../components/BookingSidebar'
 
-// Quick-action tiles for the Aurora layout's dashboard grid -- each a big
-// colorful icon badge linking straight to the feature, the way the
-// reference screenshot's dashboard laid out Client CRM / Bookings /
-// Invoices / Gallery Delivery as tiles rather than a plain nav list.
+// Quick-action tiles for the grouped-sidebar layouts' dashboard grid --
+// each a big icon badge linking straight to the feature, the way both
+// reference screenshots laid these out as tiles rather than a plain nav
+// list. `auroraBg` is Aurora's solid per-tile color; Dispatch Suite instead
+// uses one uniform translucent brass badge for every tile, matching its
+// demo's `.quick .ic` treatment -- so it doesn't need a per-tile color.
 const QUICK_ACTIONS = [
-  { to: '/contacts', label: 'Contacts', hint: 'Manage leads & clients', icon: '👥', bg: '#3d1150', key: 'contacts' },
-  { to: '/pipeline', label: 'Pipeline', hint: 'Track jobs in progress', icon: '📋', bg: '#6b1e6b', key: 'pipeline' },
-  { to: '/calendar', label: 'Calendar', hint: 'Bookings & availability', icon: '📅', bg: '#8f2d7d', key: 'calendar' },
-  { to: '/payment-settings', label: 'Payments', hint: 'Send & track payment requests', icon: '💳', bg: '#4a1a5c', key: 'payments' },
-  { to: '/documents', label: 'Documents', hint: 'Delivery orders & files', icon: '🗂️', bg: '#5c1e6e', key: 'documents' },
-  { to: '/landing-pages', label: 'Landing Pages', hint: 'Public marketing pages', icon: '🌐', bg: '#7a2470', key: 'landing_pages' },
+  { to: '/contacts', label: 'Contacts', hint: 'Manage leads & clients', icon: '👥', auroraBg: '#3d1150', key: 'contacts' },
+  { to: '/pipeline', label: 'Pipeline', hint: 'Track jobs in progress', icon: '📋', auroraBg: '#6b1e6b', key: 'pipeline' },
+  { to: '/calendar', label: 'Calendar', hint: 'Bookings & availability', icon: '📅', auroraBg: '#8f2d7d', key: 'calendar' },
+  { to: '/payment-settings', label: 'Payments', hint: 'Send & track payment requests', icon: '💳', auroraBg: '#4a1a5c', key: 'payments' },
+  { to: '/documents', label: 'Documents', hint: 'Delivery orders & files', icon: '🗂️', auroraBg: '#5c1e6e', key: 'documents' },
+  { to: '/landing-pages', label: 'Landing Pages', hint: 'Public marketing pages', icon: '🌐', auroraBg: '#7a2470', key: 'landing_pages' },
 ]
 
 const money = (n) =>
@@ -72,6 +74,8 @@ export default function Dashboard() {
   })
   const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
   const isAurora = org?.theme_preset === 'aurora'
+  const isDispatchSuite = org?.theme_preset === 'dispatch_suite'
+  const showQuickActions = isAurora || isDispatchSuite
   const { data: newFilesCount } = useQuery({
     queryKey: ['newCustomerFilesCount'],
     queryFn: async () => (await fetchNewCustomerFiles()).length,
@@ -139,7 +143,7 @@ export default function Dashboard() {
               hint="Sent via their upload link" onClick={() => openDrillDown('newFiles')} />
           </div>
 
-          {isAurora && (
+          {showQuickActions && (
             <div className="mt-6">
               <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Quick actions</h2>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -152,7 +156,7 @@ export default function Dashboard() {
                   >
                     <span
                       className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xl"
-                      style={{ background: a.bg }}
+                      style={isDispatchSuite ? { background: 'rgba(212,175,106,0.14)', color: 'var(--color-brass)' } : { background: a.auroraBg }}
                     >
                       {a.icon}
                     </span>

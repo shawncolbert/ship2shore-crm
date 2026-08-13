@@ -70,6 +70,10 @@ body {
   --radius-card: 0.75rem;   /* rounded-xl */
   --radius-btn: 0.5rem;     /* rounded-lg */
   --shadow-card: none;
+  /* Secondary accent for sidebar group labels etc. -- equals the main
+     accent by default (every preset except dispatch_suite has only one
+     accent color), overridden where a theme has a genuine second color. */
+  --color-brass: var(--color-accent);
 }
 
 :root[data-preset="ocean"] {
@@ -125,4 +129,36 @@ body {
   --radius-card: 0.375rem;  /* rounded-md -- flat, minimal */
   --radius-btn: 0.375rem;
   --shadow-card: none;
+}
+
+/* Dispatch Suite -- unlike the other 6 presets (which only swap accent/
+   radius/shadow/sidebar and defer canvas/ink/surface to the separate
+   light/dark mode toggle), this one is unconditionally dark, matching a
+   fixed approved reference. It overrides the mode-toggle's tokens outright
+   -- placed after :root[data-mode="dark"] in source order so it always
+   wins regardless of which mode the org has picked. */
+:root[data-preset="dispatch_suite"] {
+  --color-ink: #f1eefb;
+  --color-canvas: #0c0a18;
+  --color-surface: #141026;
+  --color-line: rgba(212, 175, 106, 0.14);
+  --color-muted: #a79fc9;
+  --color-accent: #8b6fff;
+  --color-accent-600: #6f56d6;
+  --color-brass: #d4af6a;
+  --color-starboard: #3fd48c;
+  --color-port: #f4685f;
+  --sidebar-bg: linear-gradient(180deg, #141026 0%, #100c20 100%);
+  --nav-active-bg: linear-gradient(90deg, rgba(139, 111, 255, 0.24), rgba(139, 111, 255, 0.06));
+  --nav-active-text: #ffffff;
+  --radius-card: 0.75rem;   /* 12px, matches the reference demo */
+  --radius-btn: 0.5625rem;  /* 9px */
+  --shadow-card: 0 4px 16px rgba(139, 111, 255, 0.10);
+}
+
+:root[data-preset="dispatch_suite"] body {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(139, 111, 255, 0.10), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(212, 175, 106, 0.07), transparent 60%),
+    var(--color-canvas);
 }

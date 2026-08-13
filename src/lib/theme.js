@@ -21,6 +21,7 @@ export const THEME_PRESETS = [
   { key: 'forest', label: 'Forest Teal', swatch: '#0f8b8d', sidebar: 'linear-gradient(180deg, #06211f 0%, #0f3d3a 100%)', description: 'Calm, grounded -- marine, environmental.' },
   { key: 'aurora', label: 'Aurora', swatch: '#b23a9e', sidebar: 'linear-gradient(160deg, #1a0b2e 0%, #3d1150 45%, #6b1e6b 100%)', description: 'Bold, glossy, modern -- photography, events, creative studios.' },
   { key: 'slate', label: 'Slate', swatch: '#4b5b66', sidebar: '#2a3138', description: 'Minimal, flat, neutral -- consulting, admin.' },
+  { key: 'dispatch_suite', label: 'Dispatch Suite', swatch: '#8b6fff', sidebar: 'linear-gradient(180deg, #141026 0%, #100c20 100%)', description: 'Dark navy, violet & brass -- maritime dispatch, escort services.' },
 ]
 
 const CACHE_KEY = 's2s_theme'
