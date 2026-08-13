@@ -16,9 +16,19 @@ const SECTIONS = [
       the "+ New contact" button, and optionally drop a booking straight onto the pipeline at the same time.
       Already have a list? Click "Import" to bring in a CSV export (from Google/Outlook/another CRM — you'll
       map its columns to name/phone/email/company/notes before anything's saved) or a vCard (.vcf) file
-      (a single contact, or an iPhone "export all contacts" file with everyone in it). Either way, anyone
-      already in your org — matched by phone or email — is skipped automatically, so it's safe to re-import
-      the same file without creating duplicates.`,
+      (a single contact, or an iPhone "export all contacts" file with everyone in it — see below for exactly
+      how to export one from your phone). Either way, anyone already in your org — matched by phone or email
+      — is skipped automatically, so it's safe to re-import the same file without creating duplicates. Got a
+      physical business card instead of a phone full of contacts? Click "Scan card": take a photo (or upload
+      one), and AI reads off the name, company, title, phone, email, address, and website for you. You review
+      and correct anything before it saves — nothing goes in automatically — and if that person's already in
+      your contacts it'll ask whether to update their existing record instead of creating a second one. Once
+      saved, "Save to Phone Contacts" hands it straight to your phone's own Add Contact screen.
+
+      To bring your whole phone contact list in at once instead of one at a time: on an iPhone, open
+      Contacts → Lists → All Contacts → Select → Select All → Share → Save to Files (this makes one .vcf file
+      with everyone in it); on Android/Google, go to contacts.google.com on a computer, select the contacts
+      you want, and Export → vCard format. Either file uploads straight into the vCard import above.`,
   },
   {
     id: 'pipeline',
@@ -124,8 +134,12 @@ const SECTIONS = [
     id: 'inbox',
     title: 'Inbox',
     nav: '/inbox',
-    body: `Every email conversation with a contact, threaded like a messaging app. Replies you send here go
-      out for real and log themselves back onto that contact's timeline.`,
+    body: `Every email conversation with a contact, threaded like a messaging app. This needs your own Gmail
+      account connected before anything shows up — click "Connect Gmail" at the top of this page and sign in
+      with Google once. After that, mail to and from your contacts starts syncing in on its own (checked every
+      10-15 minutes), and every reply you send from here — plus every automated payment/document-request
+      email the system sends on your behalf — goes out from your own connected address, not a shared one.
+      Nothing in this app can send email on your behalf until this is connected.`,
   },
   {
     id: 'calendar',
@@ -154,8 +168,12 @@ const SECTIONS = [
     id: 'social',
     title: 'Social Posts',
     nav: '/social-posts',
-    body: `A simple content calendar for drafting and scheduling social posts, separate from everything
-      customer-facing above.`,
+    body: `A content calendar for drafting and scheduling social posts, separate from everything customer-
+      facing above. Drafting and scheduling work with no setup. To have a post actually go out on its own at
+      the scheduled time instead of just sitting there as a draft, click "Connect TikTok" at the top of the
+      page and authorize your TikTok account once — after that, checking "Auto-publish to TikTok" on a post
+      (with an image and a privacy level chosen) really does publish it at the scheduled time, no manual
+      posting needed.`,
   },
   {
     id: 'appearance',
@@ -215,26 +233,47 @@ export default function Help() {
           <li className={step}>
             <span className={stepNum}>4</span>
             <div>
+              <p className="text-sm font-semibold text-ink">Connect Gmail</p>
+              <p className="text-sm text-muted">Go to <a href="/inbox" className="text-accent hover:underline">Inbox</a> and click "Connect Gmail," then sign in with Google. This is required — automated payment/document-request emails, replies, and mail sync all use your own connected account, not a shared one, and won't work at all until this is done.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>5</span>
+            <div>
               <p className="text-sm font-semibold text-ink">Set up your (or your drivers') digital business cards</p>
               <p className="text-sm text-muted">Go to <a href="/settings/card-links" className="text-accent hover:underline">Digital Business Cards</a>, click "+ Add a card" → "Set up a new card here," fill in one form, and copy the link it gives you at the end.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>5</span>
+            <span className={stepNum}>6</span>
+            <div>
+              <p className="text-sm font-semibold text-ink">Bring in your existing contacts</p>
+              <p className="text-sm text-muted">Go to <a href="/contacts" className="text-accent hover:underline">Contacts</a> → "Import" to bring in your whole phone/CRM contact list at once (CSV or vCard), or use "Scan card" any time to add someone one photographed business card at a time.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>7</span>
             <div>
               <p className="text-sm font-semibold text-ink">Create a test booking</p>
               <p className="text-sm text-muted">From the <a href="/" className="text-accent hover:underline">Dashboard</a>, click "+ New Booking" and walk through it once so you know what a customer's job looks like on your pipeline.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>6</span>
+            <span className={stepNum}>8</span>
             <div>
               <p className="text-sm font-semibold text-ink">Make it look like your business</p>
               <p className="text-sm text-muted">Go to <a href="/settings/appearance" className="text-accent hover:underline">Appearance</a> and pick one of seven dashboard layouts (plus light/dark mode) — applies for your whole organization, changes any time.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>7</span>
+            <span className={stepNum}>9</span>
+            <div>
+              <p className="text-sm font-semibold text-ink">Connect TikTok (optional)</p>
+              <p className="text-sm text-muted">Only needed if you want to auto-publish social posts. Go to <a href="/social-posts" className="text-accent hover:underline">Social Posts</a> and click "Connect TikTok." Skip this if you'll only ever draft posts and post them yourself.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>10</span>
             <div>
               <p className="text-sm font-semibold text-ink">Need a teammate added, or something changed?</p>
               <p className="text-sm text-muted">Adding additional users to your account isn't self-serve yet — reach out and we'll get them set up.</p>
