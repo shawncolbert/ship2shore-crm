@@ -1,9 +1,10 @@
 import { admin } from './_shared/supabaseAdmin.js'
 import { tiktokConfigured, tiktokAccessToken, tiktokPublishPhoto, tiktokPublishStatus } from './_shared/tiktok.js'
 
-const ORG_ID = process.env.ORG_ID || '11111111-1111-1111-1111-111111111111'
-
-// Scheduled: publish any social_posts row whose scheduled time has arrived.
+// Scheduled: publish any social_posts row whose scheduled time has arrived,
+// across every org -- not just Ship2Shore. Each post already carries its own
+// org_id, so publishing just needs to key off that per-row instead of a
+// single hardcoded org.
 // Privacy level and AI-disclosure were chosen by a human at schedule time
 // (see social-posts-create.js) and are only replayed here, never decided by
 // this job -- TikTok's Direct Post API ties those flags to real user consent.
@@ -11,7 +12,6 @@ export const handler = async () => {
   const { data: due, error: dueErr } = await admin
     .from('social_posts')
     .select('*')
-    .eq('org_id', ORG_ID)
     .eq('platform', 'tiktok')
     .eq('status', 'scheduled')
     .lte('scheduled_date', new Date().toISOString())
@@ -22,7 +22,7 @@ export const handler = async () => {
   let failed = 0
 
   for (const post of due || []) {
-    if (!(await tiktokConfigured(ORG_ID))) {
+    if (!(await tiktokConfigured(post.org_id))) {
       await admin.from('social_posts').update({
         status: 'failed',
         publish_error: 'No TikTok account is connected yet. Go to Social Posts and click "Connect TikTok" before scheduled posts can auto-publish.',
@@ -39,7 +39,7 @@ export const handler = async () => {
     }
 
     try {
-      const token = await tiktokAccessToken(ORG_ID)
+      const token = await tiktokAccessToken(post.org_id)
       const { publish_id: publishId } = await tiktokPublishPhoto(token, {
         imageUrl: post.image_url,
         caption: post.text,

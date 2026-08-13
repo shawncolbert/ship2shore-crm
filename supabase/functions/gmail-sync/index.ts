@@ -5,8 +5,11 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
-const ORG_ID = "11111111-1111-1111-1111-111111111111";
 const DOCS_BUCKET = "delivery-orders";
+// Every org with a row in gmail_oauth_tokens gets synced, not just
+// Ship2Shore -- each org's own connected Gmail account, scoped to that
+// org's own contacts/opportunities/attachments. Populated by a real human
+// clicking "Connect Gmail" (gmail-oauth-start/callback).
 
 async function refreshAccessToken(refresh_token: string) {
   const res = await fetch("https://oauth2.googleapis.com/token", {
@@ -165,6 +168,7 @@ async function processAttachments(
   payload: any,
   contactId: string | undefined,
   opps: any[],
+  orgId: string,
 ) {
   const stats = { stored: 0, matched: 0, review: 0, irrelevant: 0, errors: [] as any[] };
   const parts = collectDocParts(payload);
@@ -205,7 +209,7 @@ async function processAttachments(
 
       const bl = firstBl(docText);
       const linkContactId = match?.contact_id || contactId || null;
-      const path = `${ORG_ID}/${linkContactId || "unmatched"}/${msgId}_${safeName(filename)}`;
+      const path = `${orgId}/${linkContactId || "unmatched"}/${msgId}_${safeName(filename)}`;
 
       const { error: upErr } = await supabase.storage
         .from(DOCS_BUCKET)
@@ -213,7 +217,7 @@ async function processAttachments(
       if (upErr) { stats.errors.push({ file: filename, detail: upErr.message || upErr }); continue; }
 
       const { error: insErr } = await supabase.from("attachments").insert({
-        org_id: ORG_ID,
+        org_id: orgId,
         contact_id: linkContactId,
         opportunity_id: match?.id || null,
         file_name: filename,
@@ -248,6 +252,7 @@ async function processAttachments(
 }
 
 async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<string, string>, opps: any[]) {
+  const orgId = tokenRow.org_id;
   let accessToken = tokenRow.access_token;
   const expired = !tokenRow.token_expiry || new Date(tokenRow.token_expiry) <= new Date();
   if (expired) {
@@ -306,7 +311,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
     // Scan attachments regardless of whether the sender is a known contact —
     // Delivery Orders and gate passes often come from shipping lines/terminals.
     const aStats = await processAttachments(
-      supabase, accessToken, msg.id, msgData.payload, contactId, opps,
+      supabase, accessToken, msg.id, msgData.payload, contactId, opps, orgId,
     );
     docs.stored += aStats.stored;
     docs.matched += aStats.matched;
@@ -319,7 +324,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
     const { data: existingConvo } = await supabase
       .from("conversations")
       .select("id")
-      .eq("org_id", ORG_ID)
+      .eq("org_id", orgId)
       .eq("contact_id", contactId)
       .eq("channel", "email")
       .maybeSingle();
@@ -330,7 +335,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
     if (!conversationId) {
       const { data: newConvo } = await supabase
         .from("conversations")
-        .insert({ org_id: ORG_ID, contact_id: contactId, channel: "email", last_message_at: sentAt, unread: direction === "inbound" })
+        .insert({ org_id: orgId, contact_id: contactId, channel: "email", last_message_at: sentAt, unread: direction === "inbound" })
         .select("id")
         .single();
       conversationId = newConvo?.id;
@@ -341,7 +346,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
     if (!conversationId) { skipped++; continue; }
 
     const { error: rpcError } = await supabase.rpc("insert_gmail_message", {
-      p_org_id: ORG_ID,
+      p_org_id: orgId,
       p_conversation_id: conversationId,
       p_direction: direction,
       p_body: body,
@@ -361,38 +366,40 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
 Deno.serve(async (_req: Request) => {
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
+  // Every org that has connected Gmail gets synced, not just Ship2Shore.
   const { data: tokenRows, error: tokenErr } = await supabase
     .from("gmail_oauth_tokens")
-    .select("*")
-    .eq("org_id", ORG_ID);
+    .select("*");
 
   if (tokenErr || !tokenRows || tokenRows.length === 0) {
-    return new Response(JSON.stringify({ error: "No Gmail account connected yet." }), {
+    return new Response(JSON.stringify({ error: "No org has connected a Gmail account yet." }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  const { data: contacts } = await supabase
-    .from("contacts")
-    .select("id, email")
-    .eq("org_id", ORG_ID)
-    .not("email", "is", null);
-
-  const emailToContact = new Map<string, string>();
-  for (const c of contacts || []) {
-    if (c.email) emailToContact.set(c.email.toLowerCase(), c.id);
-  }
-
-  // Jobs we can match documents against (billing_number / bl_number).
-  const { data: opps } = await supabase
-    .from("opportunities")
-    .select("id, contact_id, billing_number, bl_number")
-    .eq("org_id", ORG_ID)
-    .order("created_at", { ascending: false });
-
   const results = [];
   for (const tokenRow of tokenRows) {
+    const orgId = tokenRow.org_id;
+
+    const { data: contacts } = await supabase
+      .from("contacts")
+      .select("id, email")
+      .eq("org_id", orgId)
+      .not("email", "is", null);
+
+    const emailToContact = new Map<string, string>();
+    for (const c of contacts || []) {
+      if (c.email) emailToContact.set(c.email.toLowerCase(), c.id);
+    }
+
+    // Jobs we can match documents against (billing_number / bl_number).
+    const { data: opps } = await supabase
+      .from("opportunities")
+      .select("id, contact_id, billing_number, bl_number")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false });
+
     results.push(await syncAccount(supabase, tokenRow, emailToContact, opps || []));
   }
 

@@ -6,9 +6,9 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Poll Gmail every 10 minutes for new mail to/from known contacts
-[functions."gmail-sync"]
-  schedule = "*/10 * * * *"
+# Gmail sync/enrichment now run as Supabase Edge Functions (pg_cron), scoped
+# per-org to every connected gmail_oauth_tokens row -- not just Ship2Shore's.
+# See supabase/functions/gmail-sync and supabase/functions/gmail-enrichment.
 
 # Draft (never send) a suggested reply for any conversation awaiting one
 [functions."ai-draft-reply"]

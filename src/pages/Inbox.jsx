@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchConversations, fetchMessages, subscribeMessages, sendEmail, deleteConversation,
+  fetchConversations, fetchMessages, subscribeMessages, sendEmail, deleteConversation, supabase,
 } from '../lib/supabase'
 
 const fmtTime = (d) =>
@@ -15,6 +15,48 @@ export default function Inbox() {
     queryKey: ['conversations'],
     queryFn: fetchConversations,
   })
+
+  const { data: gmailStatus } = useQuery({
+    queryKey: ['gmailStatus'],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/.netlify/functions/gmail-status', {
+        headers: { Authorization: `Bearer ${session?.access_token || ''}` },
+      })
+      if (!res.ok) return { connected: false }
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+  })
+
+  const [connectNotice, setConnectNotice] = useState(null)
+
+  // Landed back here after Google's own consent screen (see gmail-oauth-callback).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const result = params.get('gmail')
+    if (!result) return
+    if (result === 'connected') setConnectNotice({ type: 'success', text: 'Gmail account connected.' })
+    else setConnectNotice({ type: 'error', text: params.get('msg') || 'Could not connect Gmail.' })
+    qc.invalidateQueries({ queryKey: ['gmailStatus'] })
+    window.history.replaceState({}, '', window.location.pathname)
+  }, [qc])
+
+  const [connecting, setConnecting] = useState(false)
+  const handleConnectGmail = async () => {
+    setConnecting(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/.netlify/functions/gmail-oauth-start', {
+        headers: { Authorization: `Bearer ${session?.access_token || ''}` },
+      })
+      const data = await res.json()
+      if (!res.ok) { setConnectNotice({ type: 'error', text: data.error || 'Could not start Gmail connection' }); return }
+      window.location.href = data.authorize_url
+    } finally {
+      setConnecting(false)
+    }
+  }
 
   // Live refresh on any new message
   useEffect(() => {
@@ -43,6 +85,39 @@ export default function Inbox() {
           <h1 className="font-[family-name:var(--font-display)] text-lg font-bold text-ink">Inbox</h1>
           <p className="text-xs text-muted">Email conversations. SMS lane is dormant until a compliant Ship2Shore number is set up.</p>
         </div>
+
+        {connectNotice && (
+          <div className={`mx-4 mt-3 rounded-lg border px-3 py-2 text-xs ${connectNotice.type === 'success' ? 'border-accent/40 bg-accent/10 text-ink' : 'border-red-300 bg-red-50 text-red-700'}`}>
+            {connectNotice.type === 'success' ? '✅ ' : '⚠️ '}{connectNotice.text}
+          </div>
+        )}
+
+        {gmailStatus && !gmailStatus.connected && gmailStatus.appConfigured && (
+          <div className="mx-4 mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <p className="mb-2">⚠️ No Gmail account connected. Connect one so emails sync in and replies send from your own address.</p>
+            <button
+              onClick={handleConnectGmail}
+              disabled={connecting}
+              className="w-full rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {connecting ? 'Redirecting…' : 'Connect Gmail'}
+            </button>
+          </div>
+        )}
+
+        {gmailStatus && !gmailStatus.connected && !gmailStatus.appConfigured && (
+          <div className="mx-4 mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            ⚠️ Gmail isn't set up on this site yet — an admin needs to create a Google Cloud OAuth app and set
+            GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET before a "Connect Gmail" button can appear here.
+          </div>
+        )}
+
+        {gmailStatus?.connected && (
+          <div className="mx-4 mt-3 rounded-lg border border-line bg-canvas px-3 py-2 text-xs text-muted">
+            ✅ Gmail connected{gmailStatus.email ? ` as ${gmailStatus.email}` : ''}.
+          </div>
+        )}
+
         <div className="flex-1 overflow-auto">
           {isLoading && <p className="p-4 text-sm text-muted">Loading…</p>}
           {error && <p className="p-4 text-sm text-port">Couldn’t load conversations.</p>}

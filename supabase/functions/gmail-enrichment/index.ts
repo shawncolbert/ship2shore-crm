@@ -5,7 +5,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
-const ORG_ID = "11111111-1111-1111-1111-111111111111";
+// Every org with a connected Gmail account gets enrichment, not just
+// Ship2Shore -- see the loop in Deno.serve below.
 
 async function refreshAccessToken(refresh_token: string) {
   const res = await fetch("https://oauth2.googleapis.com/token", {
@@ -43,23 +44,8 @@ function guessCompany(email: string) {
   return base ? base.charAt(0).toUpperCase() + base.slice(1) : null;
 }
 
-Deno.serve(async (_req: Request) => {
-  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-
-  const { data: tokenRows, error: tokenErr } = await supabase
-    .from("gmail_oauth_tokens")
-    .select("*")
-    .eq("org_id", ORG_ID)
-    .limit(1);
-
-  if (tokenErr || !tokenRows || tokenRows.length === 0) {
-    return new Response(
-      JSON.stringify({ error: "No Gmail account connected yet." }),
-      { status: 400, headers: { "Content-Type": "application/json" } },
-    );
-  }
-
-  const tokenRow = tokenRows[0];
+async function enrichAccount(supabase: any, tokenRow: any) {
+  const orgId = tokenRow.org_id;
   let accessToken = tokenRow.access_token;
 
   const expired = !tokenRow.token_expiry || new Date(tokenRow.token_expiry) <= new Date();
@@ -82,10 +68,7 @@ Deno.serve(async (_req: Request) => {
   const listData = await listRes.json();
 
   if (!listRes.ok) {
-    return new Response(JSON.stringify({ error: "Gmail list failed", detail: listData }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return { account: tokenRow.email, error: listData };
   }
 
   const messages = listData.messages || [];
@@ -115,7 +98,7 @@ Deno.serve(async (_req: Request) => {
     const { data: existingRows } = await supabase
       .from("contacts")
       .select("id, full_name, company")
-      .eq("org_id", ORG_ID)
+      .eq("org_id", orgId)
       .eq("email", email)
       .order("created_at", { ascending: true })
       .limit(1);
@@ -139,7 +122,7 @@ Deno.serve(async (_req: Request) => {
       // doesn't include a value for this source, so it lands in "other" —
       // "source" is unconstrained and still records where the contact came from.
       await supabase.from("contacts").insert({
-        org_id: ORG_ID,
+        org_id: orgId,
         full_name: name || email,
         company,
         email,
@@ -150,8 +133,31 @@ Deno.serve(async (_req: Request) => {
     }
   }
 
+  return { account: tokenRow.email, scanned: messages.length, created, updated, skipped };
+}
+
+Deno.serve(async (_req: Request) => {
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+  // Every org with a connected Gmail account gets enrichment, not just Ship2Shore.
+  const { data: tokenRows, error: tokenErr } = await supabase
+    .from("gmail_oauth_tokens")
+    .select("*");
+
+  if (tokenErr || !tokenRows || tokenRows.length === 0) {
+    return new Response(
+      JSON.stringify({ error: "No org has connected a Gmail account yet." }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  const results = [];
+  for (const tokenRow of tokenRows) {
+    results.push(await enrichAccount(supabase, tokenRow));
+  }
+
   return new Response(
-    JSON.stringify({ scanned: messages.length, created, updated, skipped }),
+    JSON.stringify({ accounts: results }),
     { headers: { "Content-Type": "application/json" } },
   );
 });

@@ -17,6 +17,43 @@ export async function googleAccessToken() {
   return (await r.json()).access_token
 }
 
+// Per-org version of googleAccessToken() -- uses that org's own connected
+// Gmail account (gmail_oauth_tokens, populated by gmail-oauth-start/callback
+// when someone clicks "Connect Gmail") instead of the single global account.
+// Same refresh-and-cache shape as tiktokAccessToken() in _shared/tiktok.js.
+// Returns both the token and the connected email, since callers need the
+// email as the outbound "From" address -- sending as GMAIL_ADDRESS for
+// every org would be a cross-tenant identity leak.
+export async function orgGoogleAccessToken(orgId, admin) {
+  const { data: row, error } = await admin.from('gmail_oauth_tokens').select('*').eq('org_id', orgId).maybeSingle()
+  if (error || !row) throw new Error('No Gmail account connected for this org -- go to Inbox and click "Connect Gmail".')
+
+  const expired = !row.token_expiry || new Date(row.token_expiry) <= new Date()
+  if (!expired) return { accessToken: row.access_token, email: row.email }
+
+  const body = new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    client_secret: process.env.GOOGLE_CLIENT_SECRET,
+    refresh_token: row.refresh_token,
+    grant_type: 'refresh_token',
+  })
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  })
+  const data = await r.json()
+  if (!r.ok || !data.access_token) throw new Error('gmail token refresh: ' + JSON.stringify(data))
+
+  await admin.from('gmail_oauth_tokens').update({
+    access_token: data.access_token,
+    token_expiry: new Date(Date.now() + data.expires_in * 1000).toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq('id', row.id)
+
+  return { accessToken: data.access_token, email: row.email }
+}
+
 // Email headers must be 7-bit ASCII. Any non-ASCII text (em dashes, curly
 // quotes, accents, emoji) has to be wrapped as an RFC 2047 "encoded-word"
 // or it turns into mojibake in recipients' clients. Pure-ASCII values pass

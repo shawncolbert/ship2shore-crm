@@ -1,11 +1,14 @@
 import { admin } from './supabaseAdmin.js'
-import { googleAccessToken, buildRaw, gmailSend } from './google.js'
+import { orgGoogleAccessToken, buildRaw, gmailSend } from './google.js'
 
 // Sends a real email via Gmail and logs it into messages/conversations so it
-// shows up in the inbox thread, same as any other outbound email.
+// shows up in the inbox thread, same as any other outbound email. Sends as
+// the calling org's OWN connected Gmail account (orgGoogleAccessToken) --
+// never a single global account, which would mean every org's payment
+// requests/document requests went out under Ship2Shore's identity instead
+// of their own.
 export async function sendCustomerEmail({ orgId, to, subject, body, html, contactId, conversationId }) {
-  const from = process.env.GMAIL_ADDRESS
-  const at = await googleAccessToken()
+  const { accessToken: at, email: from } = await orgGoogleAccessToken(orgId, admin)
   const sent = await gmailSend(at, buildRaw({ from, to, subject: subject || '(no subject)', body, html }))
 
   let convId = conversationId
