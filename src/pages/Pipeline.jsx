@@ -4,10 +4,24 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchDefaultPipeline, moveOpportunity, cancelOpportunity, setOpportunityBilling, patchOpportunity,
   updateOpportunity, sendWaveInvoice, fetchPaymentSettings, sendPaymentRequest,
-  uploadCompletionVideo, fetchCompletionVideo, fetchMyOrgId,
+  uploadCompletionVideo, fetchCompletionVideo, fetchMyOrgId, fetchLatestJobNote,
 } from '../lib/supabase'
 import { PAYMENT_METHODS, methodLabel } from '../lib/paymentRequest'
+import { buildBookingSummary, shareBooking } from '../lib/shareBooking'
 import NewContactModal from '../components/NewContactModal'
+
+// Shared by the JobCard quick action and the JobEditor's full Share button --
+// only the latter has `notes` available (fetched while the editor is open).
+function bookingSummaryFor(c, notes) {
+  return buildBookingSummary({
+    customerName: c.contacts?.full_name,
+    pickupAddress: c.pickup_address,
+    dropoffAddress: c.dropoff_address,
+    vehicleYear: c.vehicle_year, vehicleMake: c.vehicle_make, vehicleModel: c.vehicle_model, vehicleVin: c.vehicle_vin,
+    serviceLabel: c.service_code ? c.service_code.replace(/_/g, ' ') : null,
+    notes,
+  })
+}
 
 const money = (n) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -279,6 +293,14 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onSaveBill
     }
   }
 
+  // No await before shareBooking() -- navigator.share() needs to fire within
+  // the same user-gesture the click provides, and this card's fields are
+  // already all in memory (no fetch needed for the quick-action version).
+  function handleShareBooking(e) {
+    e.stopPropagation()
+    shareBooking({ summaryText: bookingSummaryFor(c), recipientPhone: c.contacts?.phone })
+  }
+
   // Fires the request immediately on click -- no confirm step.
   async function handleRequestPayment(e, method) {
     e.stopPropagation()
@@ -405,6 +427,15 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onSaveBill
                 <path d="M8 1.5a1 1 0 0 1 1 1v.55a3 3 0 0 1 2.45 2.45 1 1 0 1 1-1.97.35A1 1 0 0 0 8.5 5H7.2a1.2 1.2 0 0 0-.35 2.35l1.9.63A3.2 3.2 0 0 1 7.65 14.5v.5a1 1 0 1 1-2 0v-.55a3 3 0 0 1-2.45-2.45 1 1 0 1 1 1.97-.35A1 1 0 0 0 6.15 12H7.4a1.2 1.2 0 0 0 .35-2.35l-1.9-.63A3.2 3.2 0 0 1 6.85 2.5V2a1 1 0 0 1 1-1Z" />
               </svg>
             )}
+          </button>
+          <button
+            onClick={handleShareBooking}
+            title="Text driver / share booking details"
+            className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-canvas hover:text-accent"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+              <path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v6A1.5 1.5 0 0 1 12.5 11H8.06l-2.5 2.3a.5.5 0 0 1-.84-.37V11H3.5A1.5 1.5 0 0 1 2 9.5v-6Z" />
+            </svg>
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); setEditing(true) }}
@@ -590,6 +621,18 @@ function JobEditor({ c, onCancel, onSave }) {
   const [saving, setSaving] = useState(false)
   const stop = (e) => e.stopPropagation()
 
+  // Loaded while the editor is open (not for every card on the board) so
+  // it's already sitting in state by the time someone taps Share -- calling
+  // navigator.share() after an await here would risk losing the click's
+  // user-activation on some browsers.
+  const { data: latestNote } = useQuery({ queryKey: ['jobNote', c.id], queryFn: () => fetchLatestJobNote(c.id) })
+  const hasDetails = c.pickup_address || c.dropoff_address || c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin || c.service_code
+
+  function handleShare(e) {
+    stop(e)
+    shareBooking({ summaryText: bookingSummaryFor(c, latestNote), recipientPhone: c.contacts?.phone })
+  }
+
   const save = async () => {
     if (saving) return
     setSaving(true)
@@ -616,6 +659,29 @@ function JobEditor({ c, onCancel, onSave }) {
       className="rounded-lg border border-accent bg-surface p-3 shadow-sm ring-2 ring-accent/30"
     >
       <div className="space-y-2">
+        {hasDetails && (
+          <div className="space-y-0.5 rounded border border-line bg-canvas/50 p-2 text-[11px] text-muted">
+            {c.service_code && <div>Service: <span className="capitalize text-ink">{c.service_code.replace(/_/g, ' ')}</span></div>}
+            {c.pickup_address && <div>Pickup: <span className="text-ink">{c.pickup_address}</span></div>}
+            {c.dropoff_address && <div>Drop-off: <span className="text-ink">{c.dropoff_address}</span></div>}
+            {(c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin) && (
+              <div>
+                Vehicle: <span className="text-ink">
+                  {[c.vehicle_year, c.vehicle_make, c.vehicle_model].filter(Boolean).join(' ')}
+                  {c.vehicle_vin ? ` · VIN ${c.vehicle_vin}` : ''}
+                </span>
+              </div>
+            )}
+            {latestNote && <div>Notes: <span className="text-ink">{latestNote}</span></div>}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={handleShare}
+          className="w-full rounded bg-brand px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-600"
+        >
+          📱 Text driver / share booking
+        </button>
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Title</label>
           <input

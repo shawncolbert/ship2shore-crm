@@ -254,11 +254,28 @@ export async function fetchDefaultPipeline() {
 
   const { data: opps, error: oErr } = await supabase
     .from('opportunities')
-    .select('id, title, service_code, port, vehicle, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, payment_status, wave_invoice_id, payment_requested_at, payment_method_requested, contacts(full_name, company, email)')
+    .select('id, title, service_code, port, vehicle, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, payment_status, wave_invoice_id, payment_requested_at, payment_method_requested, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, contacts(full_name, company, email, phone)')
     .eq('pipeline_id', pipeline.id)
   if (oErr) throw oErr
 
   return { pipeline, stages, opportunities: (opps || []).filter((o) => o.status !== 'cancelled') }
+}
+
+// Most recent note left on this specific job -- used by the "Share Booking"
+// text-message summary and the job editor's read-only details block. Not
+// every job has one, so this is a separate lightweight query rather than
+// widening the board's own bulk fetch above with a per-row join.
+export async function fetchLatestJobNote(opportunityId) {
+  const { data, error } = await supabase
+    .from('activities')
+    .select('body')
+    .eq('opportunity_id', opportunityId)
+    .eq('type', 'note')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data?.body || null
 }
 
 // Count of jobs sitting in the "New Booking" stage -- bookings that came in
