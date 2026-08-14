@@ -19,6 +19,9 @@ import Automations from './pages/Automations'
 import PaymentSettings from './pages/PaymentSettings'
 import Appearance from './pages/Appearance'
 import Services from './pages/Services'
+import Invoices from './pages/Invoices'
+import InvoiceDetail from './pages/InvoiceDetail'
+import PublicInvoice from './pages/PublicInvoice'
 import PipelineStages from './pages/PipelineStages'
 import AdminOrgs from './pages/AdminOrgs'
 import DeliveryOrderFix from './pages/DeliveryOrderFix'
@@ -68,6 +71,8 @@ function App() {
       <Route path="/go/:slug" element={<GoRedirect />} />
       {/* Public funnels — no auth gate */}
       <Route path="/funnel/:slug" element={<PublicFunnel />} />
+      {/* Public invoice page — no auth gate, this is the link a customer gets emailed */}
+      <Route path="/invoice/:id" element={<PublicInvoice />} />
       <Route
         path="/*"
         element={
@@ -88,6 +93,9 @@ function App() {
                 <Route path="payment-settings" element={<FeatureGate featureKey="payments"><PaymentSettings /></FeatureGate>} />
                 <Route path="settings/appearance" element={<FeatureGate featureKey="appearance"><Appearance /></FeatureGate>} />
                 <Route path="services" element={<FeatureGate featureKey="services"><Services /></FeatureGate>} />
+                <Route path="invoices" element={<FeatureGate featureKey="invoices"><Invoices /></FeatureGate>} />
+                <Route path="invoices/new" element={<FeatureGate featureKey="invoices"><InvoiceDetail /></FeatureGate>} />
+                <Route path="invoices/:id" element={<FeatureGate featureKey="invoices"><InvoiceDetail /></FeatureGate>} />
                 <Route path="settings/pipeline-stages" element={<FeatureGate featureKey="pipeline_stages"><PipelineStages /></FeatureGate>} />
                 <Route path="settings/business-card" element={<FeatureGate featureKey="business_card_builder"><BusinessCardSettings /></FeatureGate>} />
                 <Route path="settings/card-links" element={<FeatureGate featureKey="digital_business_cards"><ExternalCardLinks /></FeatureGate>} />

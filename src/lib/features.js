@@ -23,6 +23,7 @@ export const FEATURES = [
   { key: 'do_fix', label: 'DO / Contract Editor', path: '/do-fix' },
   { key: 'automations', label: 'Automations', path: '/automations' },
   { key: 'services', label: 'Services', path: '/services' },
+  { key: 'invoices', label: 'Invoices', path: '/invoices' },
   { key: 'business_card_builder', label: 'Business Card Builder', path: '/settings/business-card' },
   { key: 'payments', label: 'Payments', path: '/payment-settings' },
   { key: 'appearance', label: 'Appearance', path: '/settings/appearance' },

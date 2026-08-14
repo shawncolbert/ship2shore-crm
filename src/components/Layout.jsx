@@ -23,6 +23,7 @@ const nav = [
   { to: '/do-fix', label: 'DO / Contract Editor', key: 'do_fix', group: 'Production' },
   { to: '/automations', label: 'Automations', key: 'automations', group: 'Production' },
   { to: '/services', label: 'Services', key: 'services', group: 'Money' },
+  { to: '/invoices', label: 'Invoices', key: 'invoices', group: 'Money' },
   { to: '/settings/business-card', label: 'Business Card Builder', key: 'business_card_builder', group: 'Marketing' },
   { to: '/payment-settings', label: 'Payments', key: 'payments', group: 'Money' },
   { to: '/settings/appearance', label: 'Appearance', key: 'appearance', group: 'Settings' },

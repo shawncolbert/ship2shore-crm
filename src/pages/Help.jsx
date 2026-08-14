@@ -67,6 +67,23 @@ const SECTIONS = [
       deleting it, so old jobs still show what was charged.`,
   },
   {
+    id: 'invoices',
+    title: 'Invoices',
+    nav: '/invoices',
+    body: `Bill a customer and get paid, without needing Wave or any other outside invoicing tool. Click "+
+      New invoice," pick a contact (auto-fills their Bill To info) or type it in manually, add line items —
+      pull from your own Services list or type a custom one — and the totals and a live preview update as you
+      go. "Save draft" keeps it editable; "Send invoice" locks in the amount, emails the customer from your
+      connected Gmail account with a link to their own invoice page, and (once Stripe is connected) generates
+      a real "Pay Now" button that marks the invoice paid automatically the moment they pay. Before your first
+      invoice, click "Business info" on this page to set your name/address/phone/logo/EIN for the invoice
+      header — that's separate from your booking business info. Payment didn't come through Stripe (cash,
+      check, Venmo in person)? Open the invoice and click "Mark as Paid" to record it manually — nothing gets
+      stuck showing a balance forever just because it wasn't paid online. Connecting Stripe itself isn't
+      self-serve yet (it's a secret key an admin adds to the deployment) — until it's connected, invoices
+      still send and customers can still view them, there's just no live Pay Now button yet.`,
+  },
+  {
     id: 'business-card',
     title: 'Digital Business Cards',
     nav: '/settings/card-links',

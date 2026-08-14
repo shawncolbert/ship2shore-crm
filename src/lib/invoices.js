@@ -1,0 +1,229 @@
+import { supabase, fetchMyOrgId } from './supabase'
+import { uploadCardAsset } from './businessCard'
+
+/* ------------------------------------------------------------------ */
+/* Business info shown on every invoice header                         */
+/* ------------------------------------------------------------------ */
+
+export async function fetchInvoiceBusinessInfo() {
+  const { data, error } = await supabase
+    .from('organizations')
+    .select('name, logo_url, invoice_business_name, invoice_business_address, invoice_business_phone, invoice_business_website, invoice_business_ein')
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function saveInvoiceBusinessInfo(patch) {
+  const orgId = await fetchMyOrgId()
+  const update = {
+    invoice_business_name: patch.invoice_business_name?.trim() || null,
+    invoice_business_address: patch.invoice_business_address?.trim() || null,
+    invoice_business_phone: patch.invoice_business_phone?.trim() || null,
+    invoice_business_website: patch.invoice_business_website?.trim() || null,
+    invoice_business_ein: patch.invoice_business_ein?.trim() || null,
+  }
+  // logo_url lives on organizations already (used by the app's own sidebar
+  // branding) -- only touched here if the caller explicitly passed it, so
+  // this function stays safe to call from contexts that don't manage a logo.
+  if ('logo_url' in patch) update.logo_url = patch.logo_url || null
+  const { error } = await supabase.from('organizations').update(update).eq('id', orgId)
+  if (error) throw error
+}
+
+// Uploads to the same card-assets bucket the digital business cards use --
+// 'invoice-logo' is just a storage-path namespace here, not a real card id.
+export async function uploadInvoiceLogo(file) {
+  const orgId = await fetchMyOrgId()
+  return uploadCardAsset(orgId, 'invoice-logo', file)
+}
+
+/* ------------------------------------------------------------------ */
+/* Totals                                                              */
+/* ------------------------------------------------------------------ */
+
+// No partial payments in this pass -- amount_due is either the full total
+// (draft/sent/overdue) or 0 (paid).
+export function computeTotals(lineItems) {
+  const subtotal = lineItems.reduce((sum, li) => sum + (Number(li.quantity) || 0) * (Number(li.unit_price) || 0), 0)
+  return { subtotal, total: subtotal }
+}
+
+/* ------------------------------------------------------------------ */
+/* List / read                                                         */
+/* ------------------------------------------------------------------ */
+
+export async function fetchInvoices() {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('id, invoice_number, status, invoice_date, due_date, total, amount_due, paid_at, payment_method, contacts(full_name, company)')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function fetchInvoice(id) {
+  const [{ data: invoice, error: invErr }, { data: lineItems, error: liErr }] = await Promise.all([
+    supabase.from('invoices').select('*, contacts(id, full_name, company, phone, email)').eq('id', id).single(),
+    supabase.from('invoice_line_items').select('*').eq('invoice_id', id).order('sort_order', { ascending: true }),
+  ])
+  if (invErr) throw invErr
+  if (liErr) throw liErr
+  return { invoice, lineItems: lineItems || [] }
+}
+
+/* ------------------------------------------------------------------ */
+/* Create / update                                                     */
+/* ------------------------------------------------------------------ */
+
+// lineItems: [{ service_id, description, quantity, unit_price }]
+export async function createInvoice({ fields, lineItems }) {
+  const orgId = await fetchMyOrgId()
+  const { data: { user } } = await supabase.auth.getUser()
+  const { subtotal, total } = computeTotals(lineItems)
+
+  const { data: invoice, error: invErr } = await supabase
+    .from('invoices')
+    .insert({
+      org_id: orgId,
+      created_by: user?.id || null,
+      contact_id: fields.contact_id || null,
+      po_number: fields.po_number?.trim() || null,
+      bill_to_name: fields.bill_to_name?.trim() || null,
+      bill_to_address: fields.bill_to_address?.trim() || null,
+      bill_to_phone: fields.bill_to_phone?.trim() || null,
+      bill_to_email: fields.bill_to_email?.trim() || null,
+      ship_to_name: fields.ship_to_name?.trim() || null,
+      ship_to_address: fields.ship_to_address?.trim() || null,
+      ship_to_phone: fields.ship_to_phone?.trim() || null,
+      invoice_date: fields.invoice_date || new Date().toISOString().slice(0, 10),
+      due_date: fields.due_date || null,
+      notes: fields.notes?.trim() || null,
+      subtotal, total, amount_due: total,
+      status: 'draft',
+    })
+    .select('*')
+    .single()
+  if (invErr) throw invErr
+
+  await replaceLineItems(orgId, invoice.id, lineItems)
+  return fetchInvoice(invoice.id)
+}
+
+export async function updateInvoice(id, { fields, lineItems }) {
+  const orgId = await fetchMyOrgId()
+  const { subtotal, total } = computeTotals(lineItems)
+
+  const { error: invErr } = await supabase
+    .from('invoices')
+    .update({
+      contact_id: fields.contact_id || null,
+      po_number: fields.po_number?.trim() || null,
+      bill_to_name: fields.bill_to_name?.trim() || null,
+      bill_to_address: fields.bill_to_address?.trim() || null,
+      bill_to_phone: fields.bill_to_phone?.trim() || null,
+      bill_to_email: fields.bill_to_email?.trim() || null,
+      ship_to_name: fields.ship_to_name?.trim() || null,
+      ship_to_address: fields.ship_to_address?.trim() || null,
+      ship_to_phone: fields.ship_to_phone?.trim() || null,
+      invoice_date: fields.invoice_date || new Date().toISOString().slice(0, 10),
+      due_date: fields.due_date || null,
+      notes: fields.notes?.trim() || null,
+      subtotal, total,
+      // A paid invoice's amount_due stays 0 even if line items are edited
+      // afterward -- editing history, not reopening a closed invoice.
+      amount_due: fields.status === 'paid' ? 0 : total,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (invErr) throw invErr
+
+  await replaceLineItems(orgId, id, lineItems)
+  return fetchInvoice(id)
+}
+
+async function replaceLineItems(orgId, invoiceId, lineItems) {
+  const { error: delErr } = await supabase.from('invoice_line_items').delete().eq('invoice_id', invoiceId)
+  if (delErr) throw delErr
+  const rows = lineItems
+    .filter((li) => li.description?.trim())
+    .map((li, i) => ({
+      org_id: orgId,
+      invoice_id: invoiceId,
+      service_id: li.service_id || null,
+      description: li.description.trim(),
+      quantity: Number(li.quantity) || 0,
+      unit_price: Number(li.unit_price) || 0,
+      line_total: (Number(li.quantity) || 0) * (Number(li.unit_price) || 0),
+      sort_order: i,
+    }))
+  if (rows.length === 0) return
+  const { error: insErr } = await supabase.from('invoice_line_items').insert(rows)
+  if (insErr) throw insErr
+}
+
+export async function deleteInvoice(id) {
+  const { error } = await supabase.from('invoices').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Not every payment arrives through Stripe (cash, check, Venmo in person,
+// or a Stripe payment link hasn't been connected yet) -- this lets a
+// dispatcher record that manually rather than the invoice being stuck
+// showing a balance forever. Automatic Stripe payments go through the
+// webhook instead, which sets the same fields.
+export async function markInvoicePaidManually(id, { paymentMethod }) {
+  const { error } = await supabase
+    .from('invoices')
+    .update({
+      status: 'paid',
+      amount_due: 0,
+      paid_at: new Date().toISOString(),
+      payment_method: paymentMethod?.trim() || 'Manual',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/* ------------------------------------------------------------------ */
+/* Send (status + Stripe payment link + email, via Netlify function)   */
+/* ------------------------------------------------------------------ */
+
+export async function sendInvoice(id) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/invoice-send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ invoiceId: id }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Could not send that invoice.')
+  return data
+}
+
+/* ------------------------------------------------------------------ */
+/* Contact lookup for Bill To autofill                                 */
+/* ------------------------------------------------------------------ */
+
+// fetchServices() in lib/supabase.js deliberately omits `id` (nothing else
+// needs it) -- line items need the real service id for their FK, so this
+// gets its own query rather than widening that shared one.
+export async function fetchServicesForInvoice() {
+  const { data, error } = await supabase
+    .from('services')
+    .select('id, code, name, default_rate')
+    .eq('active', true)
+    .order('name', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function fetchContactsForInvoice() {
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('id, full_name, company, phone, email, custom_fields')
+    .order('full_name', { ascending: true })
+  if (error) throw error
+  return data || []
+}
