@@ -27,6 +27,7 @@ export const FEATURES = [
   { key: 'business_card_builder', label: 'Business Card Builder', path: '/settings/business-card' },
   { key: 'payments', label: 'Payments', path: '/payment-settings' },
   { key: 'appearance', label: 'Appearance', path: '/settings/appearance' },
+  { key: 'custom_links', label: 'Custom Links', path: '/settings/custom-links' },
   { key: 'landing_pages', label: 'Landing Pages', path: '/landing-pages' },
   { key: 'funnels', label: 'Funnels', path: '/funnels' },
   { key: 'social_posts', label: 'Social Posts', path: '/social-posts' },

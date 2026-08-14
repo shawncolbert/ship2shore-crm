@@ -745,6 +745,17 @@ export async function deleteAttachment({ id, filePath }) {
   if (error) throw error
 }
 
+// Renames a stored file's display name only -- file_path (the actual
+// storage location) is untouched, so this can't break a download link.
+// Not Ship2Shore-specific: any org (a photographer's portfolio, a real
+// estate agent's contracts) uses this same attachments list per contact.
+export async function renameAttachment(id, fileName) {
+  const clean = String(fileName || '').trim()
+  if (!clean) throw new Error('File name can’t be empty.')
+  const { error } = await supabase.from('attachments').update({ file_name: clean }).eq('id', id)
+  if (error) throw error
+}
+
 // gateStatus must be 'outside_gate' or 'inside_gate' -- picked explicitly by
 // a human uploading, never defaulted. Inserting the row with gate_status
 // already set is what fires (or doesn't fire) the auto-post webhook --

@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import {
   fetchContact, fetchMyOrgId, fetchAttachments, uploadDeliveryOrder,
   signedAttachmentUrl, deleteAttachment, createUploadLink, updateContact,
-  sendEmail, markAttachmentViewed, deleteAppointment,
+  sendEmail, markAttachmentViewed, deleteAppointment, renameAttachment,
 } from '../lib/supabase'
 import { calendlyPrefillUrl, mailtoUrl } from '../lib/config'
 import Badge from '../components/Badge'
@@ -414,23 +414,79 @@ function DeliveryOrders({ contact, jobs }) {
       ) : (
         <ul className="divide-y divide-line">
           {files.map((f) => (
-            <li key={f.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-              <button onClick={() => download(f)} className="flex min-w-0 items-center gap-2 text-left">
-                <span>📄</span>
-                <span className="min-w-0">
-                  <span className="block truncate text-ink">{f.file_name}</span>
-                  <span className="block text-xs text-muted">{kb(f.size_bytes)}{f.opportunities?.title ? ` · ${f.opportunities.title}` : ''}</span>
-                </span>
-              </button>
-              <span className="flex shrink-0 items-center gap-1">
-                <button onClick={() => download(f)} className="rounded px-2 py-1 text-xs text-muted hover:bg-canvas hover:text-ink">Download</button>
-                <button onClick={() => remove(f)} className="rounded px-2 py-1 text-xs text-muted hover:bg-canvas hover:text-port">🗑️</button>
-              </span>
-            </li>
+            <AttachmentRow key={f.id} f={f} kb={kb} onDownload={download} onRemove={remove}
+              onRenamed={() => qc.invalidateQueries({ queryKey: ['attachments', contact.id] })} />
           ))}
         </ul>
       )}
     </div>
+  )
+}
+
+// One stored file (a delivery order, a photographer's portfolio image, a
+// signed real estate contract -- this list is generic across every org
+// type). The uploaded filename is rarely meaningful on its own ("IMG_4821
+// .jpg"), so it can be renamed in place any time -- only the display name
+// changes, never the underlying stored file.
+function AttachmentRow({ f, kb, onDownload, onRemove, onRenamed }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(f.file_name)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const startRename = () => { setDraft(f.file_name); setErr(''); setEditing(true) }
+
+  const save = async () => {
+    if (draft.trim() === f.file_name) { setEditing(false); return }
+    setSaving(true); setErr('')
+    try {
+      await renameAttachment(f.id, draft)
+      onRenamed()
+      setEditing(false)
+    } catch (e) {
+      setErr(e.message || 'Could not rename this file.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <li className="flex items-center gap-2 py-2 text-sm">
+        <span>📄</span>
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false) }}
+          className="min-w-0 flex-1 rounded border border-line bg-canvas px-2 py-1 text-sm text-ink outline-none focus:border-accent"
+        />
+        <button onClick={save} disabled={saving} className="rounded bg-accent px-2 py-1 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50">
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button onClick={() => setEditing(false)} disabled={saving} className="rounded px-2 py-1 text-xs text-muted hover:bg-canvas">
+          Cancel
+        </button>
+        {err && <span className="text-xs text-port">{err}</span>}
+      </li>
+    )
+  }
+
+  return (
+    <li className="flex items-center justify-between gap-3 py-2 text-sm">
+      <button onClick={() => onDownload(f)} className="flex min-w-0 items-center gap-2 text-left">
+        <span>📄</span>
+        <span className="min-w-0">
+          <span className="block truncate text-ink">{f.file_name}</span>
+          <span className="block text-xs text-muted">{kb(f.size_bytes)}{f.opportunities?.title ? ` · ${f.opportunities.title}` : ''}</span>
+        </span>
+      </button>
+      <span className="flex shrink-0 items-center gap-1">
+        <button onClick={startRename} title="Rename" className="rounded px-2 py-1 text-xs text-muted hover:bg-canvas hover:text-ink">Rename</button>
+        <button onClick={() => onDownload(f)} className="rounded px-2 py-1 text-xs text-muted hover:bg-canvas hover:text-ink">Download</button>
+        <button onClick={() => onRemove(f)} className="rounded px-2 py-1 text-xs text-muted hover:bg-canvas hover:text-port">🗑️</button>
+      </span>
+    </li>
   )
 }
 

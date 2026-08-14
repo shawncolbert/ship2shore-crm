@@ -18,6 +18,7 @@ import Documents from './pages/Documents'
 import Automations from './pages/Automations'
 import PaymentSettings from './pages/PaymentSettings'
 import Appearance from './pages/Appearance'
+import CustomLinks from './pages/CustomLinks'
 import Services from './pages/Services'
 import Invoices from './pages/Invoices'
 import InvoiceDetail from './pages/InvoiceDetail'
@@ -92,6 +93,7 @@ function App() {
                 <Route path="automations" element={<FeatureGate featureKey="automations"><Automations /></FeatureGate>} />
                 <Route path="payment-settings" element={<FeatureGate featureKey="payments"><PaymentSettings /></FeatureGate>} />
                 <Route path="settings/appearance" element={<FeatureGate featureKey="appearance"><Appearance /></FeatureGate>} />
+                <Route path="settings/custom-links" element={<FeatureGate featureKey="custom_links"><CustomLinks /></FeatureGate>} />
                 <Route path="services" element={<FeatureGate featureKey="services"><Services /></FeatureGate>} />
                 <Route path="invoices" element={<FeatureGate featureKey="invoices"><Invoices /></FeatureGate>} />
                 <Route path="invoices/new" element={<FeatureGate featureKey="invoices"><InvoiceDetail /></FeatureGate>} />

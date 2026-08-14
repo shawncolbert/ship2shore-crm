@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import { fetchMyProfile, fetchMyOrg, fetchNewBookingCount } from '../lib/supabase'
+import { fetchCustomLinks } from '../lib/customLinks'
 import { isFeatureEnabled } from '../lib/features'
 import { applyTheme, cacheTheme } from '../lib/theme'
 
@@ -27,6 +28,7 @@ const nav = [
   { to: '/settings/business-card', label: 'Business Card Builder', key: 'business_card_builder', group: 'Marketing' },
   { to: '/payment-settings', label: 'Payments', key: 'payments', group: 'Money' },
   { to: '/settings/appearance', label: 'Appearance', key: 'appearance', group: 'Settings' },
+  { to: '/settings/custom-links', label: 'Custom Links', key: 'custom_links', group: 'Settings' },
   { to: '/landing-pages', label: 'Landing Pages', key: 'landing_pages', group: 'Marketing' },
   { to: '/funnels', label: 'Funnels', key: 'funnels', group: 'Marketing' },
   { to: '/social-posts', label: 'Social Posts', key: 'social_posts', group: 'Marketing' },
@@ -75,11 +77,22 @@ function Brand() {
 function NavItems({ onNavigate }) {
   const { data: profile } = useQuery({ queryKey: ['myProfile'], queryFn: fetchMyProfile })
   const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
+  // Self-serve external shortcuts (a photographer's video editor, a real
+  // estate agent's listings site) -- managed at Settings > Custom Links,
+  // shown right after Help since that's the most-visited fixed point in
+  // the sidebar regardless of which layout/grouping is active.
+  const { data: customLinks } = useQuery({ queryKey: ['customLinks'], queryFn: fetchCustomLinks, staleTime: 5 * 60 * 1000 })
   // Platform-admin-only "Organizations" link is never gated by an org's own
   // feature flags -- it's how the platform admin manages every org,
   // including turning their own features on/off.
   const visible = nav.filter((item) => isFeatureEnabled(org, item.key))
-  const items = profile?.platform_admin ? [...visible, { to: '/admin/orgs', label: 'Organizations' }] : visible
+  const withAdmin = profile?.platform_admin ? [...visible, { to: '/admin/orgs', label: 'Organizations' }] : visible
+
+  const externalItems = (customLinks || []).map((l) => ({ external: true, to: l.url, label: l.label, group: 'Overview' }))
+  const helpIdx = withAdmin.findIndex((it) => it.key === 'help')
+  const items = helpIdx === -1
+    ? [...withAdmin, ...externalItems]
+    : [...withAdmin.slice(0, helpIdx + 1), ...externalItems, ...withAdmin.slice(helpIdx + 1)]
 
   // Jobs sitting in "New Booking" that haven't been triaged yet -- catches
   // bookings that came in through the public booking widget or a funnel
@@ -91,27 +104,43 @@ function NavItems({ onNavigate }) {
     refetchInterval: 60_000,
   })
 
-  const item = (it) => (
-    <NavLink
-      key={it.to}
-      to={it.to}
-      end={it.end}
-      onClick={onNavigate}
-      className={({ isActive }) =>
-        `flex items-center justify-between rounded-[var(--radius-btn)] px-3 py-2 text-sm font-medium transition-colors ${
-          isActive ? '' : 'text-white/70 hover:bg-white/10 hover:text-white'
-        }`
-      }
-      style={({ isActive }) => (isActive ? { background: 'var(--nav-active-bg)', color: 'var(--nav-active-text)' } : undefined)}
-    >
-      <span>{it.label}</span>
-      {it.to === '/pipeline' && !!newBookingCount && (
-        <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-ink">
-          {newBookingCount}
-        </span>
-      )}
-    </NavLink>
-  )
+  const item = (it) => {
+    if (it.external) {
+      return (
+        <a
+          key={it.to}
+          href={it.to}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 rounded-[var(--radius-btn)] px-3 py-2 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+        >
+          <span className="truncate">{it.label}</span>
+          <span aria-hidden="true" className="text-white/40">↗</span>
+        </a>
+      )
+    }
+    return (
+      <NavLink
+        key={it.to}
+        to={it.to}
+        end={it.end}
+        onClick={onNavigate}
+        className={({ isActive }) =>
+          `flex items-center justify-between rounded-[var(--radius-btn)] px-3 py-2 text-sm font-medium transition-colors ${
+            isActive ? '' : 'text-white/70 hover:bg-white/10 hover:text-white'
+          }`
+        }
+        style={({ isActive }) => (isActive ? { background: 'var(--nav-active-bg)', color: 'var(--nav-active-text)' } : undefined)}
+      >
+        <span>{it.label}</span>
+        {it.to === '/pipeline' && !!newBookingCount && (
+          <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-ink">
+            {newBookingCount}
+          </span>
+        )}
+      </NavLink>
+    )
+  }
 
   // Aurora and Dispatch Suite are the layouts modeled directly on reference
   // dashboards whose sidebar groups nav under labeled sections -- every

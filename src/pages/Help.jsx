@@ -12,7 +12,11 @@ const SECTIONS = [
     title: 'Contacts',
     nav: '/contacts',
     body: `Every customer and lead lives here. Search by name, phone, company, or email. Open a contact
-      to see their full history — jobs, files, messages, and notes — all in one place. Add a new one with
+      to see their full history — jobs, files, messages, and notes — all in one place. Every file you upload
+      to a contact (a delivery order, a photographer's proofs, a signed real estate contract — whatever your
+      business stores) can be renamed any time by clicking "Rename" next to it, so it's clear at a glance
+      what it is when you come back to that customer later — this doesn't touch the actual file, just what
+      it's called. Add a new one with
       the "+ New contact" button, and optionally drop a booking straight onto the pipeline at the same time.
       Already have a list? Click "Import" to bring in a CSV export (from Google/Outlook/another CRM — you'll
       map its columns to name/phone/email/company/notes before anything's saved) or a vCard (.vcf) file
@@ -204,6 +208,15 @@ const SECTIONS = [
       signed into your organization — it's one shared setting, not a personal one — and takes effect the
       moment you hit "Save appearance," no reload needed. This only changes how things look; every feature
       above works identically no matter which layout is active.`,
+  },
+  {
+    id: 'custom-links',
+    title: 'Custom Links',
+    nav: '/settings/custom-links',
+    body: `A shortcut to any outside site you use alongside this CRM — a video-editing tool, your real estate
+      listings site, whatever the case may be for your business. Click "+ Add a link," give it a name and a
+      URL, and it shows up right in the sidebar next to Help, opening in a new tab. Add as many as you want,
+      edit or remove them any time — applies to your whole organization, same as Appearance.`,
   },
 ]
 
