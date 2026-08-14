@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import {
   fetchContact, fetchMyOrgId, fetchAttachments, uploadDeliveryOrder,
   signedAttachmentUrl, deleteAttachment, createUploadLink, updateContact,
-  sendEmail, markAttachmentViewed, deleteAppointment, renameAttachment,
+  sendEmail, markAttachmentViewed, deleteAppointment, renameAttachment, fetchSignedUrls,
 } from '../lib/supabase'
 import { calendlyPrefillUrl, mailtoUrl } from '../lib/config'
 import Badge from '../components/Badge'
@@ -293,6 +293,18 @@ function DeliveryOrders({ contact, jobs }) {
   const { data: orgId } = useQuery({ queryKey: ['myOrgId'], queryFn: fetchMyOrgId })
   const { data: files } = useQuery({ queryKey: ['attachments', contact.id], queryFn: () => fetchAttachments(contact.id) })
 
+  // Photos get their own thumbnail grid -- a "customer portfolio" view --
+  // instead of sitting in the plain file list. Everything else (PDFs,
+  // contracts, delivery orders) stays in that list below.
+  const imageFiles = (files || []).filter((f) => (f.mime_type || '').startsWith('image/'))
+  const otherFiles = (files || []).filter((f) => !(f.mime_type || '').startsWith('image/'))
+  const imagePaths = imageFiles.map((f) => f.file_path)
+  const { data: thumbUrls } = useQuery({
+    queryKey: ['attachmentThumbs', contact.id, imagePaths.join('|')],
+    queryFn: () => fetchSignedUrls(imagePaths),
+    enabled: imagePaths.length > 0,
+  })
+
   async function onPick(e) {
     const chosen = Array.from(e.target.files || [])
     if (!chosen.length || !orgId) return
@@ -343,7 +355,7 @@ function DeliveryOrders({ contact, jobs }) {
   return (
     <div className={card}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className={h2 + ' mb-0'}>Delivery Orders &amp; Files{files ? ` (${files.length})` : ''}</h2>
+        <h2 className={h2 + ' mb-0'}>Files &amp; Photos{files ? ` (${files.length})` : ''}</h2>
         <div className="flex flex-wrap items-center gap-2">
           {jobs.length > 0 && (
             <select value={jobId} onChange={(e) => setJobId(e.target.value)}
@@ -410,15 +422,87 @@ function DeliveryOrders({ contact, jobs }) {
       {!files ? (
         <p className="text-sm text-muted">Loading…</p>
       ) : files.length === 0 ? (
-        <p className="text-sm text-muted">No delivery orders yet. Upload a PDF or photo, or send the customer an upload link.</p>
+        <p className="text-sm text-muted">Nothing here yet. Upload a photo or document, or send the customer an upload link.</p>
       ) : (
-        <ul className="divide-y divide-line">
-          {files.map((f) => (
-            <AttachmentRow key={f.id} f={f} kb={kb} onDownload={download} onRemove={remove}
-              onRenamed={() => qc.invalidateQueries({ queryKey: ['attachments', contact.id] })} />
-          ))}
-        </ul>
+        <>
+          {imageFiles.length > 0 && (
+            <div className="mb-4">
+              {otherFiles.length > 0 && (
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Photos</p>
+              )}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                {imageFiles.map((f) => (
+                  <PhotoTile key={f.id} f={f} url={thumbUrls?.[f.file_path]} onDownload={download} onRemove={remove}
+                    onRenamed={() => qc.invalidateQueries({ queryKey: ['attachments', contact.id] })} />
+                ))}
+              </div>
+            </div>
+          )}
+          {otherFiles.length > 0 && (
+            <div>
+              {imageFiles.length > 0 && (
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Documents</p>
+              )}
+              <ul className="divide-y divide-line">
+                {otherFiles.map((f) => (
+                  <AttachmentRow key={f.id} f={f} kb={kb} onDownload={download} onRemove={remove}
+                    onRenamed={() => qc.invalidateQueries({ queryKey: ['attachments', contact.id] })} />
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
+    </div>
+  )
+}
+
+// A photo gets a thumbnail tile ("customer portfolio" view) instead of
+// sitting in the plain file list -- same actions as any other attachment
+// (rename in place, open full-size, delete), just laid out for browsing
+// images instead of reading file names.
+function PhotoTile({ f, url, onDownload, onRemove, onRenamed }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(f.file_name)
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    if (draft.trim() === f.file_name) { setEditing(false); return }
+    setSaving(true)
+    try { await renameAttachment(f.id, draft); onRenamed(); setEditing(false) }
+    catch { /* surfaced via the shared err banner is overkill here; the input just stays open */ }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="group relative overflow-hidden rounded-lg border border-line bg-canvas">
+      <button onClick={() => onDownload(f)} className="block aspect-square w-full">
+        {url ? (
+          <img src={url} alt={f.file_name} className="h-full w-full object-cover" />
+        ) : (
+          <span className="flex h-full w-full items-center justify-center text-2xl">🖼️</span>
+        )}
+      </button>
+      <div className="flex items-center gap-1 border-t border-line bg-surface px-1.5 py-1">
+        {editing ? (
+          <>
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false) }}
+              className="min-w-0 flex-1 rounded border border-line bg-canvas px-1 py-0.5 text-[11px] text-ink outline-none focus:border-accent"
+            />
+            <button onClick={save} disabled={saving} className="shrink-0 text-[11px] font-semibold text-accent">✓</button>
+          </>
+        ) : (
+          <>
+            <span className="min-w-0 flex-1 truncate text-[11px] text-ink" title={f.file_name}>{f.file_name}</span>
+            <button onClick={() => { setDraft(f.file_name); setEditing(true) }} title="Rename" className="shrink-0 rounded p-0.5 text-muted opacity-0 group-hover:opacity-100 hover:text-ink">✏️</button>
+            <button onClick={() => onRemove(f)} title="Delete" className="shrink-0 rounded p-0.5 text-muted opacity-0 group-hover:opacity-100 hover:text-port">🗑️</button>
+          </>
+        )}
+      </div>
     </div>
   )
 }

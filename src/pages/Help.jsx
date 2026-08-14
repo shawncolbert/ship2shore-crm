@@ -13,10 +13,15 @@ const SECTIONS = [
     nav: '/contacts',
     body: `Every customer and lead lives here. Search by name, phone, company, or email. Open a contact
       to see their full history — jobs, files, messages, and notes — all in one place. Every file you upload
-      to a contact (a delivery order, a photographer's proofs, a signed real estate contract — whatever your
-      business stores) can be renamed any time by clicking "Rename" next to it, so it's clear at a glance
-      what it is when you come back to that customer later — this doesn't touch the actual file, just what
-      it's called. Add a new one with
+      to a contact (a delivery order, a photographer's edited photos, a signed real estate contract —
+      whatever your business stores) can be renamed any time by clicking "Rename" next to it, so it's clear
+      at a glance what it is when you come back to that customer later — this doesn't touch the actual
+      file, just what it's called. Photos get their own thumbnail grid automatically — a real customer
+      portfolio you can browse — while everything else (PDFs, contracts) stays in a plain list below it;
+      the same Upload button handles both, no separate step. Edit photos in whatever outside tool you
+      already use (add it as a Custom Link below for one-tap access), then drag the finished files in here
+      — that's what stays attached to the customer permanently, viewable from any computer, not just
+      the one they were edited on. Add a new one with
       the "+ New contact" button, and optionally drop a booking straight onto the pipeline at the same time.
       Already have a list? Click "Import" to bring in a CSV export (from Google/Outlook/another CRM — you'll
       map its columns to name/phone/email/company/notes before anything's saved) or a vCard (.vcf) file

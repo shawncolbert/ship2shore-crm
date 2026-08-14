@@ -688,11 +688,25 @@ export async function sendEmail({ conversationId, contactId, to, subject, body, 
 export async function fetchAttachments(contactId) {
   const { data, error } = await supabase
     .from('attachments')
-    .select('id, file_name, file_path, size_bytes, opportunity_id, created_at, opportunities(title)')
+    .select('id, file_name, file_path, mime_type, size_bytes, opportunity_id, created_at, opportunities(title)')
     .eq('contact_id', contactId)
     .order('created_at', { ascending: false })
   if (error) throw error
   return data || []
+}
+
+// Batch-signs URLs for a set of private-bucket files at once (one round
+// trip instead of one per thumbnail) -- used to render the photo grid on a
+// contact's file list. A longer expiry than the plain single-file download
+// link (signedAttachmentUrl, 120s) since these sit in <img> tags for as
+// long as the page stays open, not just a single click-through.
+export async function fetchSignedUrls(filePaths, expiresIn = 3600) {
+  if (!filePaths?.length) return {}
+  const { data, error } = await supabase.storage.from('delivery-orders').createSignedUrls(filePaths, expiresIn)
+  if (error) throw error
+  const map = {}
+  for (const row of data || []) if (row.signedUrl && row.path) map[row.path] = row.signedUrl
+  return map
 }
 
 // Files a customer sent us themselves (via the /u/:token upload link --
