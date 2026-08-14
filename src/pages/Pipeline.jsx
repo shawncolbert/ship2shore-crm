@@ -15,6 +15,7 @@ import NewContactModal from '../components/NewContactModal'
 function bookingSummaryFor(c, notes) {
   return buildBookingSummary({
     customerName: c.contacts?.full_name,
+    customerPhone: c.contacts?.phone,
     pickupAddress: c.pickup_address,
     dropoffAddress: c.dropoff_address,
     vehicleYear: c.vehicle_year, vehicleMake: c.vehicle_make, vehicleModel: c.vehicle_model, vehicleVin: c.vehicle_vin,
