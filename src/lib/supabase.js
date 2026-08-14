@@ -278,6 +278,30 @@ export async function fetchLatestJobNote(opportunityId) {
   return data?.body || null
 }
 
+// Vehicle-transport bookings can carry a customer-uploaded photo of the
+// vehicle (captured at booking time, same as the pickup/drop-off addresses).
+// Used by the "Share Booking" text so a driver gets the same photo link the
+// lead-notification email already sends -- long-lived (30 days, matching
+// that email's own signed URL) since a driver has no CRM login to re-fetch
+// it and may not open the text right away.
+export async function fetchVehiclePhotoUrl(opportunityId) {
+  const { data: photo, error } = await supabase
+    .from('attachments')
+    .select('file_path')
+    .eq('opportunity_id', opportunityId)
+    .eq('kind', 'vehicle_photo')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  if (!photo) return null
+
+  const { data, error: signErr } = await supabase.storage
+    .from('delivery-orders').createSignedUrl(photo.file_path, 60 * 60 * 24 * 30)
+  if (signErr) throw signErr
+  return data.signedUrl
+}
+
 // Count of jobs sitting in the "New Booking" stage -- bookings that came in
 // (from the public booking widget, a funnel, or the sidebar) and haven't
 // been triaged into Scheduled/In Progress yet. Drives the sidebar nav badge.

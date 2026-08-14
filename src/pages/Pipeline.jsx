@@ -4,21 +4,25 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchDefaultPipeline, moveOpportunity, cancelOpportunity, setOpportunityBilling, patchOpportunity,
   updateOpportunity, sendWaveInvoice, fetchPaymentSettings, sendPaymentRequest,
-  uploadCompletionVideo, fetchCompletionVideo, fetchMyOrgId, fetchLatestJobNote,
+  uploadCompletionVideo, fetchCompletionVideo, fetchMyOrgId, fetchLatestJobNote, fetchVehiclePhotoUrl,
 } from '../lib/supabase'
 import { PAYMENT_METHODS, methodLabel } from '../lib/paymentRequest'
 import { buildBookingSummary, shareBooking } from '../lib/shareBooking'
 import NewContactModal from '../components/NewContactModal'
 
 // Shared by the JobCard quick action and the JobEditor's full Share button --
-// only the latter has `notes` available (fetched while the editor is open).
-function bookingSummaryFor(c, notes) {
+// only the latter has `notes`/`photoUrl` available (fetched while the editor
+// is open, for vehicle-transport bookings that captured a pickup/drop-off
+// and a photo at booking time -- same info the lead-notification email
+// already sends a driver, now available on demand too).
+function bookingSummaryFor(c, notes, photoUrl) {
   return buildBookingSummary({
     customerName: c.contacts?.full_name,
     customerPhone: c.contacts?.phone,
     pickupAddress: c.pickup_address,
     dropoffAddress: c.dropoff_address,
     vehicleYear: c.vehicle_year, vehicleMake: c.vehicle_make, vehicleModel: c.vehicle_model, vehicleVin: c.vehicle_vin,
+    photoUrl,
     serviceLabel: c.service_code ? c.service_code.replace(/_/g, ' ') : null,
     notes,
   })
@@ -627,11 +631,12 @@ function JobEditor({ c, onCancel, onSave }) {
   // navigator.share() after an await here would risk losing the click's
   // user-activation on some browsers.
   const { data: latestNote } = useQuery({ queryKey: ['jobNote', c.id], queryFn: () => fetchLatestJobNote(c.id) })
-  const hasDetails = c.pickup_address || c.dropoff_address || c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin || c.service_code
+  const { data: photoUrl } = useQuery({ queryKey: ['jobPhoto', c.id], queryFn: () => fetchVehiclePhotoUrl(c.id) })
+  const hasDetails = c.pickup_address || c.dropoff_address || c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin || c.service_code || photoUrl
 
   function handleShare(e) {
     stop(e)
-    shareBooking({ summaryText: bookingSummaryFor(c, latestNote), recipientPhone: c.contacts?.phone })
+    shareBooking({ summaryText: bookingSummaryFor(c, latestNote, photoUrl), recipientPhone: c.contacts?.phone })
   }
 
   const save = async () => {
@@ -674,6 +679,11 @@ function JobEditor({ c, onCancel, onSave }) {
               </div>
             )}
             {latestNote && <div>Notes: <span className="text-ink">{latestNote}</span></div>}
+            {photoUrl && (
+              <div>
+                <a href={photoUrl} target="_blank" rel="noreferrer" className="text-accent hover:underline">📷 Vehicle photo ↗</a>
+              </div>
+            )}
           </div>
         )}
         <button

@@ -8,7 +8,7 @@
 // or a blank "Pickup: " line.
 export function buildBookingSummary({
   customerName, customerPhone, pickupAddress, dropoffAddress,
-  vehicleYear, vehicleMake, vehicleModel, vehicleVin,
+  vehicleYear, vehicleMake, vehicleModel, vehicleVin, photoUrl,
   serviceLabel, notes, detailUrl,
 }) {
   const lines = [`New booking${customerName ? ` — ${customerName}` : ''}`]
@@ -22,6 +22,7 @@ export function buildBookingSummary({
 
   if (serviceLabel) lines.push(`Service: ${serviceLabel}`)
   if (notes) lines.push(`Notes: ${notes}`)
+  if (photoUrl) lines.push(`Vehicle photo: ${photoUrl}`)
   if (detailUrl) lines.push(`Full details: ${detailUrl}`)
 
   return lines.join('\n')
