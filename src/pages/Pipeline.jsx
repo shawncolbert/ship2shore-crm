@@ -220,7 +220,7 @@ export default function Pipeline() {
               onDragOver={(e) => { e.preventDefault(); setOverStage(stage.id) }}
               onDragLeave={() => setOverStage((s) => (s === stage.id ? null : s))}
               onDrop={() => onDrop(stage.id)}
-              className={`flex min-w-[11rem] flex-1 basis-0 flex-col rounded-xl border bg-canvas/60 ${
+              className={`flex min-w-[13rem] flex-1 basis-0 flex-col rounded-xl border bg-canvas/60 ${
                 isOver ? 'border-accent ring-2 ring-accent/30' : 'border-line'
               }`}
             >
@@ -334,6 +334,10 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onSaveBill
         c={c}
         onCancel={() => setEditing(false)}
         onSave={async (patch) => { await onSaveFields(c.id, patch); setEditing(false) }}
+        onCancelJob={() => {
+          if (window.confirm(`Cancel "${c.title || 'this job'}"? It'll disappear from the board.`)) onCancel(c.id)
+        }}
+        cancelling={cancelling === c.id}
       />
     )
   }
@@ -449,19 +453,6 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onSaveBill
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
               <path d="M12.146 2.146a.5.5 0 0 1 .708 0l1 1a.5.5 0 0 1 0 .708l-8 8a.5.5 0 0 1-.223.128l-3 .857a.5.5 0 0 1-.618-.618l.857-3a.5.5 0 0 1 .128-.223l8-8Zm.354 1.061L11.707 4 12 4.293l.793-.793-.293-.293ZM11 5 4.5 11.5l-.5 1.5 1.5-.5L12 6l-1-1Z" />
-            </svg>
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              if (window.confirm(`Cancel "${c.title || 'this job'}"? It'll disappear from the board.`)) onCancel(c.id)
-            }}
-            disabled={cancelling === c.id}
-            title="Cancel job"
-            className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
-              <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
             </svg>
           </button>
         </div>
@@ -617,7 +608,7 @@ function CompletionVideoField({ opportunityId, contactId, onInteractStart, onInt
 
 // Inline editor for a job card's title, port and scheduled time. Replaces the
 // card while open so the compact card stays uncluttered. Not draggable.
-function JobEditor({ c, onCancel, onSave }) {
+function JobEditor({ c, onCancel, onSave, onCancelJob, cancelling }) {
   const [title, setTitle] = useState(c.title || '')
   const [port, setPort] = useState(c.port || '')
   const [vehicle, setVehicle] = useState(c.vehicle || '')
@@ -762,6 +753,15 @@ function JobEditor({ c, onCancel, onSave }) {
             className="rounded border border-line px-2.5 py-1 text-[11px] font-medium text-ink hover:bg-canvas disabled:opacity-50"
           >
             Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onCancelJob}
+            disabled={saving || cancelling}
+            title="Cancel this job — it'll disappear from the board"
+            className="ml-auto rounded px-2.5 py-1 text-[11px] font-medium text-port hover:bg-red-50 disabled:opacity-50"
+          >
+            {cancelling ? 'Cancelling…' : 'Cancel job'}
           </button>
         </div>
       </div>

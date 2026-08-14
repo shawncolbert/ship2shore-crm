@@ -213,8 +213,10 @@ export default function Layout({ children }) {
         </div>
       )}
 
-      {/* Desktop sidebar */}
-      <aside className="hidden w-56 shrink-0 flex-col text-white/90 md:flex" style={{ background: 'var(--sidebar-bg)' }}>
+      {/* Desktop sidebar — kept narrow so wide content (like the Pipeline
+          board's job cards, whose icon row gets cramped otherwise) has more
+          room to breathe. */}
+      <aside className="hidden w-48 shrink-0 flex-col text-white/90 md:flex" style={{ background: 'var(--sidebar-bg)' }}>
         <div className="px-5 py-6">
           <Brand />
         </div>
