@@ -1,6 +1,7 @@
 import { admin, userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
-import { getDefaultPipeline, getStageByName } from './_shared/pipeline.js'
+import { getDefaultPipeline, getStageByName, getIntakeStage, listStageNames } from './_shared/pipeline.js'
 import { sendCustomerEmail } from './_shared/email.js'
+import { buildBookingEmail } from './_shared/bookingEmails.js'
 import Anthropic from '@anthropic-ai/sdk'
 
 const json = (statusCode, body) => ({
@@ -13,59 +14,19 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
-// Ship2Shore Pricing Structure
-const SHIP2SHORE_PRICING = {
-  zones: {
-    'LA Local': { min: 275, max: 325, areas: ['Los Angeles', 'Santa Monica', 'West LA'] },
-    'Orange County': { min: 300, max: 350, areas: ['Anaheim', 'Long Beach area', 'Orange County'] },
-    'Ventura County': { min: 325, max: 375, areas: ['Ventura', 'Oxnard', 'Ojai'] },
-    'Valencia/Santa Clarita': { min: 350, max: 400, areas: ['Valencia', 'Santa Clarita', 'Castaic'] },
-    'Riverside/San Bernardino': { min: 400, max: 475, areas: ['Riverside', 'San Bernardino', 'Ontario'] },
-    'San Diego': { min: 600, max: 675, areas: ['San Diego', 'Oceanside', 'Carlsbad'] },
-    'Northern CA': { min: 625, max: 725, areas: ['Sacramento', 'Bay Area', 'Northern California'] },
-  },
-  services: {
-    twic_escort: { name: 'TWIC Vehicle Escort', standard: 95, military: 80 },
-    hotshot: { name: 'Hotshot Delivery', flat: 200 },
-    semi_container: { name: 'Semi/Container (Tractor-Trailer)', flat: 325 },
-  },
-  surcharges: {
-    'non-operating': 200,
-    'winching': 125,
-    'oversized': 125,
-    'lifted': { min: 125, max: 175 },
-  },
-  ports: {
-    wilmington_norton_lilly: {
-      name: 'Wilmington (Norton Lilly)',
-      services: [
-        { item: 'Terminal handling', rate: 83, unit: 'per vehicle', hh_rate: 93 },
-        { item: 'BL Processing', rate: 50, unit: 'per BL' },
-        { item: 'Local Wharfage', rate: 31, unit: 'per vehicle' },
-        { item: 'Service & Facilities', rate: 20, unit: 'per unit' },
-      ],
-    },
-    wilmington_ports_america: {
-      name: 'Wilmington (Ports America gate storage)',
-      services: [
-        { item: 'Passenger storage', rate: 30, unit: 'per vehicle per day' },
-        { item: 'Commercial/HH storage', rate: 19.65, unit: 'per MT per day' },
-        { item: 'Card processing', rate: 3, unit: 'percent' },
-        { item: 'Non-TWIC security escort', rate: 100, unit: 'flat' },
-      ],
-    },
-    long_beach_ssa: {
-      name: 'Long Beach (SSA Marine)',
-      note: 'Rates pending confirmation from Shawn',
-    },
-    matson: {
-      name: 'Matson',
-      note: 'Rates pending confirmation from Shawn',
-    },
-  },
-}
+// Tool schemas are built per-request instead of a static constant because the
+// pipeline `stage` enum has to reflect this org's own configured stage names
+// -- Claude's tool-calling is hard-constrained to declared enum values, so a
+// fixed list here would make stage moves fail for every org whose pipeline
+// isn't named exactly like Ship2Shore's.
+function buildAgentTools(stageNames) {
+  const stageField = (description) => ({
+    type: 'string',
+    description,
+    ...(stageNames.length ? { enum: stageNames } : {}),
+  })
 
-const AGENT_TOOLS = [
+  return [
   {
     name: 'create_contact',
     description: 'Creates a new contact in the CRM',
@@ -89,11 +50,7 @@ const AGENT_TOOLS = [
         contact_id: { type: 'string', description: 'ID of the contact' },
         title: { type: 'string', description: 'Deal title' },
         deal_value: { type: 'number', description: 'Deal value in USD' },
-        stage: {
-          type: 'string',
-          enum: ['Not Customs Cleared', 'Customs Cleared', 'New Booking', 'Scheduled', 'In Progress', 'Completed', 'Paid', 'Canceled'],
-          description: 'Pipeline stage',
-        },
+        stage: stageField('Pipeline stage'),
       },
       required: ['contact_id', 'title', 'stage'],
     },
@@ -146,11 +103,7 @@ const AGENT_TOOLS = [
       type: 'object',
       properties: {
         opportunity_id: { type: 'string', description: 'ID of the opportunity to move' },
-        stage: {
-          type: 'string',
-          enum: ['Not Customs Cleared', 'Customs Cleared', 'New Booking', 'Scheduled', 'In Progress', 'Completed', 'Paid', 'Canceled'],
-          description: 'New pipeline stage',
-        },
+        stage: stageField('New pipeline stage'),
       },
       required: ['opportunity_id', 'stage'],
     },
@@ -194,11 +147,7 @@ const AGENT_TOOLS = [
         opportunity_id: { type: 'string', description: 'ID of the opportunity' },
         title: { type: 'string', description: 'Deal title/name' },
         value: { type: 'number', description: 'Deal value in USD' },
-        stage: {
-          type: 'string',
-          enum: ['Not Customs Cleared', 'Customs Cleared', 'New Booking', 'Scheduled', 'In Progress', 'Completed', 'Paid', 'Canceled'],
-          description: 'Pipeline stage',
-        },
+        stage: stageField('Pipeline stage'),
       },
       required: ['opportunity_id'],
     },
@@ -220,7 +169,7 @@ const AGENT_TOOLS = [
   },
   {
     name: 'add_service_item_to_opportunity',
-    description: 'Add a line item service/fee to a job. Ship2Shore services: escort ($75-$95), storage ($16-$700), hotshot ($200), big_rig ($325)',
+    description: 'Add a line item service/fee to a job. Call get_services first to see this organization\'s own configured services and rates -- do not guess a price. If none of the fixed service_type categories fit, use "other" with a description.',
     input_schema: {
       type: 'object',
       properties: {
@@ -260,39 +209,8 @@ const AGENT_TOOLS = [
     },
   },
   {
-    name: 'generate_quote',
-    description: 'Generate a detailed Ship2Shore quote with services and surcharges',
-    input_schema: {
-      type: 'object',
-      properties: {
-        zone: {
-          type: 'string',
-          enum: ['LA Local', 'Orange County', 'Ventura County', 'Valencia/Santa Clarita', 'Riverside/San Bernardino', 'San Diego', 'Northern CA'],
-          description: 'Geographic zone for pricing',
-        },
-        service_type: {
-          type: 'string',
-          enum: ['twic_escort', 'hotshot', 'semi_container'],
-          description: 'Type of service',
-        },
-        quantity: { type: 'number', description: 'Number of vehicles/units (for escort, number of cars)' },
-        is_military: { type: 'boolean', description: 'Is this a military/PCS job? (applies $80 rate instead of $95 for escort)' },
-        surcharges: {
-          type: 'array',
-          items: {
-            type: 'string',
-            enum: ['non-operating', 'winching', 'oversized', 'lifted'],
-          },
-          description: 'Any applicable surcharges',
-        },
-        notes: { type: 'string', description: 'Additional notes about the job' },
-      },
-      required: ['zone', 'service_type', 'quantity'],
-    },
-  },
-  {
-    name: 'get_pricing_info',
-    description: 'Get all Ship2Shore pricing information (zones, services, surcharges, ports)',
+    name: 'get_services',
+    description: "Get this organization's own configured services and rates (code, name, default rate). Call this before quoting a price or adding a service line item to a job -- this assistant has no built-in pricing of its own, since services and rates are configured per-organization under Settings.",
     input_schema: {
       type: 'object',
       properties: {},
@@ -330,9 +248,10 @@ const AGENT_TOOLS = [
       required: ['customer_email', 'customer_name', 'message_type'],
     },
   },
-]
+  ]
+}
 
-async function executeTool(toolName, input, orgId) {
+async function executeTool(toolName, input, orgId, orgName) {
   switch (toolName) {
     case 'create_contact': {
       const { data: newContact, error } = await admin
@@ -644,83 +563,19 @@ async function executeTool(toolName, input, orgId) {
       }
     }
 
-    case 'generate_quote': {
-      const zone = SHIP2SHORE_PRICING.zones[input.zone]
-      if (!zone) throw new Error(`Zone "${input.zone}" not found`)
+    case 'get_services': {
+      const { data: services, error } = await admin
+        .from('services')
+        .select('code, name, default_rate')
+        .eq('org_id', orgId)
+        .eq('active', true)
+        .order('name', { ascending: true })
 
-      const service = SHIP2SHORE_PRICING.services[input.service_type]
-      if (!service) throw new Error(`Service type "${input.service_type}" not found`)
-
-      let basePrice = 0
-      let lineItems = []
-
-      // Calculate base price based on service type
-      if (input.service_type === 'twic_escort') {
-        const rate = input.is_military ? service.military : service.standard
-        basePrice = rate * (input.quantity || 1)
-        lineItems.push({
-          item: `${service.name} (${input.quantity} vehicle${input.quantity > 1 ? 's' : ''})`,
-          rate: `$${rate}/vehicle`,
-          quantity: input.quantity,
-          subtotal: basePrice,
-        })
-      } else if (input.service_type === 'hotshot') {
-        basePrice = service.flat
-        lineItems.push({
-          item: service.name,
-          rate: 'flat',
-          subtotal: basePrice,
-        })
-      } else if (input.service_type === 'semi_container') {
-        basePrice = service.flat * (input.quantity || 1)
-        lineItems.push({
-          item: `${service.name} (${input.quantity} unit${input.quantity > 1 ? 's' : ''})`,
-          rate: `$${service.flat}/unit`,
-          quantity: input.quantity,
-          subtotal: basePrice,
-        })
-      }
-
-      // Calculate surcharges
-      let surchargeTotal = 0
-      if (input.surcharges && input.surcharges.length > 0) {
-        for (const surcharge of input.surcharges) {
-          const surchargeInfo = SHIP2SHORE_PRICING.surcharges[surcharge]
-          if (surchargeInfo) {
-            const surchargeAmount = typeof surchargeInfo === 'object' && surchargeInfo.min
-              ? surchargeInfo.min
-              : surchargeInfo
-            surchargeTotal += surchargeAmount
-            lineItems.push({
-              item: `Surcharge: ${surcharge}`,
-              subtotal: surchargeAmount,
-            })
-          }
-        }
-      }
-
-      const total = basePrice + surchargeTotal
-
+      if (error) throw new Error(error.message)
       return {
-        result: {
-          zone: input.zone,
-          service: service.name,
-          quantity: input.quantity,
-          isMilitary: input.is_military,
-          lineItems,
-          basePrice,
-          surcharges: surchargeTotal,
-          estimatedTotal: total,
-          priceRange: `$${zone.min} - $${zone.max}`,
-          notes: input.notes || null,
-        },
-        clientEvent: null,
-      }
-    }
-
-    case 'get_pricing_info': {
-      return {
-        result: SHIP2SHORE_PRICING,
+        result: services?.length
+          ? services
+          : { message: 'No services configured yet for this organization. Ask the user to add rates under Settings before quoting.' },
         clientEvent: null,
       }
     }
@@ -796,52 +651,24 @@ async function executeTool(toolName, input, orgId) {
     }
 
     case 'send_email': {
-      let emailBody = ''
-      let subject = ''
-
-      if (input.message_type === 'delivery_order_request') {
-        subject = 'Ship2Shore - Delivery Order Needed'
-        emailBody = `Hi ${input.customer_name},
-
-We're ready to proceed with your booking!
-
-To complete your reservation, please provide:
-- Proof of Authorization (POA)
-- Delivery order details
-- Estimated delivery date/time
-
-${input.booking_details ? `Booking Details:\n${input.booking_details}\n` : ''}
-
-Please reply with the required information so we can finalize your shipment.
-
-Best regards,
-Ship2Shore Logistics`
-      } else if (input.message_type === 'payment_link_request') {
-        subject = 'Ship2Shore - Payment Required'
-        emailBody = `Hi ${input.customer_name},
-
-Your vehicle is now cleared and ready to ship!
-
-Booking Amount: $${input.booking_amount}
-
-${input.booking_details ? `Booking Details:\n${input.booking_details}\n` : ''}
-
-Please proceed with payment to secure your shipment. A payment link has been attached.
-
-Thank you,
-Ship2Shore Logistics`
-      }
-
       if (!input.customer_email) throw new Error('customer_email is required')
 
-      await sendCustomerEmail({ orgId, to: input.customer_email, subject, body: emailBody })
+      const email = buildBookingEmail(input.message_type, {
+        customerName: input.customer_name,
+        bookingAmount: input.booking_amount,
+        bookingDetails: input.booking_details,
+        orgName,
+      })
+      if (!email) throw new Error(`Unknown message_type "${input.message_type}"`)
+
+      await sendCustomerEmail({ orgId, to: input.customer_email, subject: email.subject, body: email.body })
 
       return {
         result: {
           sent: true,
           to: input.customer_email,
           messageType: input.message_type,
-          subject,
+          subject: email.subject,
         },
         clientEvent: null,
       }
@@ -890,6 +717,17 @@ export const handler = async (event) => {
     const messages = [...conversationHistory, { role: 'user', content: userPrompt }]
     const clientEvents = []
 
+    // This org's own identity/pipeline -- fetched once per request, not
+    // hardcoded, so the assistant never assumes it's talking about Ship2Shore.
+    const [{ data: orgRow }, stageNames, intakeStage] = await Promise.all([
+      admin.from('organizations').select('name').eq('id', orgId).maybeSingle(),
+      listStageNames(orgId),
+      getIntakeStage(orgId),
+    ])
+    const orgName = orgRow?.name || 'this organization'
+    const intakeStageName = intakeStage?.name || stageNames[0] || null
+    const agentTools = buildAgentTools(stageNames)
+
     // Agentic loop
     let loopCount = 0
     const MAX_LOOPS = 10
@@ -906,67 +744,18 @@ export const handler = async (event) => {
           model: 'claude-opus-5',
           max_tokens: 1024,
           system:
-          `You are a helpful CRM assistant for Ship2Shore, a port vehicle escort and logistics company. Help users manage pipeline jobs and generate accurate pricing quotes.
+          `You are a helpful CRM assistant for ${orgName}. Help users manage pipeline jobs, quote accurate prices, and communicate with customers.
 
-SHIP2SHORE PRICING STRUCTURE:
+PRICING:
+This assistant has no built-in price list -- ${orgName}'s services and rates are configured under Settings and vary per organization. Always call get_services first to see the actual configured services (code, name, rate) before quoting a price or calling add_service_item_to_opportunity. Never invent a price. If get_services returns nothing, tell the user no services are configured yet and ask them to add rates under Settings.
 
-ZONES & BASE RATES:
-- LA Local: $275–325
-- Orange County: $300–350
-- Ventura County: $325–375
-- Valencia/Santa Clarita: $350–400
-- Riverside/San Bernardino: $400–475
-- San Diego: $600–675
-- Northern CA: $625–725
-
-SERVICES:
-- TWIC Vehicle Escort: $95/vehicle (standard), $80/vehicle (military/PCS)
-- Hotshot Delivery: $200/job flat
-- Semi/Container (Tractor-Trailer): $325/unit flat
-
-SURCHARGES (add to base):
-- Non-operating: +$200
-- Winching: +$125
-- Oversized: +$125
-- Lifted/Modified: +$125–$175
-
-PORT-SPECIFIC STORAGE/FEES:
-- Wilmington (Norton Lilly): Terminal handling $83/vehicle, BL Processing $50, Wharfage $31/vehicle, Service & Facilities $20/unit
-- Wilmington (Ports America): Passenger $30/vehicle/day, Commercial/HH $19.65/MT/day, Non-TWIC escort $100
-- Long Beach (SSA Marine) & Matson: Rates pending confirmation
-
-WORKFLOW FOR GENERATING QUOTES:
-1. Call generate_quote with: zone, service_type, quantity, is_military (if applicable), surcharges
-2. Shows line-item breakdown with base price, surcharges, and total
-3. Can then add_service_item_to_opportunity to save to a job
-
-EXAMPLES:
-- "Quote for 1 car escort in LA" → generate_quote(zone='LA Local', service='twic_escort', quantity=1)
-  Result: $95–$325 (zone base applies to base service)
-
-- "Quote 3 car escorts with winching in Orange County" → generate_quote(zone='Orange County', service='twic_escort', quantity=3, surcharges=['winching'])
-  Result: $95×3=$285 + $125 winching = $410
-
-- "Hotshot to San Diego plus oversized" → generate_quote(zone='San Diego', service='hotshot', quantity=1, surcharges=['oversized'])
-  Result: $200 hotshot + $125 oversized = $325
-
-- "2 semi containers, non-operating situation in Riverside" → generate_quote(zone='Riverside/San Bernardino', service='semi_container', quantity=2, surcharges=['non-operating'])
-  Result: $325×2=$650 + $200 non-operating = $850
-
-ALWAYS FOR QUOTES:
-1. Ask for zone/location if not provided
-2. Clarify if military/PCS (applies $80 instead of $95 for escort)
-3. List applicable surcharges
-4. Show complete breakdown
-5. Offer to add to specific job in pipeline
-
-PIPELINE STAGES (use these EXACT names — this org's pipeline is NOT a generic sales pipeline):
-Not Customs Cleared → Customs Cleared → New Booking → Scheduled → In Progress → Completed → Paid → Canceled
-New jobs normally start at "New Booking". Never invent stage names like "lead" or "qualified" — they do not exist in this pipeline and will fail.
+${stageNames.length ? `PIPELINE STAGES for ${orgName} (use these EXACT names — this org's own pipeline stage names, not a generic sales pipeline):
+${stageNames.join(' → ')}
+${intakeStageName ? `New jobs normally start at "${intakeStageName}". ` : ''}Never invent a stage name not in this list — it does not exist in this pipeline and will fail.` : `This organization has no pipeline stages configured yet. Tell the user to set up their pipeline under Settings before creating or moving deals.`}
 
 CREATING A NEW BOOKING FROM CHAT (natural-language requests only — the booking sidebar UI uses its own direct endpoint, not you):
 1. Call create_contact if customer is new (use full_name and email from prompt)
-2. Call create_opportunity with the contact_id, a descriptive title, deal_value, and stage="New Booking"
+2. Call create_opportunity with the contact_id, a descriptive title, deal_value, and stage="${intakeStageName || '<the intake stage from the PIPELINE STAGES list above>'}"
 3. If asked, call send_email for delivery_order_request and/or payment_link_request
 4. Confirm booking complete with contact name, deal value, and services added
 
@@ -1002,17 +791,17 @@ SENDING CUSTOMER EMAILS:
 Use send_email tool to send messages to customers. Two message types:
 
 1. Delivery Order Request (send first):
-   - send_email(customer_email="email@example.com", customer_name="John Doe", message_type="delivery_order_request", booking_details="1x TWIC Escort in LA Local - $95")
+   - send_email(customer_email="email@example.com", customer_name="John Doe", message_type="delivery_order_request", booking_details="1x Escort Service - $95")
    - Asks customer for POA and delivery order details
    - SEND THIS FIRST before asking for payment
 
 2. Payment Link Request (send after cleared):
-   - send_email(customer_email="email@example.com", customer_name="John Doe", message_type="payment_link_request", booking_amount=95, booking_details="1x TWIC Escort in LA Local")
-   - Requests payment once vehicle is cleared
-   - ONLY send this after confirmation from user that car is cleared
+   - send_email(customer_email="email@example.com", customer_name="John Doe", message_type="payment_link_request", booking_amount=95, booking_details="1x Escort Service")
+   - Requests payment once the job is ready
+   - ONLY send this after confirmation from user that the job is cleared/ready
 
 `,
-          tools: AGENT_TOOLS,
+          tools: agentTools,
           messages,
         })
         console.log(`📍 Claude API response received successfully`)
@@ -1041,7 +830,7 @@ Use send_email tool to send messages to customers. Two message types:
           if (block.type === 'tool_use') {
             console.log(`📍 Tool call: ${block.name}`)
             try {
-              const { result, clientEvent } = await executeTool(block.name, block.input, orgId)
+              const { result, clientEvent } = await executeTool(block.name, block.input, orgId, orgName)
               console.log(`📍 Tool ${block.name} succeeded:`, JSON.stringify(result).substring(0, 100))
 
               if (clientEvent) clientEvents.push(clientEvent)

@@ -51,10 +51,12 @@ Gmail OAuth secrets).
 **What this pass deliberately did NOT fix**, and why it's out of scope for
 "foundation, no self-serve":
 
-- `public-booking.js`, `calendly-webhook`, `gmail-sync` (both the Netlify
-  and Supabase Edge Function versions), `gmail-enrichment`, `ai-draft-reply`,
-  and `wave-payment-sync`/`wave-webhook` all hardcode a single `ORG_ID` (or
-  read one shared credential set). Making these genuinely multi-tenant means
+- `public-booking.js`, `calendly-webhook`, and `wave-payment-sync`/
+  `wave-webhook` all hardcode a single `ORG_ID` (or read one shared
+  credential set). (`gmail-sync`, `gmail-enrichment`, `ai-draft-reply`, and
+  the AI Assistant's `agent-controller.js` have since been fixed to be
+  properly per-org — see their own docs/comments.) Making the rest genuinely
+  multi-tenant means
   real product decisions this pass can't make for you: does a second client
   get their own Calendly account, their own Gmail address, their own Wave
   business? How does an inbound webhook even know which org it's for (a

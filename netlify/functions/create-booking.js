@@ -1,52 +1,13 @@
 import { admin, userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
 import { getDefaultPipeline, getIntakeStage } from './_shared/pipeline.js'
 import { sendCustomerEmail } from './_shared/email.js'
+import { buildBookingEmail } from './_shared/bookingEmails.js'
 
 const json = (statusCode, body) => ({
   statusCode,
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body),
 })
-
-function buildEmail(messageType, { customerName, bookingAmount, bookingDetails, orgName }) {
-  const brand = orgName || 'Dispatch'
-  if (messageType === 'delivery_order_request') {
-    return {
-      subject: `${brand} - Delivery Order Needed`,
-      body: `Hi ${customerName},
-
-We're ready to proceed with your booking!
-
-To complete your reservation, please provide:
-- Proof of Authorization (POA)
-- Delivery order details
-- Estimated delivery date/time
-
-${bookingDetails ? `Booking Details:\n${bookingDetails}\n\n` : ''}Please reply with the required information so we can finalize your shipment.
-
-Best regards,
-${brand}`,
-    }
-  }
-
-  if (messageType === 'payment_link_request') {
-    return {
-      subject: `${brand} - Payment Required`,
-      body: `Hi ${customerName},
-
-Your vehicle is now cleared and ready to ship!
-
-Booking Amount: $${bookingAmount}
-
-${bookingDetails ? `Booking Details:\n${bookingDetails}\n\n` : ''}Please proceed with payment to secure your shipment. A payment link has been attached.
-
-Thank you,
-${brand}`,
-    }
-  }
-
-  return null
-}
 
 export const handler = async (event) => {
   try {
@@ -138,7 +99,7 @@ export const handler = async (event) => {
       emailErrors.push('Contact has no email on file — could not send the requested email(s).')
     } else {
       if (sendDeliveryOrder) {
-        const email = buildEmail('delivery_order_request', { customerName: contact.full_name, bookingDetails: lineItemsSummary, orgName })
+        const email = buildBookingEmail('delivery_order_request', { customerName: contact.full_name, bookingDetails: lineItemsSummary, orgName })
         try {
           await sendCustomerEmail({ orgId, to: contact.email, subject: email.subject, body: email.body, contactId: contact.id })
           emailsSent.push('delivery_order_request')
@@ -148,7 +109,7 @@ export const handler = async (event) => {
         }
       }
       if (sendPaymentLink) {
-        const email = buildEmail('payment_link_request', { customerName: contact.full_name, bookingAmount: totalValue, bookingDetails: lineItemsSummary, orgName })
+        const email = buildBookingEmail('payment_link_request', { customerName: contact.full_name, bookingAmount: totalValue, bookingDetails: lineItemsSummary, orgName })
         try {
           await sendCustomerEmail({ orgId, to: contact.email, subject: email.subject, body: email.body, contactId: contact.id })
           emailsSent.push('payment_link_request')

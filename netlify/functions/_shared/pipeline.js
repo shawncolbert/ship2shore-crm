@@ -47,3 +47,20 @@ export async function getIntakeStage(orgId) {
     null
   )
 }
+
+// This org's actual pipeline stage names, in board order -- for anything
+// (like the AI assistant's tool schemas) that needs to offer/validate a
+// closed set of stage choices without assuming what those stages are
+// called, since stage names are org-defined, not fixed by this codebase.
+export async function listStageNames(orgId) {
+  const pipeline = await getDefaultPipeline(orgId)
+  if (!pipeline) return []
+
+  const { data } = await admin
+    .from('stages')
+    .select('name')
+    .eq('pipeline_id', pipeline.id)
+    .order('position', { ascending: true })
+
+  return (data || []).map((s) => s.name)
+}
