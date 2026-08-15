@@ -1,5 +1,6 @@
 import { admin, userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
 import { sendCustomerEmail } from './_shared/email.js'
+import { resolveInvoicePaymentOptions, buildInvoicePaymentOptionsHtml } from './_shared/invoicePaymentOptions.js'
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -38,27 +39,28 @@ async function createStripePaymentLink({ invoice, publicUrl }) {
   return { id: data.id, url: data.url }
 }
 
-function invoiceEmailHtml({ invoice, publicUrl, payNowUrl }) {
+function invoiceEmailHtml({ invoice, publicUrl, paymentOptions }) {
   const money = (n) => `$${Number(n || 0).toFixed(2)}`
   return `
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
       <p>You have a new invoice: <strong>${invoice.invoice_number}</strong></p>
       <p>Amount due: <strong>${money(invoice.amount_due)}</strong>${invoice.due_date ? ` — due ${invoice.due_date}` : ''}</p>
-      <p style="margin:24px 0;">
-        <a href="${payNowUrl || publicUrl}" style="background:#059669;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">
-          ${payNowUrl ? 'Pay Now' : 'View Invoice'}
-        </a>
+      ${buildInvoicePaymentOptionsHtml(paymentOptions, invoice.amount_due)}
+      <p style="margin:20px 0 4px;font-size:13px;color:#666;">
+        ${paymentOptions.length ? 'Or view' : 'View'} the full invoice any time: <a href="${publicUrl}">${publicUrl}</a>
       </p>
-      <p style="font-size:13px;color:#666;">Or view the full invoice any time: <a href="${publicUrl}">${publicUrl}</a></p>
     </div>
   `
 }
 
 // Marks an invoice as sent, generates a live Stripe payment link if Stripe
-// is configured for this deployment (STRIPE_SECRET_KEY), and emails the
-// customer from the org's own connected Gmail account. Stripe is optional --
-// a not-yet-connected Stripe account never blocks sending; the customer just
-// gets a "View Invoice" link instead of "Pay Now" until it's wired in, and
+// is configured for this deployment (STRIPE_SECRET_KEY) and enabled for this
+// invoice, and emails the customer from the org's own connected Gmail
+// account with whichever payment options (Stripe, a pasted Wave Checkout
+// link, and/or the org's Zelle/Venmo/Cash App/Apple Pay handles) were
+// checked on this invoice. None of these are required -- a not-yet-connected
+// Stripe account, or an invoice with every option unchecked, never blocks
+// sending; the customer just gets a plain "View Invoice" link instead, and
 // the caller (InvoiceDetail.jsx) makes that state clearly visible, never a
 // silent gap.
 export const handler = async (event) => {
@@ -82,30 +84,37 @@ export const handler = async (event) => {
   if (!invoice.bill_to_email) return json(400, { error: 'Bill To email is required to send an invoice.' })
 
   const publicUrl = `${siteOrigin(event)}/invoice/${invoice.id}`
+  const stripeWanted = invoice.payment_options?.stripe !== false
   const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY)
 
-  let payNowUrl = invoice.stripe_payment_link_url || null
+  let stripeUrl = invoice.stripe_payment_link_url || null
   let paymentLinkId = invoice.stripe_payment_link_id || null
-  if (stripeConfigured) {
+  if (stripeWanted && stripeConfigured) {
     try {
       const link = await createStripePaymentLink({ invoice, publicUrl })
-      payNowUrl = link.url
+      stripeUrl = link.url
       paymentLinkId = link.id
     } catch (e) {
       // A Stripe hiccup shouldn't block sending the invoice itself --
       // the customer still gets a valid "View Invoice" link either way.
-      payNowUrl = null
+      stripeUrl = null
     }
+  } else if (!stripeWanted) {
+    stripeUrl = null
   }
 
   const { error: updErr } = await admin.from('invoices').update({
     status: invoice.status === 'paid' ? 'paid' : 'sent',
     sent_at: new Date().toISOString(),
-    stripe_payment_link_url: payNowUrl,
+    stripe_payment_link_url: stripeUrl,
     stripe_payment_link_id: paymentLinkId,
     updated_at: new Date().toISOString(),
   }).eq('id', invoice.id)
   if (updErr) return json(500, { error: updErr.message })
+
+  const { data: paymentSettings } = await admin
+    .from('payment_settings').select('*').eq('org_id', orgId).maybeSingle()
+  const paymentOptions = resolveInvoicePaymentOptions({ invoice: { ...invoice, stripe_payment_link_url: stripeUrl }, paymentSettings, stripeUrl })
 
   let emailSent = false
   let emailError = null
@@ -114,8 +123,8 @@ export const handler = async (event) => {
       orgId,
       to: invoice.bill_to_email,
       subject: `Invoice ${invoice.invoice_number} — ${Number(invoice.amount_due).toFixed(2)} due`,
-      body: `You have a new invoice (${invoice.invoice_number}). View and pay it here: ${payNowUrl || publicUrl}`,
-      html: invoiceEmailHtml({ invoice, publicUrl, payNowUrl }),
+      body: `You have a new invoice (${invoice.invoice_number}). View it here: ${publicUrl}`,
+      html: invoiceEmailHtml({ invoice, publicUrl, paymentOptions }),
       contactId: invoice.contact_id,
     })
     emailSent = true
@@ -124,7 +133,9 @@ export const handler = async (event) => {
   }
 
   return json(200, {
-    ok: true, status: 'sent', stripeConfigured: stripeConfigured && Boolean(payNowUrl),
-    paymentLinkUrl: payNowUrl, publicUrl, emailSent, emailError,
+    ok: true, status: 'sent',
+    stripeConfigured: stripeWanted && stripeConfigured && Boolean(stripeUrl),
+    paymentOptionsSent: paymentOptions.map((o) => o.label),
+    paymentLinkUrl: stripeUrl, publicUrl, emailSent, emailError,
   })
 }

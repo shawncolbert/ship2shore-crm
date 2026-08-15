@@ -101,6 +101,8 @@ export async function createInvoice({ fields, lineItems }) {
       notes: fields.notes?.trim() || null,
       subtotal, total, amount_due: total,
       status: 'draft',
+      wave_checkout_url: fields.wave_checkout_url?.trim() || null,
+      payment_options: fields.payment_options || { stripe: true },
     })
     .select('*')
     .single()
@@ -133,6 +135,8 @@ export async function updateInvoice(id, { fields, lineItems }) {
       // A paid invoice's amount_due stays 0 even if line items are edited
       // afterward -- editing history, not reopening a closed invoice.
       amount_due: fields.status === 'paid' ? 0 : total,
+      wave_checkout_url: fields.wave_checkout_url?.trim() || null,
+      payment_options: fields.payment_options || { stripe: true },
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)

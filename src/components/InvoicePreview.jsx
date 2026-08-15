@@ -8,17 +8,32 @@ const fmtDate = (d) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString('en-US'
 // Bill To / Ship To / invoice meta row, red services table header, totals
 // block, notes/terms footer -- so switching off Wave doesn't mean handing
 // customers something that looks like a downgrade.
-export default function InvoicePreview({ businessInfo, invoice, lineItems, payNowUrl }) {
+export default function InvoicePreview({ businessInfo, invoice, lineItems, paymentOptions }) {
   const bizName = businessInfo?.invoice_business_name || businessInfo?.name || 'Your Business'
+  const linkOptions = (paymentOptions || []).filter((o) => o.kind === 'link')
+  const handleOptions = (paymentOptions || []).filter((o) => o.kind === 'handle')
 
   return (
     <div className="mx-auto w-full max-w-3xl rounded-lg border border-line bg-white p-8 text-slate-900 shadow-sm">
-      {payNowUrl && invoice?.status !== 'paid' && (
-        <div className="mb-6 flex items-center justify-between gap-3 rounded-lg bg-emerald-50 px-4 py-3">
-          <span className="text-sm text-emerald-800">This invoice is ready for payment.</span>
-          <a href={payNowUrl} className="shrink-0 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-bold text-white hover:bg-emerald-700">
-            Pay Now
-          </a>
+      {(linkOptions.length > 0 || handleOptions.length > 0) && invoice?.status !== 'paid' && (
+        <div className="mb-6 rounded-lg bg-emerald-50 px-4 py-3">
+          <p className="text-sm text-emerald-800">This invoice is ready for payment.</p>
+          {linkOptions.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {linkOptions.map((o) => (
+                <a key={o.method} href={o.url} className="shrink-0 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-bold text-white hover:bg-emerald-700">
+                  Pay with {o.label}
+                </a>
+              ))}
+            </div>
+          )}
+          {handleOptions.length > 0 && (
+            <ul className="mt-2 space-y-0.5 text-sm text-emerald-800">
+              {handleOptions.map((o) => (
+                <li key={o.method}><strong>{o.label}:</strong> {o.handle}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
       {invoice?.status === 'paid' && (

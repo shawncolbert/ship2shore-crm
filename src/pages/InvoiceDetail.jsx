@@ -5,7 +5,16 @@ import {
   fetchInvoice, fetchInvoiceBusinessInfo, fetchContactsForInvoice, fetchServicesForInvoice,
   createInvoice, updateInvoice, sendInvoice, markInvoicePaidManually, computeTotals,
 } from '../lib/invoices'
+import { fetchPaymentSettings } from '../lib/supabase'
 import InvoicePreview from '../components/InvoicePreview'
+
+const DEFAULT_PAYMENT_OPTIONS = { stripe: true, wave: false, zelle: false, venmo: false, cashapp: false, apple_pay: false }
+const HANDLE_METHODS = [
+  { key: 'zelle', field: 'zelle_handle', label: 'Zelle' },
+  { key: 'venmo', field: 'venmo_handle', label: 'Venmo' },
+  { key: 'cashapp', field: 'cashapp_handle', label: 'Cash App' },
+  { key: 'apple_pay', field: 'apple_pay_handle', label: 'Apple Pay' },
+]
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)] space-y-3'
 const btnAccent = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-accent px-4 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
@@ -41,12 +50,15 @@ export default function InvoiceDetail() {
   const { data: businessInfo } = useQuery({ queryKey: ['invoiceBusinessInfo'], queryFn: fetchInvoiceBusinessInfo })
   const { data: contacts } = useQuery({ queryKey: ['contactsForInvoice'], queryFn: fetchContactsForInvoice })
   const { data: services } = useQuery({ queryKey: ['servicesForInvoice'], queryFn: fetchServicesForInvoice })
+  const { data: paymentSettings } = useQuery({ queryKey: ['paymentSettings'], queryFn: fetchPaymentSettings })
   const { data: existing, isLoading } = useQuery({
     queryKey: ['invoice', id], queryFn: () => fetchInvoice(id), enabled: !isNew,
   })
 
   const [fields, setFields] = useState(EMPTY_FIELDS)
   const [lineItems, setLineItems] = useState([blankLineItem()])
+  const [paymentOptions, setPaymentOptions] = useState(DEFAULT_PAYMENT_OPTIONS)
+  const [waveCheckoutUrl, setWaveCheckoutUrl] = useState('')
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
   const [err, setErr] = useState('')
@@ -71,8 +83,12 @@ export default function InvoiceDetail() {
           ? existing.lineItems.map((li) => ({ service_id: li.service_id || '', description: li.description, quantity: li.quantity, unit_price: li.unit_price }))
           : [blankLineItem()]
       )
+      setPaymentOptions({ ...DEFAULT_PAYMENT_OPTIONS, ...(inv.payment_options || {}) })
+      setWaveCheckoutUrl(inv.wave_checkout_url || '')
     }
   }, [existing])
+
+  const togglePaymentOption = (key) => setPaymentOptions((o) => ({ ...o, [key]: !o[key] }))
 
   if (!isNew && isLoading) return <div className="p-8 text-sm text-muted">Loading…</div>
 
@@ -104,13 +120,28 @@ export default function InvoiceDetail() {
     paid_at: invoice?.paid_at, payment_method: invoice?.payment_method,
   }
 
+  // Live-preview version of the send-time resolver in
+  // _shared/invoicePaymentOptions.js -- Stripe's real link doesn't exist
+  // until send, so it previews with a placeholder href just to show the
+  // button will be there.
+  const previewPaymentOptions = [
+    ...(paymentOptions.stripe ? [{ method: 'stripe', label: 'Card (Stripe)', kind: 'link', url: '#' }] : []),
+    ...(paymentOptions.wave && waveCheckoutUrl.trim() ? [{ method: 'wave', label: 'Wave Checkout', kind: 'link', url: waveCheckoutUrl.trim() }] : []),
+    ...HANDLE_METHODS.filter((m) => paymentOptions[m.key] && paymentSettings?.[m.field]).map((m) => ({
+      method: m.key, label: m.label,
+      kind: m.key === 'venmo' || m.key === 'cashapp' ? 'link' : 'handle',
+      url: '#', handle: paymentSettings[m.field],
+    })),
+  ]
+
   const doSave = async () => {
     if (usableLineItems.length === 0) { setErr('Add at least one line item first.'); return null }
     setErr(''); setSaving(true)
     try {
+      const fieldsToSave = { ...fields, payment_options: paymentOptions, wave_checkout_url: waveCheckoutUrl }
       const result = isNew && !invoiceId
-        ? await createInvoice({ fields, lineItems: usableLineItems })
-        : await updateInvoice(invoiceId || id, { fields, lineItems: usableLineItems })
+        ? await createInvoice({ fields: fieldsToSave, lineItems: usableLineItems })
+        : await updateInvoice(invoiceId || id, { fields: fieldsToSave, lineItems: usableLineItems })
       setInvoiceId(result.invoice.id)
       qc.invalidateQueries({ queryKey: ['invoices'] })
       qc.invalidateQueries({ queryKey: ['invoice', result.invoice.id] })
@@ -140,10 +171,12 @@ export default function InvoiceDetail() {
       qc.invalidateQueries({ queryKey: ['invoices'] })
       if (!result.emailSent) {
         setNotice({ type: 'warning', text: `Invoice saved as sent, but the email didn't go out: ${result.emailError || 'unknown error'}. Share the customer page link directly instead: ${result.publicUrl}` })
-      } else if (!result.stripeConfigured) {
-        setNotice({ type: 'warning', text: 'Invoice emailed — but Stripe isn’t connected yet, so there’s no live Pay Now link. The customer can view the invoice; connect Stripe in Payments to enable online payment.' })
+      } else if (paymentOptions.stripe && !result.stripeConfigured) {
+        setNotice({ type: 'warning', text: `Invoice emailed — but Stripe isn't connected yet, so there's no live Stripe link. ${result.paymentOptionsSent?.length ? `Sent with: ${result.paymentOptionsSent.join(', ')}.` : 'No other payment option was checked, so the customer only got a view link.'} Connect Stripe in Payments to enable it.` })
+      } else if (!result.paymentOptionsSent?.length) {
+        setNotice({ type: 'warning', text: 'Invoice emailed, but no payment option was actually included — check a box under Payment Options (and make sure any handle/link it needs is filled in) before sending again, or use "View customer page" to share it manually.' })
       } else {
-        setNotice({ type: 'success', text: 'Invoice emailed with a live Pay Now link.' })
+        setNotice({ type: 'success', text: `Invoice emailed with: ${result.paymentOptionsSent.join(', ')}.` })
       }
     } catch (e) {
       setErr(e.message || 'Could not send this invoice.')
@@ -258,6 +291,53 @@ export default function InvoiceDetail() {
               <div className="flex justify-end border-t border-line pt-3 text-sm font-bold text-ink">Total: {money(total)}</div>
             </section>
 
+            <section className={card}>
+              <h2 className="text-sm font-semibold text-ink">Payment options</h2>
+              <p className="-mt-1 text-xs text-muted">Pick which ways to pay show up when this invoice goes out.</p>
+
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input type="checkbox" checked={paymentOptions.stripe} onChange={() => togglePaymentOption('stripe')} className="h-4 w-4 rounded border-line" />
+                Stripe (automatic pay-now link, if connected)
+              </label>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input type="checkbox" checked={paymentOptions.wave} onChange={() => togglePaymentOption('wave')} className="h-4 w-4 rounded border-line" />
+                  Wave Checkout link
+                </label>
+                {paymentOptions.wave && (
+                  <div className="mt-1.5 ml-6">
+                    <input
+                      value={waveCheckoutUrl}
+                      onChange={(e) => setWaveCheckoutUrl(e.target.value)}
+                      placeholder="https://link.waveapps.com/…"
+                      className={input}
+                    />
+                    <p className="mt-1 text-[11px] text-muted">
+                      Wave links only work once — paste a fresh one generated for this invoice's exact amount ({money(total)}). Don't reuse a link that's already been paid.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {HANDLE_METHODS.map((m) => {
+                const handle = paymentSettings?.[m.field]
+                return (
+                  <label key={m.key} className={`flex items-center gap-2 text-sm ${handle ? 'text-ink' : 'text-muted'}`}>
+                    <input
+                      type="checkbox"
+                      checked={paymentOptions[m.key]}
+                      disabled={!handle}
+                      onChange={() => togglePaymentOption(m.key)}
+                      className="h-4 w-4 rounded border-line"
+                    />
+                    {m.label}
+                    {handle ? <span className="text-xs text-muted">({handle})</span> : <Link to="/payment-settings" className="text-xs text-accent hover:underline">set handle in Payment Settings</Link>}
+                  </label>
+                )
+              })}
+            </section>
+
             {!locked && (
               <div className="flex flex-wrap justify-end gap-2">
                 <button onClick={handleSaveDraft} disabled={saving || sending} className={btn}>
@@ -273,7 +353,7 @@ export default function InvoiceDetail() {
 
         {/* Live preview */}
         <div className="lg:sticky lg:top-6 lg:self-start">
-          <InvoicePreview businessInfo={businessInfo} invoice={previewInvoice} lineItems={usableLineItems} />
+          <InvoicePreview businessInfo={businessInfo} invoice={previewInvoice} lineItems={usableLineItems} paymentOptions={previewPaymentOptions} />
         </div>
       </div>
     </div>

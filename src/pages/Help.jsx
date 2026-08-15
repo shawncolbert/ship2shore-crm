@@ -90,7 +90,14 @@ const SECTIONS = [
       check, Venmo in person)? Open the invoice and click "Mark as Paid" to record it manually — nothing gets
       stuck showing a balance forever just because it wasn't paid online. Connecting Stripe itself isn't
       self-serve yet (it's a secret key an admin adds to the deployment) — until it's connected, invoices
-      still send and customers can still view them, there's just no live Pay Now button yet.`,
+      still send and customers can still view them, there's just no live Pay Now button yet.
+
+      Every invoice has its own "Payment options" section where you check off which ways to pay actually go
+      out with it: the Stripe pay-now link, and/or your Zelle/Venmo/Cash App/Apple Pay handles from Payment
+      Settings. There's also a Wave Checkout box — Wave's simple payment links work without needing Wave's
+      paid API tier, but each one is single-use, so generate a fresh link in Wave for this invoice's exact
+      amount, paste it in, and check the box. Only the options you check are shown to the customer; nothing
+      is included by default except Stripe.`,
   },
   {
     id: 'scheduling',

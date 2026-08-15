@@ -38,7 +38,7 @@ export default function PublicInvoice() {
         businessInfo={data.businessInfo}
         invoice={data.invoice}
         lineItems={data.lineItems}
-        payNowUrl={data.payNowUrl}
+        paymentOptions={data.paymentOptions}
       />
     </div>
   )

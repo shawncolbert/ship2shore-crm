@@ -1,4 +1,5 @@
 import { admin } from './_shared/supabaseAdmin.js'
+import { resolveInvoicePaymentOptions } from './_shared/invoicePaymentOptions.js'
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -22,22 +23,25 @@ export const handler = async (event) => {
 
   const { data: invoice, error: invErr } = await admin
     .from('invoices')
-    .select('id, org_id, invoice_number, po_number, bill_to_name, bill_to_address, bill_to_phone, bill_to_email, ship_to_name, ship_to_address, ship_to_phone, invoice_date, due_date, status, notes, subtotal, total, amount_due, stripe_payment_link_url, paid_at, payment_method')
+    .select('id, org_id, invoice_number, po_number, bill_to_name, bill_to_address, bill_to_phone, bill_to_email, ship_to_name, ship_to_address, ship_to_phone, invoice_date, due_date, status, notes, subtotal, total, amount_due, stripe_payment_link_url, wave_checkout_url, payment_options, paid_at, payment_method')
     .eq('id', id)
     .maybeSingle()
   if (invErr) return json(500, { error: invErr.message })
   if (!invoice) return json(404, { error: 'Invoice not found.' })
 
-  const [{ data: lineItems }, { data: org }] = await Promise.all([
+  const [{ data: lineItems }, { data: org }, { data: paymentSettings }] = await Promise.all([
     admin.from('invoice_line_items').select('description, quantity, unit_price').eq('invoice_id', id).order('sort_order', { ascending: true }),
     admin.from('organizations').select('name, logo_url, invoice_business_name, invoice_business_address, invoice_business_phone, invoice_business_website').eq('id', invoice.org_id).maybeSingle(),
+    admin.from('payment_settings').select('*').eq('org_id', invoice.org_id).maybeSingle(),
   ])
 
-  const { org_id, ...publicInvoice } = invoice
+  const paymentOptions = resolveInvoicePaymentOptions({ invoice, paymentSettings, stripeUrl: invoice.stripe_payment_link_url })
+
+  const { org_id, payment_options, ...publicInvoice } = invoice
   return json(200, {
     invoice: publicInvoice,
     lineItems: lineItems || [],
     businessInfo: org || null,
-    payNowUrl: invoice.stripe_payment_link_url || null,
+    paymentOptions,
   })
 }
