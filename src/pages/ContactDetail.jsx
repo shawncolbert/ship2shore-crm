@@ -2,7 +2,7 @@ import { useState, useRef, Fragment } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import {
-  fetchContact, fetchMyOrgId, fetchAttachments, uploadDeliveryOrder,
+  fetchContact, fetchMyOrgId, fetchMyOrg, fetchAttachments, uploadDeliveryOrder,
   signedAttachmentUrl, deleteAttachment, createUploadLink, updateContact,
   sendEmail, markAttachmentViewed, deleteAppointment, renameAttachment, fetchSignedUrls,
 } from '../lib/supabase'
@@ -28,6 +28,7 @@ export default function ContactDetail() {
   const qc = useQueryClient()
   const [emailOpen, setEmailOpen] = useState(false)
   const { data, isLoading, error } = useQuery({ queryKey: ['contact', id], queryFn: () => fetchContact(id) })
+  const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
 
   if (isLoading) return <div className="p-8 text-sm text-muted">Loading…</div>
   if (error) return <div className="p-8 text-sm text-port">Couldn’t load this contact.</div>
@@ -58,13 +59,19 @@ export default function ContactDetail() {
           {contact.email && (
             <button className={btn} onClick={() => setEmailOpen(true)}>✉️ Email</button>
           )}
-          <a className={btnAccent} href={calendlyPrefillUrl(contact)} target="_blank" rel="noreferrer">📅 Book</a>
+          {org?.calendly_url ? (
+            <a className={btnAccent} href={calendlyPrefillUrl(contact, org.calendly_url)} target="_blank" rel="noreferrer">📅 Book</a>
+          ) : (
+            <Link to="/settings/scheduling" className={btn} title="No scheduling link set up yet for your organization">
+              📅 Connect Calendly to book
+            </Link>
+          )}
         </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left: details */}
-        <ContactDetails contact={contact} />
+        <ContactDetails contact={contact} orgName={org?.name} />
 
         {/* Middle: jobs + appointments + timeline */}
         <section className="space-y-6 lg:col-span-2">
@@ -148,23 +155,36 @@ export default function ContactDetail() {
         <DeliveryOrders contact={contact} jobs={jobs} />
       </div>
 
-      {/* Live Calendly booking, prefilled */}
-      <div className={`mt-6 ${card}`}>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className={h2}>Schedule appointment</h2>
-          <a className="text-sm text-accent hover:underline" href={calendlyPrefillUrl(contact)} target="_blank" rel="noreferrer">Open in new tab ↗</a>
+      {/* Live Calendly booking, prefilled -- only for orgs that have connected
+          their own Calendly link (Settings > Scheduling). Never falls back to
+          another org's calendar. */}
+      {org?.calendly_url ? (
+        <div className={`mt-6 ${card}`}>
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className={h2}>Schedule appointment</h2>
+            <a className="text-sm text-accent hover:underline" href={calendlyPrefillUrl(contact, org.calendly_url)} target="_blank" rel="noreferrer">Open in new tab ↗</a>
+          </div>
+          <p className="mb-3 text-sm text-muted">
+            Prefilled with {contact.full_name || 'this contact'}{contact.email ? ` · ${contact.email}` : ''}. Pick a time to book.
+          </p>
+          <iframe
+            title="Book on Calendly"
+            src={calendlyPrefillUrl(contact, org.calendly_url, { embed: true })}
+            className="w-full rounded-lg border border-line"
+            style={{ height: 640 }}
+            loading="lazy"
+          />
         </div>
-        <p className="mb-3 text-sm text-muted">
-          Prefilled with {contact.full_name || 'this contact'}{contact.email ? ` · ${contact.email}` : ''}. Pick a time to book.
-        </p>
-        <iframe
-          title="Book on Calendly"
-          src={calendlyPrefillUrl(contact, { embed: true })}
-          className="w-full rounded-lg border border-line"
-          style={{ height: 640 }}
-          loading="lazy"
-        />
-      </div>
+      ) : (
+        <div className={`mt-6 ${card}`}>
+          <h2 className={h2}>Schedule appointment</h2>
+          <p className="text-sm text-muted">
+            No scheduling link connected yet. Go to{' '}
+            <Link to="/settings/scheduling" className="text-accent hover:underline">Settings → Scheduling</Link>{' '}
+            and paste in your own Calendly link to enable booking from here.
+          </p>
+        </div>
+      )}
 
       {emailOpen && <EmailComposer contact={contact} onClose={() => setEmailOpen(false)} />}
     </div>
@@ -576,7 +596,7 @@ function AttachmentRow({ f, kb, onDownload, onRemove, onRenamed }) {
 
 const emailOk = (e) => !e || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim())
 
-function ContactDetails({ contact }) {
+function ContactDetails({ contact, orgName }) {
   const qc = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -650,7 +670,7 @@ function ContactDetails({ contact }) {
         <Row label="Phone" value={contact.phone
           ? <a className="text-accent hover:underline" href={`tel:${contact.phone}`}>{contact.phone}</a> : null} />
         <Row label="Email" value={contact.email
-          ? <a className="text-accent hover:underline" href={mailtoUrl(contact)}>{contact.email}</a> : null} />
+          ? <a className="text-accent hover:underline" href={mailtoUrl(contact, orgName)}>{contact.email}</a> : null} />
         {contact.custom_fields?.title && <Row label="Title" value={contact.custom_fields.title} />}
         {contact.custom_fields?.address && <Row label="Address" value={contact.custom_fields.address} />}
         {contact.custom_fields?.website && (

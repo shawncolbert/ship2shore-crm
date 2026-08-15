@@ -93,6 +93,16 @@ const SECTIONS = [
       still send and customers can still view them, there's just no live Pay Now button yet.`,
   },
   {
+    id: 'scheduling',
+    title: 'Scheduling',
+    nav: '/settings/scheduling',
+    body: `Connects your own Calendly account to the "Book" button and the embedded scheduler on every
+      contact's page. Paste in your Calendly link here once and every contact's Book button opens your
+      calendar with their name/email/phone already filled in. Every organization sharing this system has
+      its own — if this isn't set, Book and the scheduler stay hidden rather than defaulting to anyone
+      else's calendar.`,
+  },
+  {
     id: 'business-card',
     title: 'Digital Business Cards',
     nav: '/settings/card-links',
@@ -275,40 +285,47 @@ export default function Help() {
           <li className={step}>
             <span className={stepNum}>5</span>
             <div>
+              <p className="text-sm font-semibold text-ink">Connect your Calendly</p>
+              <p className="text-sm text-muted">Go to <a href="/settings/scheduling" className="text-accent hover:underline">Scheduling</a> and paste in your own Calendly link. This is required too — until it's set, the "Book" button and scheduler on a contact's page stay hidden rather than showing anyone else's calendar.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>6</span>
+            <div>
               <p className="text-sm font-semibold text-ink">Set up your (or your drivers') digital business cards</p>
               <p className="text-sm text-muted">Go to <a href="/settings/card-links" className="text-accent hover:underline">Digital Business Cards</a>, click "+ Add a card" → "Set up a new card here," fill in one form, and copy the link it gives you at the end.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>6</span>
+            <span className={stepNum}>7</span>
             <div>
               <p className="text-sm font-semibold text-ink">Bring in your existing contacts</p>
               <p className="text-sm text-muted">Go to <a href="/contacts" className="text-accent hover:underline">Contacts</a> → "Import" to bring in your whole phone/CRM contact list at once (CSV or vCard), or use "Scan card" any time to add someone one photographed business card at a time.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>7</span>
+            <span className={stepNum}>8</span>
             <div>
               <p className="text-sm font-semibold text-ink">Create a test booking</p>
               <p className="text-sm text-muted">From the <a href="/" className="text-accent hover:underline">Dashboard</a>, click "+ New Booking" and walk through it once so you know what a customer's job looks like on your pipeline.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>8</span>
+            <span className={stepNum}>9</span>
             <div>
               <p className="text-sm font-semibold text-ink">Make it look like your business</p>
               <p className="text-sm text-muted">Go to <a href="/settings/appearance" className="text-accent hover:underline">Appearance</a> and pick one of seven dashboard layouts (plus light/dark mode) — applies for your whole organization, changes any time.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>9</span>
+            <span className={stepNum}>10</span>
             <div>
               <p className="text-sm font-semibold text-ink">Connect TikTok (optional)</p>
               <p className="text-sm text-muted">Only needed if you want to auto-publish social posts. Go to <a href="/social-posts" className="text-accent hover:underline">Social Posts</a> and click "Connect TikTok." Skip this if you'll only ever draft posts and post them yourself.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>10</span>
+            <span className={stepNum}>11</span>
             <div>
               <p className="text-sm font-semibold text-ink">Need a teammate added, or something changed?</p>
               <p className="text-sm text-muted">Adding additional users to your account isn't self-serve yet — reach out and we'll get them set up.</p>

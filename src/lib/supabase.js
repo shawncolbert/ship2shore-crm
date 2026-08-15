@@ -124,11 +124,17 @@ export async function fetchMyOrg() {
   const orgId = await fetchMyOrgId()
   const { data, error } = await supabase
     .from('organizations')
-    .select('id, name, slug, logo_url, primary_color, enabled_features, theme_mode, theme_preset')
+    .select('id, name, slug, logo_url, primary_color, enabled_features, theme_mode, theme_preset, calendly_url')
     .eq('id', orgId)
     .single()
   if (error) throw error
   return data
+}
+
+export async function saveOrgCalendlyUrl(url) {
+  const orgId = await fetchMyOrgId()
+  const { error } = await supabase.from('organizations').update({ calendly_url: url?.trim() || null }).eq('id', orgId)
+  if (error) throw error
 }
 
 // Settings > Appearance -- any org member can change their own org's
