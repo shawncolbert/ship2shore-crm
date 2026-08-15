@@ -8,7 +8,7 @@ import { uploadCardAsset } from './businessCard'
 export async function fetchInvoiceBusinessInfo() {
   const { data, error } = await supabase
     .from('organizations')
-    .select('name, logo_url, invoice_business_name, invoice_business_address, invoice_business_phone, invoice_business_website, invoice_business_ein')
+    .select('name, logo_url, tagline, invoice_business_name, invoice_business_address, invoice_business_phone, invoice_business_website, invoice_business_ein')
     .single()
   if (error) throw error
   return data
@@ -23,10 +23,12 @@ export async function saveInvoiceBusinessInfo(patch) {
     invoice_business_website: patch.invoice_business_website?.trim() || null,
     invoice_business_ein: patch.invoice_business_ein?.trim() || null,
   }
-  // logo_url lives on organizations already (used by the app's own sidebar
-  // branding) -- only touched here if the caller explicitly passed it, so
-  // this function stays safe to call from contexts that don't manage a logo.
+  // logo_url and tagline live on organizations already (used by the app's
+  // own sidebar branding and the "Enter CRM" front door) -- only touched
+  // here if the caller explicitly passed them, so this function stays safe
+  // to call from contexts that don't manage those.
   if ('logo_url' in patch) update.logo_url = patch.logo_url || null
+  if ('tagline' in patch) update.tagline = patch.tagline?.trim() || null
   const { error } = await supabase.from('organizations').update(update).eq('id', orgId)
   if (error) throw error
 }

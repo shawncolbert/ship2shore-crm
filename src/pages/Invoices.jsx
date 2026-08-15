@@ -128,6 +128,7 @@ function BusinessInfoModal({ onClose }) {
         invoice_business_website: data.invoice_business_website || '',
         invoice_business_ein: data.invoice_business_ein || '',
         logo_url: data.logo_url || '',
+        tagline: data.tagline || '',
       })
     }
   }, [isLoading, data, form])
@@ -168,7 +169,7 @@ function BusinessInfoModal({ onClose }) {
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
       <div className={`${card} relative z-10 w-full max-w-lg rounded-t-2xl sm:rounded-2xl`}>
         <h2 className="text-sm font-semibold text-ink">Business info for invoices</h2>
-        <p className="text-xs text-muted">Shown on every invoice header (this also sets your organization's logo used elsewhere in the app).</p>
+        <p className="text-xs text-muted">Shown on every invoice header (this also sets your organization's logo and tagline used elsewhere in the app — the sidebar and the "Enter CRM" front door).</p>
         {form && (
           <>
             <label className="block">
@@ -180,6 +181,11 @@ function BusinessInfoModal({ onClose }) {
                 </label>
                 {form.logo_url && <img src={form.logo_url} alt="" className="h-10 w-10 rounded object-contain" />}
               </div>
+            </label>
+            <label className="block">
+              <span className={label}>Tagline (optional)</span>
+              <input value={form.tagline} onChange={set('tagline')} placeholder="e.g. Dispatch" className={input} />
+              <span className="mt-1 block text-[11px] text-muted">Shown in small caps under your name in the sidebar and the front door. Leave blank for none.</span>
             </label>
             <label className="block"><span className={label}>Business name</span><input value={form.invoice_business_name} onChange={set('invoice_business_name')} className={input} /></label>
             <label className="block"><span className={label}>Address</span><textarea value={form.invoice_business_address} onChange={set('invoice_business_address')} rows={2} className={input} /></label>

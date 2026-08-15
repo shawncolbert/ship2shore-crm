@@ -258,7 +258,12 @@ const SECTIONS = [
       sections, and add a quick-action tile grid to the Dashboard. Whatever you pick applies to everyone
       signed into your organization — it's one shared setting, not a personal one — and takes effect the
       moment you hit "Save appearance," no reload needed. This only changes how things look; every feature
-      above works identically no matter which layout is active.`,
+      above works identically no matter which layout is active.
+
+      Also here: an optional idle timeout, off by default. Turn it on and pick a number of minutes, and the
+      screen resets to your branded "Enter CRM" front door after that long with no mouse/keyboard/touch
+      activity — handy if this runs on a shared or kiosk-style dispatch terminal. Your company name, logo,
+      and tagline shown there (and in the sidebar) are set under Invoices → "Business info."`,
   },
   {
     id: 'custom-links',

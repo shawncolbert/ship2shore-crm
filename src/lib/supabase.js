@@ -123,7 +123,7 @@ export async function fetchMyOrg() {
   const orgId = await fetchMyOrgId()
   const { data, error } = await supabase
     .from('organizations')
-    .select('id, name, slug, logo_url, primary_color, enabled_features, theme_mode, theme_preset, calendly_url')
+    .select('id, name, slug, logo_url, tagline, primary_color, enabled_features, theme_mode, theme_preset, calendly_url, idle_timeout_enabled, idle_timeout_minutes')
     .eq('id', orgId)
     .single()
   if (error) throw error
@@ -150,6 +150,18 @@ export async function updateMyOrgTheme({ theme_mode, theme_preset }) {
     .single()
   if (error) throw error
   return data
+}
+
+// Optional "kiosk mode" -- after this many idle minutes with no mouse/
+// keyboard/touch activity, IdleTimeout.jsx sends the browser back to the
+// branded front door. Off by default; see the Appearance page.
+export async function saveIdleTimeout({ enabled, minutes }) {
+  const orgId = await fetchMyOrgId()
+  const { error } = await supabase
+    .from('organizations')
+    .update({ idle_timeout_enabled: !!enabled, idle_timeout_minutes: Math.max(1, Number(minutes) || 60) })
+    .eq('id', orgId)
+  if (error) throw error
 }
 
 // Create a contact and, optionally, a "New Booking" opportunity for it.

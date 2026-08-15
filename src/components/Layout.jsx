@@ -6,6 +6,7 @@ import { fetchMyProfile, fetchMyOrg, fetchNewBookingCount } from '../lib/supabas
 import { fetchCustomLinks } from '../lib/customLinks'
 import { isFeatureEnabled } from '../lib/features'
 import { applyTheme, cacheTheme } from '../lib/theme'
+import IdleTimeout from './IdleTimeout'
 
 // `group` only matters for the Aurora layout's sectioned sidebar (see
 // NavItems below) -- every other layout renders this same list flat, in
@@ -57,7 +58,7 @@ const GROUP_LABELS = {
 // (name, logo_url).
 function Brand() {
   const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
-  const name = org?.name || 'Ship2Shore'
+  const name = org?.name || 'Your Business'
 
   return (
     <div className="flex items-center gap-2">
@@ -68,9 +69,11 @@ function Brand() {
         <div className="font-[family-name:var(--font-display)] text-lg font-bold tracking-tight text-white">
           {name}
         </div>
-        <div className="text-[11px] uppercase tracking-[0.18em] text-accent">
-          Dispatch
-        </div>
+        {org?.tagline && (
+          <div className="text-[11px] uppercase tracking-[0.18em] text-accent">
+            {org.tagline}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -247,6 +250,7 @@ export default function Layout({ children }) {
 
   return (
     <div className="flex h-full flex-col md:flex-row">
+      <IdleTimeout />
       {/* Mobile top bar */}
       <header className="flex items-center justify-between px-4 py-3 md:hidden" style={{ background: 'var(--sidebar-bg)' }}>
         <Brand />

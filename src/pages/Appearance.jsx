@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchMyOrg, updateMyOrgTheme } from '../lib/supabase'
+import { fetchMyOrg, updateMyOrgTheme, saveIdleTimeout } from '../lib/supabase'
 import { applyTheme, cacheTheme, THEME_MODES, THEME_PRESETS } from '../lib/theme'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
@@ -124,6 +124,80 @@ export default function Appearance() {
             {saving ? 'Saving…' : 'Save appearance'}
           </button>
         </div>
+
+        <IdleTimeoutSettings org={org} />
+      </div>
+    </div>
+  )
+}
+
+// Optional "kiosk mode" -- useful for a shared/kiosk-style dispatch
+// terminal where you want it to reset to the branded front door after a
+// stretch of no one touching it. Off by default; a separate save from the
+// theme picker above since it's an unrelated setting.
+function IdleTimeoutSettings({ org }) {
+  const qc = useQueryClient()
+  const [enabled, setEnabled] = useState(false)
+  const [minutes, setMinutes] = useState(60)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (org) {
+      setEnabled(!!org.idle_timeout_enabled)
+      setMinutes(org.idle_timeout_minutes || 60)
+    }
+  }, [org])
+
+  const dirty = org && (enabled !== !!org.idle_timeout_enabled || minutes !== (org.idle_timeout_minutes || 60))
+
+  async function save() {
+    setSaving(true); setErr(''); setSaved(false)
+    try {
+      await saveIdleTimeout({ enabled, minutes })
+      await qc.invalidateQueries({ queryKey: ['myOrg'] })
+      setSaved(true)
+    } catch (e) {
+      setErr(e.message || String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className={card}>
+      <h2 className={h2}>Idle timeout</h2>
+      <p className="mb-3 text-sm text-muted">
+        Useful for a shared/kiosk-style dispatch terminal — after this many minutes with no mouse, keyboard,
+        or touch activity, the screen resets to your branded "Enter CRM" front door. Off by default.
+      </p>
+      {err && <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
+      <label className="flex items-center gap-2 text-sm text-ink">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => { setEnabled(e.target.checked); setSaved(false) }}
+          className="h-4 w-4 rounded border-line"
+        />
+        Return to the front door after this many idle minutes
+      </label>
+      {enabled && (
+        <div className="mt-2 ml-6 flex items-center gap-2">
+          <input
+            type="number" min="1" step="1"
+            value={minutes}
+            onChange={(e) => { setMinutes(Math.max(1, Number(e.target.value) || 1)); setSaved(false) }}
+            className="w-20 rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+          />
+          <span className="text-sm text-muted">minutes (e.g. 60 for an hour)</span>
+        </div>
+      )}
+      <div className="mt-4 flex items-center justify-end gap-3">
+        {saved && !dirty && <span className="text-sm text-starboard">Saved ✓</span>}
+        <button onClick={save} disabled={saving || !dirty} className={btnAccent}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
       </div>
     </div>
   )
