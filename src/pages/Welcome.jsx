@@ -8,8 +8,8 @@ import { fetchMyOrg } from '../lib/supabase'
 // screen. Uses the same compact logo/name/tagline treatment as the
 // sidebar's own Brand -- not a big empty hero -- since that's the
 // established look this app already uses everywhere else. "Enter CRM"
-// always lands on Pipeline, the actual day-to-day dispatch board, same for
-// every org including Ship2Shore's own.
+// always lands on the Dashboard, same for every org including
+// Ship2Shore's own.
 export default function Welcome() {
   const navigate = useNavigate()
   const { data: org, isLoading } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
@@ -37,7 +37,7 @@ export default function Welcome() {
               </div>
             </div>
             <button
-              onClick={() => navigate('/pipeline')}
+              onClick={() => navigate('/dashboard')}
               className="mt-8 rounded-md bg-accent px-8 py-3 text-sm font-semibold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-accent-600"
             >
               Enter CRM

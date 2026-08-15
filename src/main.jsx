@@ -78,9 +78,9 @@ function App() {
       {/* Public invoice page — no auth gate, this is the link a customer gets emailed */}
       <Route path="/invoice/:id" element={<PublicInvoice />} />
       {/* Branded front door -- your own company name/logo, "Enter CRM" takes
-          you to Pipeline. Shown every time you land here, including right
-          after signing in (see Login.jsx's post-auth redirect). Deliberately
-          outside Layout -- no sidebar on this one screen. */}
+          you to the Dashboard. Shown every time you land here, including
+          right after signing in (see Login.jsx's post-auth redirect).
+          Deliberately outside Layout -- no sidebar on this one screen. */}
       <Route path="/" element={<ProtectedRoute><Welcome /></ProtectedRoute>} />
       <Route
         path="/*"
@@ -88,7 +88,7 @@ function App() {
           <ProtectedRoute>
             <Layout>
               <Routes>
-                <Route index element={<Navigate to="/pipeline" replace />} />
+                <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<FeatureGate featureKey="dashboard"><Dashboard /></FeatureGate>} />
                 <Route path="help" element={<FeatureGate featureKey="help"><Help /></FeatureGate>} />
                 <Route path="inbox" element={<FeatureGate featureKey="inbox"><Inbox /></FeatureGate>} />
