@@ -25,6 +25,7 @@ const nav = [
   { to: '/automations', label: 'Automations', key: 'automations', group: 'Production' },
   { to: '/services', label: 'Services', key: 'services', group: 'Money' },
   { to: '/invoices', label: 'Invoices', key: 'invoices', group: 'Money' },
+  { to: '/completed-jobs', label: 'Completed Jobs', key: 'completed_jobs', group: 'Money' },
   { to: '/settings/business-card', label: 'Business Card Builder', key: 'business_card_builder', group: 'Marketing' },
   { to: '/payment-settings', label: 'Payments', key: 'payments', group: 'Money' },
   { to: '/settings/appearance', label: 'Appearance', key: 'appearance', group: 'Settings' },

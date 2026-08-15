@@ -17,3 +17,9 @@
 # Publish any Social Media Planner post whose scheduled time has arrived
 [functions."tiktok-publish"]
   schedule = "*/10 * * * *"
+
+# Email a payment reminder for any invoice with reminders opted in
+# (invoices.reminder_enabled) once its interval has elapsed and it's still
+# unpaid. Day-granularity logic, so once a day is plenty.
+[functions."invoice-reminders"]
+  schedule = "0 15 * * *"

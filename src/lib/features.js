@@ -24,6 +24,7 @@ export const FEATURES = [
   { key: 'automations', label: 'Automations', path: '/automations' },
   { key: 'services', label: 'Services', path: '/services' },
   { key: 'invoices', label: 'Invoices', path: '/invoices' },
+  { key: 'completed_jobs', label: 'Completed Jobs', path: '/completed-jobs' },
   { key: 'business_card_builder', label: 'Business Card Builder', path: '/settings/business-card' },
   { key: 'payments', label: 'Payments', path: '/payment-settings' },
   { key: 'appearance', label: 'Appearance', path: '/settings/appearance' },

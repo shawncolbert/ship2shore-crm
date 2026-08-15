@@ -100,7 +100,27 @@ const SECTIONS = [
       and are reusable, so build a small library of them once under Payment Settings (name each one, e.g.
       "Escort - $85"), then just pick the right one from a dropdown when checking the Wave Checkout box on
       an invoice. Only the options you check are shown to the customer; nothing is included by default
-      except Stripe.`,
+      except Stripe.
+
+      "Payment reminders" is its own section, off by default — check "Auto-remind if unpaid" and pick 3
+      days, 7 days, or a custom number, and it'll email the customer that reminder every time that many days
+      passes while the invoice is still unpaid, starting from when you sent it. It stops the instant the
+      invoice is marked Paid, and nothing goes out at all unless you've checked the box.
+
+      Once a job is actually done — the vehicle's picked up, the service performed — click "Mark job done" up
+      top (separate from marking it Paid, since a job can be finished before payment clears). That stamps a
+      completion date on the invoice, and drops a note into that customer's own Timeline on their Contact
+      page — the same place delivery orders and other paperwork already show up — so you can always look up a
+      customer and see exactly when their job wrapped. See Completed Jobs for the full list.`,
+  },
+  {
+    id: 'completed-jobs',
+    title: 'Completed Jobs',
+    nav: '/completed-jobs',
+    body: `A spreadsheet-style list of every job you've clicked "Mark job done" on (see Invoices) — customer,
+      invoice number, the date it was completed, payment status, when it was paid, and the amount, all in one
+      table. Click the status cell on any row to change it right there (marking Paid asks how, the same as on
+      the invoice itself) — no need to open each invoice one at a time just to update where it stands.`,
   },
   {
     id: 'scheduling',

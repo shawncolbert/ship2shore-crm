@@ -105,6 +105,8 @@ export async function createInvoice({ fields, lineItems }) {
       wave_checkout_link_id: fields.wave_checkout_link_id || null,
       payment_options: fields.payment_options || { stripe: true },
       opportunity_id: fields.opportunity_id || null,
+      reminder_enabled: !!fields.reminder_enabled,
+      reminder_interval_days: fields.reminder_enabled ? Number(fields.reminder_interval_days) || 7 : null,
     })
     .select('*')
     .single()
@@ -140,6 +142,8 @@ export async function updateInvoice(id, { fields, lineItems }) {
       wave_checkout_url: fields.wave_checkout_url?.trim() || null,
       wave_checkout_link_id: fields.wave_checkout_link_id || null,
       payment_options: fields.payment_options || { stripe: true },
+      reminder_enabled: !!fields.reminder_enabled,
+      reminder_interval_days: fields.reminder_enabled ? Number(fields.reminder_interval_days) || 7 : null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
@@ -172,6 +176,73 @@ async function replaceLineItems(orgId, invoiceId, lineItems) {
 export async function deleteInvoice(id) {
   const { error } = await supabase.from('invoices').delete().eq('id', id)
   if (error) throw error
+}
+
+// A job can be done (vehicle picked up / service performed) before the
+// invoice is paid, so this is its own marker, separate from payment status.
+// Also drops a line into the customer's own Timeline (the `activities` feed
+// already rendered on ContactDetail.jsx) -- the same ledger that already
+// tracks delivery orders and other paperwork for that contact.
+export async function markInvoiceComplete(id) {
+  const orgId = await fetchMyOrgId()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const { data: invoice, error: fetchErr } = await supabase
+    .from('invoices')
+    .select('id, invoice_number, contact_id, opportunity_id')
+    .eq('id', id)
+    .single()
+  if (fetchErr) throw fetchErr
+
+  const { error } = await supabase
+    .from('invoices')
+    .update({ completed_at: new Date().toISOString(), completed_by: user?.id || null })
+    .eq('id', id)
+  if (error) throw error
+
+  if (invoice.contact_id) {
+    const { error: actErr } = await supabase.from('activities').insert({
+      org_id: orgId,
+      contact_id: invoice.contact_id,
+      opportunity_id: invoice.opportunity_id || null,
+      actor_id: user?.id || null,
+      type: 'status_change',
+      body: `Job completed — Invoice ${invoice.invoice_number} marked done.`,
+    })
+    if (actErr) throw actErr
+  }
+
+  return fetchInvoice(id)
+}
+
+export async function unmarkInvoiceComplete(id) {
+  const { error } = await supabase.from('invoices').update({ completed_at: null, completed_by: null }).eq('id', id)
+  if (error) throw error
+}
+
+// Direct status flip for the Completed Jobs grid's inline dropdown -- draft/
+// sent/overdue only. Marking Paid goes through markInvoicePaidManually
+// instead, since that also asks how it was paid and stamps paid_at.
+export async function setInvoiceStatus(id, status) {
+  const { error } = await supabase
+    .from('invoices')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/* ------------------------------------------------------------------ */
+/* Completed Jobs -- spreadsheet-style report                          */
+/* ------------------------------------------------------------------ */
+
+export async function fetchCompletedJobs() {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('id, invoice_number, status, total, amount_due, paid_at, payment_method, completed_at, invoice_date, contacts(full_name, company, phone, email)')
+    .not('completed_at', 'is', null)
+    .order('completed_at', { ascending: false })
+  if (error) throw error
+  return data || []
 }
 
 // Not every payment arrives through Stripe (cash, check, Venmo in person,

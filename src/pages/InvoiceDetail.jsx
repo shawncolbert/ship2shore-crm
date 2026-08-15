@@ -3,7 +3,8 @@ import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchInvoice, fetchInvoiceBusinessInfo, fetchContactsForInvoice, fetchServicesForInvoice,
-  fetchOpportunityForInvoice, createInvoice, updateInvoice, sendInvoice, markInvoicePaidManually, computeTotals,
+  fetchOpportunityForInvoice, createInvoice, updateInvoice, sendInvoice, markInvoicePaidManually,
+  markInvoiceComplete, unmarkInvoiceComplete, computeTotals,
 } from '../lib/invoices'
 import { fetchPaymentSettings, fetchWaveCheckoutLinks } from '../lib/supabase'
 import InvoicePreview from '../components/InvoicePreview'
@@ -70,8 +71,11 @@ export default function InvoiceDetail() {
   const [lineItems, setLineItems] = useState([blankLineItem()])
   const [paymentOptions, setPaymentOptions] = useState(DEFAULT_PAYMENT_OPTIONS)
   const [waveCheckoutLinkId, setWaveCheckoutLinkId] = useState('')
+  const [reminderEnabled, setReminderEnabled] = useState(false)
+  const [reminderIntervalDays, setReminderIntervalDays] = useState(7)
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
+  const [marking, setMarking] = useState(false)
   const [err, setErr] = useState('')
   const [notice, setNotice] = useState(null)
   const [invoiceId, setInvoiceId] = useState(isNew ? null : id)
@@ -97,6 +101,8 @@ export default function InvoiceDetail() {
       )
       setPaymentOptions({ ...DEFAULT_PAYMENT_OPTIONS, ...(inv.payment_options || {}) })
       setWaveCheckoutLinkId(inv.wave_checkout_link_id || '')
+      setReminderEnabled(!!inv.reminder_enabled)
+      setReminderIntervalDays(inv.reminder_interval_days || 7)
     }
   }, [existing])
 
@@ -170,6 +176,7 @@ export default function InvoiceDetail() {
         ...fields, payment_options: paymentOptions, opportunity_id: opportunityId,
         wave_checkout_link_id: paymentOptions.wave ? waveCheckoutLinkId || null : null,
         wave_checkout_url: paymentOptions.wave ? selectedWaveLink?.url || null : null,
+        reminder_enabled: reminderEnabled, reminder_interval_days: reminderIntervalDays,
       }
       const result = isNew && !invoiceId
         ? await createInvoice({ fields: fieldsToSave, lineItems: usableLineItems })
@@ -230,6 +237,38 @@ export default function InvoiceDetail() {
     }
   }
 
+  // "Job done" (car picked up / service performed) is independent of
+  // payment status -- this also drops a note into the customer's own
+  // Timeline on their Contact page, the same ledger delivery orders and
+  // other paperwork already land in.
+  const handleMarkDone = async () => {
+    setMarking(true); setErr('')
+    try {
+      await markInvoiceComplete(invoiceId || id)
+      qc.invalidateQueries({ queryKey: ['invoice', invoiceId || id] })
+      qc.invalidateQueries({ queryKey: ['completedJobs'] })
+      setNotice({ type: 'success', text: 'Marked job done — also noted on the customer\'s Timeline.' })
+    } catch (e) {
+      setErr(e.message || 'Could not mark this job done.')
+    } finally {
+      setMarking(false)
+    }
+  }
+
+  const handleUnmarkDone = async () => {
+    setMarking(true); setErr('')
+    try {
+      await unmarkInvoiceComplete(invoiceId || id)
+      qc.invalidateQueries({ queryKey: ['invoice', invoiceId || id] })
+      qc.invalidateQueries({ queryKey: ['completedJobs'] })
+      setNotice({ type: 'success', text: 'Un-marked as done.' })
+    } catch (e) {
+      setErr(e.message || 'Could not update this job.')
+    } finally {
+      setMarking(false)
+    }
+  }
+
   const publicUrl = invoiceId || id ? `${window.location.origin}/invoice/${invoiceId || id}` : null
 
   return (
@@ -241,11 +280,24 @@ export default function InvoiceDetail() {
           <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">
             {isNew ? 'New invoice' : `Invoice ${invoice?.invoice_number || ''}`}
           </h1>
-          {invoice?.status && <StatusBadge status={invoice.status} />}
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {invoice?.status && <StatusBadge status={invoice.status} />}
+            {invoice?.completed_at && (
+              <span
+                title={`Marked done ${new Date(invoice.completed_at).toLocaleString()}`}
+                className="inline-block rounded-full bg-starboard/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-starboard"
+              >
+                ✓ Job done {new Date(invoice.completed_at).toLocaleDateString()}
+              </span>
+            )}
+          </div>
         </div>
         {!isNew && (
           <div className="flex flex-wrap gap-2">
             {invoice?.status !== 'paid' && <button onClick={handleMarkPaid} className={btn}>Mark as Paid</button>}
+            <button onClick={invoice?.completed_at ? handleUnmarkDone : handleMarkDone} disabled={marking} className={btn}>
+              {invoice?.completed_at ? 'Undo job done' : 'Mark job done'}
+            </button>
             {publicUrl && (
               <a href={publicUrl} target="_blank" rel="noreferrer" className={btn}>View customer page ↗</a>
             )}
@@ -376,6 +428,46 @@ export default function InvoiceDetail() {
                   </label>
                 )
               })}
+            </section>
+
+            <section className={card}>
+              <h2 className="text-sm font-semibold text-ink">Payment reminders</h2>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={reminderEnabled}
+                  onChange={(e) => setReminderEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-line"
+                />
+                Auto-remind if unpaid
+              </label>
+              {reminderEnabled && (
+                <div className="ml-6 flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-muted">Every</span>
+                  <select
+                    value={[3, 7].includes(reminderIntervalDays) ? reminderIntervalDays : 'custom'}
+                    onChange={(e) => setReminderIntervalDays(e.target.value === 'custom' ? 14 : Number(e.target.value))}
+                    className={input + ' w-auto'}
+                  >
+                    <option value={3}>3 days</option>
+                    <option value={7}>7 days</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                  {![3, 7].includes(reminderIntervalDays) && (
+                    <input
+                      type="number" min="1" step="1"
+                      value={reminderIntervalDays}
+                      onChange={(e) => setReminderIntervalDays(Math.max(1, Number(e.target.value) || 1))}
+                      className={input + ' w-20'}
+                    />
+                  )}
+                  <span className="text-sm text-muted">days, starting the day it's sent</span>
+                </div>
+              )}
+              <p className="-mt-1 text-[11px] text-muted">
+                Only fires while the invoice is unpaid, and stops the moment it's marked Paid. Off by default —
+                nothing gets sent unless you check this box.
+              </p>
             </section>
 
             {!locked && (

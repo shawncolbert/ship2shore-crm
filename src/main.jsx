@@ -22,6 +22,7 @@ import CustomLinks from './pages/CustomLinks'
 import Scheduling from './pages/Scheduling'
 import Services from './pages/Services'
 import Invoices from './pages/Invoices'
+import CompletedJobs from './pages/CompletedJobs'
 import InvoiceDetail from './pages/InvoiceDetail'
 import PublicInvoice from './pages/PublicInvoice'
 import PipelineStages from './pages/PipelineStages'
@@ -100,6 +101,7 @@ function App() {
                 <Route path="invoices" element={<FeatureGate featureKey="invoices"><Invoices /></FeatureGate>} />
                 <Route path="invoices/new" element={<FeatureGate featureKey="invoices"><InvoiceDetail /></FeatureGate>} />
                 <Route path="invoices/:id" element={<FeatureGate featureKey="invoices"><InvoiceDetail /></FeatureGate>} />
+                <Route path="completed-jobs" element={<FeatureGate featureKey="completed_jobs"><CompletedJobs /></FeatureGate>} />
                 <Route path="settings/pipeline-stages" element={<FeatureGate featureKey="pipeline_stages"><PipelineStages /></FeatureGate>} />
                 <Route path="settings/business-card" element={<FeatureGate featureKey="business_card_builder"><BusinessCardSettings /></FeatureGate>} />
                 <Route path="settings/card-links" element={<FeatureGate featureKey="digital_business_cards"><ExternalCardLinks /></FeatureGate>} />
