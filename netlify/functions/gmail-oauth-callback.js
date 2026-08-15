@@ -66,7 +66,7 @@ export const handler = async (event) => {
     // with a clear message instead of silently storing a connection that
     // can't survive its first access-token expiry.
     if (!tokenData.refresh_token) {
-      return redirectTo(event, { gmail: 'error', msg: 'Google did not return a long-lived connection. Go to your Google Account’s "Third-party access" settings, remove Ship2Shore, then click Connect Gmail again.' })
+      return redirectTo(event, { gmail: 'error', msg: 'Google did not return a long-lived connection. Go to your Google Account’s "Third-party access" settings, remove this app’s access, then click Connect Gmail again.' })
     }
 
     const profileRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {

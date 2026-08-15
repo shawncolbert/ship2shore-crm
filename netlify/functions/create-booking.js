@@ -8,10 +8,11 @@ const json = (statusCode, body) => ({
   body: JSON.stringify(body),
 })
 
-function buildEmail(messageType, { customerName, bookingAmount, bookingDetails }) {
+function buildEmail(messageType, { customerName, bookingAmount, bookingDetails, orgName }) {
+  const brand = orgName || 'Dispatch'
   if (messageType === 'delivery_order_request') {
     return {
-      subject: 'Ship2Shore - Delivery Order Needed',
+      subject: `${brand} - Delivery Order Needed`,
       body: `Hi ${customerName},
 
 We're ready to proceed with your booking!
@@ -24,13 +25,13 @@ To complete your reservation, please provide:
 ${bookingDetails ? `Booking Details:\n${bookingDetails}\n\n` : ''}Please reply with the required information so we can finalize your shipment.
 
 Best regards,
-Ship2Shore Logistics`,
+${brand}`,
     }
   }
 
   if (messageType === 'payment_link_request') {
     return {
-      subject: 'Ship2Shore - Payment Required',
+      subject: `${brand} - Payment Required`,
       body: `Hi ${customerName},
 
 Your vehicle is now cleared and ready to ship!
@@ -40,7 +41,7 @@ Booking Amount: $${bookingAmount}
 ${bookingDetails ? `Booking Details:\n${bookingDetails}\n\n` : ''}Please proceed with payment to secure your shipment. A payment link has been attached.
 
 Thank you,
-Ship2Shore Logistics`,
+${brand}`,
     }
   }
 
@@ -57,6 +58,9 @@ export const handler = async (event) => {
 
     const orgId = await orgForUser(user.id)
     if (!orgId) return json(403, { error: 'No organization' })
+
+    const { data: org } = await admin.from('organizations').select('name').eq('id', orgId).maybeSingle()
+    const orgName = org?.name
 
     let body
     try {
@@ -134,7 +138,7 @@ export const handler = async (event) => {
       emailErrors.push('Contact has no email on file — could not send the requested email(s).')
     } else {
       if (sendDeliveryOrder) {
-        const email = buildEmail('delivery_order_request', { customerName: contact.full_name, bookingDetails: lineItemsSummary })
+        const email = buildEmail('delivery_order_request', { customerName: contact.full_name, bookingDetails: lineItemsSummary, orgName })
         try {
           await sendCustomerEmail({ orgId, to: contact.email, subject: email.subject, body: email.body, contactId: contact.id })
           emailsSent.push('delivery_order_request')
@@ -144,7 +148,7 @@ export const handler = async (event) => {
         }
       }
       if (sendPaymentLink) {
-        const email = buildEmail('payment_link_request', { customerName: contact.full_name, bookingAmount: totalValue, bookingDetails: lineItemsSummary })
+        const email = buildEmail('payment_link_request', { customerName: contact.full_name, bookingAmount: totalValue, bookingDetails: lineItemsSummary, orgName })
         try {
           await sendCustomerEmail({ orgId, to: contact.email, subject: email.subject, body: email.body, contactId: contact.id })
           emailsSent.push('payment_link_request')

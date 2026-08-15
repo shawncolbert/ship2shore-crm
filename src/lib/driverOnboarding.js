@@ -19,9 +19,11 @@ export async function createDriverCard(orgId, {
   const linkSlug = await firstFreeSlug('external_card_links', slugifyCardName(name) || `card-${Date.now().toString(36)}`)
   const origin = window.location.origin
 
+  const { data: org } = await supabase.from('organizations').select('name').eq('id', orgId).maybeSingle()
+
   const card = await createBusinessCard(orgId, {
     slug: cardSlug,
-    brand_name: 'Ship2Shore Booking',
+    brand_name: org?.name || name,
     full_name: name,
     title: title || null,
     phone: phone || null,

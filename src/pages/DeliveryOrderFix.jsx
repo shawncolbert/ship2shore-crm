@@ -919,7 +919,7 @@ export default function DeliveryOrderFix() {
                       value={text}
                       onChange={(e) => setText(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') placeText() }}
-                      placeholder="Ship2Shore Booking"
+                      placeholder="Replacement text"
                     />
                   </div>
                   <div className="w-20">

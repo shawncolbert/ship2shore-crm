@@ -297,7 +297,7 @@ function BusinessCardEditor({ initialCard, onSaved }) {
             <h2 className={sectionTitle}>Identity</h2>
             <Field label="Full name"><input value={form.full_name || ''} onChange={set('full_name')} className={input} /></Field>
             <Field label="Title"><input value={form.title || ''} onChange={set('title')} className={input} /></Field>
-            <Field label="Company line"><input value={form.company_line || ''} onChange={set('company_line')} className={input} placeholder="Ship2Shore Booking · WHALEY Inc." /></Field>
+            <Field label="Company line"><input value={form.company_line || ''} onChange={set('company_line')} className={input} placeholder="Your Company · Your Brand" /></Field>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Address line 1"><input value={form.address_line1 || ''} onChange={set('address_line1')} className={input} /></Field>
               <Field label="Address line 2"><input value={form.address_line2 || ''} onChange={set('address_line2')} className={input} /></Field>

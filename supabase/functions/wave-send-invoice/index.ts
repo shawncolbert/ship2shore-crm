@@ -147,7 +147,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const customerId = await findOrCreateWaveCustomer(supabase, contact);
-    const description = opp.title || (opp.service_code ? String(opp.service_code).replace(/_/g, " ") : "Ship2Shore service");
+    const description = opp.title || (opp.service_code ? String(opp.service_code).replace(/_/g, " ") : "Service");
     const invoiceId = await createAndSendWaveInvoice({ customerId, description, amount: opp.value, toEmail: contact.email });
 
     await supabase.from("opportunities")

@@ -144,7 +144,7 @@ function RuleRow({ rule, stages, onChanged, onError }) {
           <div>
             <label className={label}>Email subject</label>
             <input className={input} value={draft.email_subject || ''} onChange={(e) => set('email_subject', e.target.value)}
-              placeholder="Your Ship2Shore pickup is scheduled" />
+              placeholder="Your pickup is scheduled" />
           </div>
           <div>
             <label className={label}>Email message</label>

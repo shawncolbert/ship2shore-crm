@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { sendEmail } from '../lib/supabase'
+import { useQuery } from '@tanstack/react-query'
+import { sendEmail, fetchMyOrg } from '../lib/supabase'
 
 // Compose + send an email to a contact through the Gmail-backed Netlify function.
 export default function EmailComposer({ contact, onClose }) {
+  const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
   const [to, setTo] = useState(contact?.email || '')
-  const [subject, setSubject] = useState(`Ship2Shore - ${contact?.full_name || ''}`.trim())
+  const [subject, setSubject] = useState(`${org?.name || 'New message'} - ${contact?.full_name || ''}`.trim())
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
   const [msg, setMsg] = useState(null) // { ok, text }

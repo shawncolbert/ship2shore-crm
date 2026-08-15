@@ -15,7 +15,7 @@ export const THEME_MODES = [
 // gradient) -- both shown in the picker preview. `label`/`description` help
 // an org pick something that fits their business, per Shawn's ask.
 export const THEME_PRESETS = [
-  { key: 'classic', label: 'Classic Amber', swatch: '#e8a317', sidebar: '#0c2231', description: "Ship2Shore's original look." },
+  { key: 'classic', label: 'Classic Amber', swatch: '#e8a317', sidebar: '#0c2231', description: 'Warm and dependable -- the original look, works for any business.' },
   { key: 'ocean', label: 'Ocean Blue', swatch: '#2f8fd6', sidebar: 'linear-gradient(180deg, #0c2231 0%, #123a5c 100%)', description: 'Trusted, corporate -- freight, logistics.' },
   { key: 'crimson', label: 'Crimson', swatch: '#c1440e', sidebar: 'linear-gradient(180deg, #1a0f0c 0%, #3a140a 100%)', description: 'Bold, urgent -- dispatch, emergency services.' },
   { key: 'forest', label: 'Forest Teal', swatch: '#0f8b8d', sidebar: 'linear-gradient(180deg, #06211f 0%, #0f3d3a 100%)', description: 'Calm, grounded -- marine, environmental.' },

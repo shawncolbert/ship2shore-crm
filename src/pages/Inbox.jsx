@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchConversations, fetchMessages, subscribeMessages, sendEmail, deleteConversation, supabase,
+  fetchConversations, fetchMessages, subscribeMessages, sendEmail, deleteConversation, supabase, fetchMyOrg,
 } from '../lib/supabase'
 
 const fmtTime = (d) =>
@@ -15,6 +15,7 @@ export default function Inbox() {
     queryKey: ['conversations'],
     queryFn: fetchConversations,
   })
+  const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
 
   const { data: gmailStatus } = useQuery({
     queryKey: ['gmailStatus'],
@@ -83,7 +84,7 @@ export default function Inbox() {
       <div className={`${active ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-line bg-surface md:w-80`}>
         <div className="border-b border-line px-4 py-3">
           <h1 className="font-[family-name:var(--font-display)] text-lg font-bold text-ink">Inbox</h1>
-          <p className="text-xs text-muted">Email conversations. SMS lane is dormant until a compliant Ship2Shore number is set up.</p>
+          <p className="text-xs text-muted">Email conversations. SMS lane is dormant until a compliant business number is set up.</p>
         </div>
 
         {connectNotice && (
@@ -167,7 +168,7 @@ export default function Inbox() {
 
       {/* Thread */}
       {active ? (
-        <Thread conversation={active} onBack={() => setActiveId(null)} onDelete={() => removeConversation(active)} />
+        <Thread conversation={active} orgName={org?.name} onBack={() => setActiveId(null)} onDelete={() => removeConversation(active)} />
       ) : (
         <div className="hidden flex-1 items-center justify-center text-sm text-muted md:flex">
           Select a conversation.
@@ -188,7 +189,7 @@ function ChannelTag({ channel }) {
   )
 }
 
-function Thread({ conversation, onBack, onDelete }) {
+function Thread({ conversation, orgName, onBack, onDelete }) {
   const qc = useQueryClient()
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
@@ -213,7 +214,7 @@ function Thread({ conversation, onBack, onDelete }) {
         conversationId: conversation.id,
         contactId: conversation.contact_id,
         to: conversation.contacts?.email,
-        subject: lastSubject || `Ship2Shore - ${conversation.contacts?.full_name || ''}`.trim(),
+        subject: lastSubject || `${orgName || 'New message'} - ${conversation.contacts?.full_name || ''}`.trim(),
         body,
       })
       setBody('')

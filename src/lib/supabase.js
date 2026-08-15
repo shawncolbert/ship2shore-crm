@@ -475,10 +475,11 @@ export async function sendPaymentRequest(opportunityId, method) {
   const handle = settings[meta.handleField]
   if (!handle) throw new Error(`Set your ${meta.label} handle in Payment Settings before sending.`)
 
+  const org = await fetchMyOrg()
   const firstName = (contact.full_name || '').split(/\s+/)[0] || 'there'
   const { subject, body, html } = buildPaymentRequestEmail({
     method, handle, amount: opp.value, contactFirstName: firstName,
-    jobTitle: opp.title, jobRef: opp.billing_number || opp.title || '',
+    jobTitle: opp.title, jobRef: opp.billing_number || opp.title || '', orgName: org?.name,
   })
 
   await sendEmail({ contactId: contact.id, to: contact.email, subject, body, html })

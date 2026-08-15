@@ -204,7 +204,7 @@ async function listServices(orgId, ref) {
 // Best-effort "you've got a lead" ping to the driver whose card sent this
 // booking. Deliberately not logged into the CRM's conversations/messages --
 // it's an internal heads-up to the driver, not a message to the customer.
-async function notifyReferrer(referrer, { fullName, email, phone, serviceName, startAt, port, notes, photoUrl, pickupAddress, dropoffAddress, distanceMiles, vehicleMake, vehicleModel, vehicleYear, vehicleVin }) {
+async function notifyReferrer(referrer, orgName, { fullName, email, phone, serviceName, startAt, port, notes, photoUrl, pickupAddress, dropoffAddress, distanceMiles, vehicleMake, vehicleModel, vehicleYear, vehicleVin }) {
   if (!referrer?.notify_email) return
   try {
     const from = process.env.GMAIL_ADDRESS
@@ -213,7 +213,7 @@ async function notifyReferrer(referrer, { fullName, email, phone, serviceName, s
     const subject = `New lead from your card: ${fullName}`
     const vehicleLine = [vehicleYear, vehicleMake, vehicleModel].filter(Boolean).join(' ')
     const body =
-      `You've got a new booking through your Ship2Shore card (${referrer.name}).\n\n` +
+      `You've got a new booking through your ${orgName || 'dispatch'} card (${referrer.name}).\n\n` +
       `Name: ${fullName}\n` +
       `Email: ${email}\n` +
       `Phone: ${phone || '—'}\n` +
@@ -231,7 +231,7 @@ async function notifyReferrer(referrer, { fullName, email, phone, serviceName, s
       `${vehicleVin ? `VIN: ${vehicleVin}\n` : ''}` +
       `${notes ? `Notes: ${notes}\n` : ''}` +
       `${photoUrl ? `Vehicle photo: ${photoUrl}\n` : ''}` +
-      `\nThis is already logged in Ship2Shore Dispatch.`
+      `\nThis is already logged in ${orgName || 'your dispatch CRM'}.`
     await gmailSend(at, buildRaw({ from, to: referrer.notify_email, subject, body }))
   } catch {
     // Lead is already saved in the CRM regardless -- a notification-email
@@ -404,7 +404,8 @@ async function bookSlot(orgId, payload) {
       org_id: orgId, contact_id: contactId, type: 'note', body: `Lead source: ${referrer.name}'s card`,
     })
     const photoUrl = await signedPhotoUrl(photoPath)
-    await notifyReferrer(referrer, {
+    const { data: org } = await admin.from('organizations').select('name').eq('id', orgId).maybeSingle()
+    await notifyReferrer(referrer, org?.name, {
       fullName: String(full_name).trim(), email: cleanEmail, phone: cleanPhone,
       serviceName: service.name, startAt: startAt.toISOString(), port, notes, photoUrl,
       pickupAddress: pickup_address, dropoffAddress: dropoff_address, distanceMiles: cleanDistanceMiles,

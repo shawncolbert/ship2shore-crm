@@ -19,8 +19,8 @@ export const handler = async (event) => {
 
   let payload
   try { payload = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'Bad JSON' }) }
-  const { token, filename, contentType, dataBase64 } = payload
-  if (!token || !filename || !dataBase64) return json(400, { error: 'Missing token, filename, or data' })
+  const { token, action, filename, contentType, dataBase64 } = payload
+  if (!token) return json(400, { error: 'Missing token' })
 
   // 1. Validate the share link.
   const { data: link } = await admin
@@ -28,6 +28,15 @@ export const handler = async (event) => {
   if (!link) return json(404, { error: 'This upload link is not valid.' })
   if (link.expires_at && new Date(link.expires_at) < new Date())
     return json(410, { error: 'This upload link has expired. Ask for a new one.' })
+
+  // Lightweight lookup the page uses before any file is picked, so the
+  // upload screen shows the actual org's name instead of a hardcoded one.
+  if (action === 'info') {
+    const { data: org } = await admin.from('organizations').select('name').eq('id', link.org_id).maybeSingle()
+    return json(200, { orgName: org?.name || null })
+  }
+
+  if (!filename || !dataBase64) return json(400, { error: 'Missing filename or data' })
 
   // 2. Decode + size guard (Netlify function body ~6MB; base64 inflates ~33%).
   let buf

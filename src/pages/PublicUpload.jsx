@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 function toBase64(file) {
@@ -15,6 +15,18 @@ export default function PublicUpload() {
   const [file, setFile] = useState(null)
   const [status, setStatus] = useState('idle') // idle | sending | done | error
   const [err, setErr] = useState('')
+  const [orgName, setOrgName] = useState('')
+
+  useEffect(() => {
+    fetch('/.netlify/functions/public-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, action: 'info' }),
+    })
+      .then((r) => r.json())
+      .then((j) => setOrgName(j.orgName || ''))
+      .catch(() => {})
+  }, [token])
 
   async function submit(e) {
     e.preventDefault()
@@ -38,11 +50,11 @@ export default function PublicUpload() {
     <div className="flex min-h-screen items-center justify-center bg-canvas p-4">
       <div className="w-full max-w-md rounded-2xl border border-line bg-surface p-8 shadow-sm">
         <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Send your delivery order</h1>
-        <p className="mt-1 text-sm text-muted">Upload your delivery order or paperwork for Ship2Shore. PDF or photo, up to 8&nbsp;MB.</p>
+        <p className="mt-1 text-sm text-muted">Upload your delivery order or paperwork{orgName ? ` for ${orgName}` : ''}. PDF or photo, up to 8&nbsp;MB.</p>
 
         {status === 'done' ? (
           <div className="mt-6 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            ✅ Received — thank you! Your delivery order was sent to Ship2Shore.
+            ✅ Received — thank you! Your delivery order was sent{orgName ? ` to ${orgName}` : ''}.
             <div className="mt-3">
               <button className="rounded-[var(--radius-btn)] border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas"
                 onClick={() => { setFile(null); setStatus('idle') }}>Upload another</button>

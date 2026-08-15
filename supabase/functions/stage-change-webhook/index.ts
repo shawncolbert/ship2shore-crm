@@ -131,12 +131,13 @@ const escapeHtml = (s: unknown) =>
 // Inline-styled, table-based HTML -- identical design to
 // src/lib/paymentRequest.js's buildHtmlBody() so the email looks the same
 // whether it was sent by a dispatcher's click or this automation.
-function buildHtmlBody(opts: { method: string; handle: string; amount: unknown; contactFirstName: string; jobTitle: string; jobRef: string }): string {
+function buildHtmlBody(opts: { method: string; handle: string; amount: unknown; contactFirstName: string; jobTitle: string; jobRef: string; orgName: string }): string {
   const amt = money(opts.amount);
   const label = PAYMENT_METHOD_LABEL[opts.method] || opts.method;
   const greeting = escapeHtml(opts.contactFirstName || "there");
+  const brand = opts.orgName || "Dispatch";
   const jobLine = opts.jobTitle
-    ? `For your Ship2Shore job (${escapeHtml(opts.jobTitle)}), the amount due is:`
+    ? `For your ${escapeHtml(opts.orgName || "your")} job (${escapeHtml(opts.jobTitle)}), the amount due is:`
     : "The amount due is:";
   const refLine = opts.jobRef
     ? `<p style="margin:8px 0 0;font-size:13px;color:#6b7280;">Please include <strong>${escapeHtml(opts.jobRef)}</strong> in the memo/note.</p>`
@@ -172,7 +173,7 @@ function buildHtmlBody(opts: { method: string; handle: string; amount: unknown; 
   <tr><td align="center">
     <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
       <tr><td style="background:#1a1a1a;padding:18px 28px;">
-        <span style="color:#e8a317;font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Ship2Shore Dispatch</span>
+        <span style="color:#e8a317;font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">${escapeHtml(brand)}</span>
       </td></tr>
       <tr><td style="padding:28px 28px 8px;">
         <p style="margin:0 0 4px;font-size:15px;color:#1a1a1a;">Hi ${greeting},</p>
@@ -184,23 +185,24 @@ function buildHtmlBody(opts: { method: string; handle: string; amount: unknown; 
         ${refLine}
       </td></tr>
       <tr><td style="padding:24px 28px 28px;">
-        <p style="margin:0;font-size:13px;color:#9ca3af;">Thank you,<br>Ship2Shore Dispatch</p>
+        <p style="margin:0;font-size:13px;color:#9ca3af;">Thank you,<br>${escapeHtml(brand)}</p>
       </td></tr>
     </table>
   </td></tr>
 </table>`;
 }
 
-function buildPaymentRequestEmail(opts: { method: string; handle: string; amount: unknown; contactFirstName: string; jobTitle: string; jobRef: string }) {
+function buildPaymentRequestEmail(opts: { method: string; handle: string; amount: unknown; contactFirstName: string; jobTitle: string; jobRef: string; orgName: string }) {
   const label = PAYMENT_METHOD_LABEL[opts.method] || opts.method;
   const amt = money(opts.amount);
+  const brand = opts.orgName || "Dispatch";
   const subject = `Payment request — ${amt}${opts.jobTitle ? ` for ${opts.jobTitle}` : ""}`;
   const body =
     `Hi ${opts.contactFirstName || "there"},\n\n` +
-    `${opts.jobTitle ? `For your Ship2Shore job (${opts.jobTitle}), the ` : "The "}amount due is ${amt}.\n\n` +
+    `${opts.jobTitle ? `For your ${opts.orgName || "your"} job (${opts.jobTitle}), the ` : "The "}amount due is ${amt}.\n\n` +
     `${paymentInstructions(opts.method, opts.handle, opts.amount, opts.jobRef)}\n\n` +
     `${label}: ${opts.handle}\n\n` +
-    `Thank you,\nShip2Shore Dispatch`;
+    `Thank you,\n${brand}`;
   const html = buildHtmlBody(opts);
   return { subject, body, html };
 }
@@ -239,6 +241,8 @@ Deno.serve(async (req: Request) => {
       .eq("id", opportunity_id).eq("org_id", org_id).maybeSingle();
     const { data: contact } = await supabase
       .from("contacts").select("id, full_name, email, phone").eq("id", contact_id).eq("org_id", org_id).maybeSingle();
+    const { data: org } = await supabase.from("organizations").select("name").eq("id", org_id).maybeSingle();
+    const orgName = org?.name;
 
     const fullName = contact?.full_name || "there";
     const vars: Record<string, string> = {
@@ -265,7 +269,7 @@ Deno.serve(async (req: Request) => {
           if (!contact?.email) { results.push({ action: rule.action, ok: false, reason: "contact has no email" }); continue; }
           gmail = gmail || await gmailAccessToken(supabase, org_id);
           if (!gmail) { results.push({ action: rule.action, ok: false, reason: "no Gmail connected" }); continue; }
-          const subject = render(rule.email_subject || "Update on your Ship2Shore booking", vars);
+          const subject = render(rule.email_subject || `Update on your ${orgName || ""} booking`.replace(/\s+/g, " ").trim(), vars);
           const body = render(rule.email_body || "", vars);
           await sendGmail(gmail.token, gmail.from, contact.email, subject, body);
           results.push({ action: rule.action, ok: true, to: contact.email });
@@ -298,7 +302,7 @@ Deno.serve(async (req: Request) => {
           const { subject, body, html } = buildPaymentRequestEmail({
             method, handle, amount: opp?.value,
             contactFirstName: vars.first_name, jobTitle: opp?.title || "",
-            jobRef: opp?.billing_number || opp?.title || "",
+            jobRef: opp?.billing_number || opp?.title || "", orgName: orgName || "",
           });
           await sendGmail(gmail.token, gmail.from, contact.email, subject, body, html);
           await supabase.from("opportunities")

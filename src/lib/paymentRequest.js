@@ -60,12 +60,13 @@ function instructionsFor(method, handle, amount, jobRef) {
 // Inline-styled, table-based HTML so it renders consistently in Gmail/Outlook/
 // Apple Mail without relying on a <style> block. Amber accent matches the
 // app's theme (--color-accent: #e8a317).
-function buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, jobRef }) {
+function buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, jobRef, orgName }) {
   const amt = money(amount)
   const label = methodLabel(method)
   const greeting = escapeHtml(contactFirstName || 'there')
+  const brand = orgName || 'Dispatch'
   const jobLine = jobTitle
-    ? `For your Ship2Shore job (${escapeHtml(jobTitle)}), the amount due is:`
+    ? `For your ${escapeHtml(orgName || 'your')} job (${escapeHtml(jobTitle)}), the amount due is:`
     : 'The amount due is:'
   const refLine = jobRef
     ? `<p style="margin:8px 0 0;font-size:13px;color:#6b7280;">Please include <strong>${escapeHtml(jobRef)}</strong> in the memo/note.</p>`
@@ -117,7 +118,7 @@ function buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, job
       <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
         <tr>
           <td style="background:#1a1a1a;padding:18px 28px;">
-            <span style="color:#e8a317;font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Ship2Shore Dispatch</span>
+            <span style="color:#e8a317;font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">${escapeHtml(brand)}</span>
           </td>
         </tr>
         <tr>
@@ -133,7 +134,7 @@ function buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, job
         </td></tr>
         <tr>
           <td style="padding:24px 28px 28px;">
-            <p style="margin:0;font-size:13px;color:#9ca3af;">Thank you,<br>Ship2Shore Dispatch</p>
+            <p style="margin:0;font-size:13px;color:#9ca3af;">Thank you,<br>${escapeHtml(brand)}</p>
           </td>
         </tr>
       </table>
@@ -146,16 +147,17 @@ function buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, job
 // typically the ship billing number or job title, whichever is available.
 // `body` is the plain-text fallback (still sent alongside `html` in a
 // multipart message, for text-only clients and accessibility).
-export function buildPaymentRequestEmail({ method, handle, amount, contactFirstName, jobTitle, jobRef }) {
+export function buildPaymentRequestEmail({ method, handle, amount, contactFirstName, jobTitle, jobRef, orgName }) {
   const label = methodLabel(method)
   const amt = money(amount)
+  const brand = orgName || 'Dispatch'
   const subject = `Payment request — ${amt}${jobTitle ? ` for ${jobTitle}` : ''}`
   const body =
     `Hi ${contactFirstName || 'there'},\n\n` +
-    `${jobTitle ? `For your Ship2Shore job (${jobTitle}), the ` : 'The '}amount due is ${amt}.\n\n` +
+    `${jobTitle ? `For your ${orgName || 'your'} job (${jobTitle}), the ` : 'The '}amount due is ${amt}.\n\n` +
     `${instructionsFor(method, handle, amount, jobRef)}\n\n` +
     `${label}: ${handle}\n\n` +
-    `Thank you,\nShip2Shore Dispatch`
-  const html = buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, jobRef })
+    `Thank you,\n${brand}`
+  const html = buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, jobRef, orgName })
   return { subject, body, html }
 }
