@@ -62,7 +62,7 @@ const SECTIONS = [
   {
     id: 'booking',
     title: 'Creating a booking',
-    nav: '/',
+    nav: '/dashboard',
     body: `The fastest way in: click "+ New Booking" on the Dashboard. Pick or create the customer, add one
       or more services from your own catalog (set that up under Services first), and it lands on your
       pipeline instantly. Check the boxes there to email the customer a delivery-order request and/or a
@@ -350,7 +350,7 @@ export default function Help() {
             <span className={stepNum}>9</span>
             <div>
               <p className="text-sm font-semibold text-ink">Create a test booking</p>
-              <p className="text-sm text-muted">From the <a href="/" className="text-accent hover:underline">Dashboard</a>, click "+ New Booking" and walk through it once so you know what a customer's job looks like on your pipeline.</p>
+              <p className="text-sm text-muted">From the <a href="/dashboard" className="text-accent hover:underline">Dashboard</a>, click "+ New Booking" and walk through it once so you know what a customer's job looks like on your pipeline.</p>
             </div>
           </li>
           <li className={step}>

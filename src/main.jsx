@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -43,6 +43,7 @@ import PublicFunnel from './pages/PublicFunnel'
 import SocialPosts from './pages/SocialPosts'
 import Agent from './pages/Agent'
 import Help from './pages/Help'
+import Welcome from './pages/Welcome'
 import { bootstrapTheme } from './lib/theme'
 import './index.css'
 
@@ -76,13 +77,19 @@ function App() {
       <Route path="/funnel/:slug" element={<PublicFunnel />} />
       {/* Public invoice page — no auth gate, this is the link a customer gets emailed */}
       <Route path="/invoice/:id" element={<PublicInvoice />} />
+      {/* Branded front door -- your own company name/logo, "Enter CRM" takes
+          you to Pipeline. Shown every time you land here, including right
+          after signing in (see Login.jsx's post-auth redirect). Deliberately
+          outside Layout -- no sidebar on this one screen. */}
+      <Route path="/" element={<ProtectedRoute><Welcome /></ProtectedRoute>} />
       <Route
         path="/*"
         element={
           <ProtectedRoute>
             <Layout>
               <Routes>
-                <Route index element={<FeatureGate featureKey="dashboard"><Dashboard /></FeatureGate>} />
+                <Route index element={<Navigate to="/pipeline" replace />} />
+                <Route path="dashboard" element={<FeatureGate featureKey="dashboard"><Dashboard /></FeatureGate>} />
                 <Route path="help" element={<FeatureGate featureKey="help"><Help /></FeatureGate>} />
                 <Route path="inbox" element={<FeatureGate featureKey="inbox"><Inbox /></FeatureGate>} />
                 <Route path="contacts" element={<FeatureGate featureKey="contacts"><Contacts /></FeatureGate>} />

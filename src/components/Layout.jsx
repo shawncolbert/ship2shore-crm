@@ -13,7 +13,7 @@ import { applyTheme, cacheTheme } from '../lib/theme'
 const nav = [
   { to: '/help', label: 'Help / Getting Started', key: 'help', group: 'Overview' },
   { to: '/agent', label: 'AI Assistant', key: 'ai_assistant', group: 'Overview' },
-  { to: '/', label: 'Dashboard', end: true, key: 'dashboard', group: 'Overview' },
+  { to: '/dashboard', label: 'Dashboard', key: 'dashboard', group: 'Overview' },
   { to: '/settings/card-links', label: 'Digital Business Cards', key: 'digital_business_cards', group: 'Marketing' },
   { to: '/inbox', label: 'Inbox', key: 'inbox', group: 'Clients & Bookings' },
   { to: '/contacts', label: 'Contacts', key: 'contacts', group: 'Clients & Bookings' },

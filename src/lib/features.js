@@ -12,7 +12,7 @@
 export const FEATURES = [
   { key: 'help', label: 'Help / Getting Started', path: '/help' },
   { key: 'ai_assistant', label: 'AI Assistant', path: '/agent' },
-  { key: 'dashboard', label: 'Dashboard', path: '/' },
+  { key: 'dashboard', label: 'Dashboard', path: '/dashboard' },
   { key: 'digital_business_cards', label: 'Digital Business Cards', path: '/settings/card-links' },
   { key: 'inbox', label: 'Inbox', path: '/inbox' },
   { key: 'contacts', label: 'Contacts', path: '/contacts' },
