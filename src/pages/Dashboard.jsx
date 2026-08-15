@@ -6,6 +6,7 @@ import {
   fetchNewCustomerFiles, markAttachmentViewed, fetchMyOrg,
 } from '../lib/supabase'
 import { fetchMyExternalCards } from '../lib/externalCards'
+import { fetchCustomLinks } from '../lib/customLinks'
 import { isFeatureEnabled } from '../lib/features'
 import DrillDownModal from '../components/DrillDownModal'
 import BookingSidebar from '../components/BookingSidebar'
@@ -86,6 +87,7 @@ export default function Dashboard() {
     queryFn: fetchMyExternalCards,
     refetchInterval: 60_000,
   })
+  const { data: customLinks } = useQuery({ queryKey: ['customLinks'], queryFn: fetchCustomLinks, staleTime: 5 * 60 * 1000 })
   const cardClicks = (externalCards || []).reduce((sum, c) => sum + (c.click_count || 0), 0)
   // { kind } for the stat cards, or { kind: 'stage', stageId, stageName } for a per-stage row.
   const [drillDown, setDrillDown] = useState(null)
@@ -167,6 +169,34 @@ export default function Dashboard() {
                   </button>
                 ))}
               </div>
+
+              {customLinks?.length > 0 && (
+                <div className="mt-6">
+                  <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Custom links</h2>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {customLinks.map((l) => (
+                      <a
+                        key={l.id}
+                        href={l.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-4 text-left shadow-[var(--shadow-card)] transition-transform hover:-translate-y-0.5"
+                      >
+                        <span
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xl"
+                          style={isDispatchSuite ? { background: 'rgba(212,175,106,0.14)', color: 'var(--color-brass)' } : { background: '#4a1a5c' }}
+                        >
+                          🔗
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-ink">{l.label}</span>
+                          <span className="block truncate text-xs text-muted">Opens in a new tab</span>
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
