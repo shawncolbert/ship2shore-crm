@@ -308,60 +308,67 @@ export default function Help() {
             <span className={stepNum}>3</span>
             <div>
               <p className="text-sm font-semibold text-ink">Add how you get paid</p>
-              <p className="text-sm text-muted">Go to <a href="/payment-settings" className="text-accent hover:underline">Payment Settings</a> and enter your Zelle/Venmo/Cash App/Apple Pay handles.</p>
+              <p className="text-sm text-muted">Go to <a href="/payment-settings" className="text-accent hover:underline">Payment Settings</a> and enter your Zelle/Venmo/Cash App/Apple Pay handles, and/or save your Wave Checkout links there too. Any of these can be checked on an invoice when you send it.</p>
             </div>
           </li>
           <li className={step}>
             <span className={stepNum}>4</span>
+            <div>
+              <p className="text-sm font-semibold text-ink">Set up your invoice header</p>
+              <p className="text-sm text-muted">Go to <a href="/invoices" className="text-accent hover:underline">Invoices</a> and click "Business info" to set your name/address/phone/logo/EIN — this is what prints on every invoice you send, separate from your booking business info.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>5</span>
             <div>
               <p className="text-sm font-semibold text-ink">Connect Gmail</p>
               <p className="text-sm text-muted">Go to <a href="/inbox" className="text-accent hover:underline">Inbox</a> and click "Connect Gmail," then sign in with Google. This is required — automated payment/document-request emails, replies, and mail sync all use your own connected account, not a shared one, and won't work at all until this is done.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>5</span>
+            <span className={stepNum}>6</span>
             <div>
               <p className="text-sm font-semibold text-ink">Connect your Calendly</p>
               <p className="text-sm text-muted">Go to <a href="/settings/scheduling" className="text-accent hover:underline">Scheduling</a> and paste in your own Calendly link. This is required too — until it's set, the "Book" button and scheduler on a contact's page stay hidden rather than showing anyone else's calendar.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>6</span>
+            <span className={stepNum}>7</span>
             <div>
               <p className="text-sm font-semibold text-ink">Set up your (or your drivers') digital business cards</p>
               <p className="text-sm text-muted">Go to <a href="/settings/card-links" className="text-accent hover:underline">Digital Business Cards</a>, click "+ Add a card" → "Set up a new card here," fill in one form, and copy the link it gives you at the end.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>7</span>
+            <span className={stepNum}>8</span>
             <div>
               <p className="text-sm font-semibold text-ink">Bring in your existing contacts</p>
               <p className="text-sm text-muted">Go to <a href="/contacts" className="text-accent hover:underline">Contacts</a> → "Import" to bring in your whole phone/CRM contact list at once (CSV or vCard), or use "Scan card" any time to add someone one photographed business card at a time.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>8</span>
+            <span className={stepNum}>9</span>
             <div>
               <p className="text-sm font-semibold text-ink">Create a test booking</p>
               <p className="text-sm text-muted">From the <a href="/" className="text-accent hover:underline">Dashboard</a>, click "+ New Booking" and walk through it once so you know what a customer's job looks like on your pipeline.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>9</span>
+            <span className={stepNum}>10</span>
             <div>
               <p className="text-sm font-semibold text-ink">Make it look like your business</p>
               <p className="text-sm text-muted">Go to <a href="/settings/appearance" className="text-accent hover:underline">Appearance</a> and pick one of seven dashboard layouts (plus light/dark mode) — applies for your whole organization, changes any time.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>10</span>
+            <span className={stepNum}>11</span>
             <div>
               <p className="text-sm font-semibold text-ink">Connect TikTok (optional)</p>
               <p className="text-sm text-muted">Only needed if you want to auto-publish social posts. Go to <a href="/social-posts" className="text-accent hover:underline">Social Posts</a> and click "Connect TikTok." Skip this if you'll only ever draft posts and post them yourself.</p>
             </div>
           </li>
           <li className={step}>
-            <span className={stepNum}>11</span>
+            <span className={stepNum}>12</span>
             <div>
               <p className="text-sm font-semibold text-ink">Need a teammate added, or something changed?</p>
               <p className="text-sm text-muted">Adding additional users to your account isn't self-serve yet — reach out and we'll get them set up.</p>
