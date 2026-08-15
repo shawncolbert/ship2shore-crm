@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js'
-import { PAYMENT_METHODS, buildPaymentRequestEmail } from './paymentRequest'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -260,8 +259,9 @@ export async function fetchDefaultPipeline() {
 
   const { data: opps, error: oErr } = await supabase
     .from('opportunities')
-    .select('id, title, service_code, port, vehicle, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, payment_status, wave_invoice_id, payment_requested_at, payment_method_requested, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, contacts(full_name, company, email, phone)')
+    .select('id, title, service_code, port, vehicle, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, contacts(full_name, company, email, phone), invoices(id, status, invoice_number, total, amount_due, created_at)')
     .eq('pipeline_id', pipeline.id)
+    .order('created_at', { ascending: false, foreignTable: 'invoices' })
   if (oErr) throw oErr
 
   return { pipeline, stages, opportunities: (opps || []).filter((o) => o.status !== 'cancelled') }
@@ -432,7 +432,10 @@ export async function sendWaveInvoice(opportunityId) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Manual payment requests (Zelle / Venmo / Cash App / Apple Pay)      */
+/* Payment settings (Zelle / Venmo / Cash App / Apple Pay handles) --   */
+/* still used by the "send payment request" stage-change automation   */
+/* and by the Invoices payment-options picker, just not from a         */
+/* standalone pipeline-card button anymore.                            */
 /* ------------------------------------------------------------------ */
 
 export async function fetchPaymentSettings() {
@@ -455,43 +458,6 @@ export async function savePaymentSettings(patch) {
   return data
 }
 
-// Sends the payment request immediately — no draft/review step. Builds the
-// message from payment_settings + the opportunity's value, emails it via the
-// existing send-email function (Gmail), then stamps payment_requested_at /
-// payment_method_requested on the opportunity.
-export async function sendPaymentRequest(opportunityId, method) {
-  const { data: opp, error: oppErr } = await supabase
-    .from('opportunities')
-    .select('id, title, value, billing_number, contact_id, contacts(id, full_name, email)')
-    .eq('id', opportunityId)
-    .maybeSingle()
-  if (oppErr || !opp) throw new Error('Opportunity not found.')
-  const contact = opp.contacts
-  if (!contact?.email) throw new Error('This contact has no email on file — add one before sending a payment request.')
-
-  const settings = await fetchPaymentSettings()
-  const meta = PAYMENT_METHODS.find((m) => m.value === method)
-  if (!meta) throw new Error('Unknown payment method.')
-  const handle = settings[meta.handleField]
-  if (!handle) throw new Error(`Set your ${meta.label} handle in Payment Settings before sending.`)
-
-  const org = await fetchMyOrg()
-  const firstName = (contact.full_name || '').split(/\s+/)[0] || 'there'
-  const { subject, body, html } = buildPaymentRequestEmail({
-    method, handle, amount: opp.value, contactFirstName: firstName,
-    jobTitle: opp.title, jobRef: opp.billing_number || opp.title || '', orgName: org?.name,
-  })
-
-  await sendEmail({ contactId: contact.id, to: contact.email, subject, body, html })
-
-  const { error: updErr } = await supabase
-    .from('opportunities')
-    .update({ payment_requested_at: new Date().toISOString(), payment_method_requested: method })
-    .eq('id', opportunityId)
-  if (updErr) throw updErr
-
-  return { ok: true, method, sent_to: contact.email }
-}
 
 // Live reporting metrics for the dashboard. Queried on page load; small enough
 // data that we aggregate client-side rather than with a backend function.

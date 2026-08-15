@@ -46,7 +46,9 @@ const SECTIONS = [
     body: `Every job as a card, grouped by stage, left to right. Drag a card to move it forward (or back).
       Click a card to edit its title, value, scheduled date, or billing number right there. A badge on the
       "Pipeline" link in the sidebar tells you how many jobs are sitting in your intake stage and still need
-      your attention — that's your first stop most mornings.`,
+      your attention — that's your first stop most mornings. Hover a card for its quick actions: the invoice
+      icon opens (or starts, prefilled from the job) that customer's invoice — see Invoices for the payment
+      options you can put on it — and the pencil opens the full editor.`,
   },
   {
     id: 'pipeline-stages',
@@ -155,9 +157,10 @@ const SECTIONS = [
     id: 'payments',
     title: 'Payment Settings',
     nav: '/payment-settings',
-    body: `Enter your Zelle, Venmo, Cash App, and Apple Pay handles once. From then on, the 💲 button on any
-      pipeline card sends that customer a payment request instantly — no separate app needed. None of these
-      have a way to auto-confirm payment landed, so you'll still mark the job Paid yourself once it does.`,
+    body: `Enter your Zelle, Venmo, Cash App, and Apple Pay handles once. From then on they're available as
+      check-off options in a job's invoice (see Invoices) and in the "send a payment request" automation
+      action (see Automations) — no separate app needed. None of these have a way to auto-confirm payment
+      landed, so you'll still mark it paid yourself once it does.`,
   },
   {
     id: 'documents',

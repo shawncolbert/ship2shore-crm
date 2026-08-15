@@ -103,6 +103,7 @@ export async function createInvoice({ fields, lineItems }) {
       status: 'draft',
       wave_checkout_url: fields.wave_checkout_url?.trim() || null,
       payment_options: fields.payment_options || { stripe: true },
+      opportunity_id: fields.opportunity_id || null,
     })
     .select('*')
     .single()
@@ -221,6 +222,20 @@ export async function fetchServicesForInvoice() {
     .order('name', { ascending: true })
   if (error) throw error
   return data || []
+}
+
+// Prefills a new invoice started from a pipeline card's Invoice button --
+// mirrors fillBillToFromContact's shape (company/full_name/address/phone/
+// email) plus the job's own title/value/billing number for the first line
+// item, so the dispatcher isn't retyping what's already on the card.
+export async function fetchOpportunityForInvoice(opportunityId) {
+  const { data, error } = await supabase
+    .from('opportunities')
+    .select('id, title, value, billing_number, contact_id, contacts(id, full_name, company, phone, email, custom_fields)')
+    .eq('id', opportunityId)
+    .maybeSingle()
+  if (error) throw error
+  return data
 }
 
 export async function fetchContactsForInvoice() {

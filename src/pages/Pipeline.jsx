@@ -1,12 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchDefaultPipeline, moveOpportunity, cancelOpportunity, setOpportunityBilling, patchOpportunity,
-  updateOpportunity, sendWaveInvoice, fetchPaymentSettings, sendPaymentRequest,
+  updateOpportunity,
   uploadCompletionVideo, fetchCompletionVideo, fetchMyOrgId, fetchLatestJobNote, fetchVehiclePhotoUrl,
 } from '../lib/supabase'
-import { PAYMENT_METHODS, methodLabel } from '../lib/paymentRequest'
 import { buildBookingSummary, shareBooking } from '../lib/shareBooking'
 import NewContactModal from '../components/NewContactModal'
 
@@ -70,9 +69,6 @@ export default function Pipeline() {
     queryKey: ['pipeline'],
     queryFn: fetchDefaultPipeline,
   })
-  // Which methods have a handle configured -- used to grey out unset options
-  // in the card's payment-request menu.
-  const { data: paymentSettings } = useQuery({ queryKey: ['paymentSettings'], queryFn: fetchPaymentSettings })
 
   const onCancel = async (id) => {
     setCancelling(id)
@@ -141,22 +137,6 @@ export default function Pipeline() {
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
     }
-  }
-
-  // No optimistic update -- we only know payment_status changed once Wave
-  // actually confirms the invoice was created and sent, so we wait for the
-  // real result and just refetch. Errors bubble up to the caller (JobCard).
-  const onSendInvoice = async (id) => {
-    const result = await sendWaveInvoice(id)
-    qc.invalidateQueries({ queryKey: ['pipeline'] })
-    return result
-  }
-
-  // Fires immediately -- no draft/review step. Errors bubble up to JobCard.
-  const onSendPaymentRequest = async (id, method) => {
-    const result = await sendPaymentRequest(id, method)
-    qc.invalidateQueries({ queryKey: ['pipeline'] })
-    return result
   }
 
   const onDrop = async (stageId) => {
@@ -254,9 +234,6 @@ export default function Pipeline() {
                     onSaveBilling={onSaveBilling}
                     onSaveFields={onSaveFields}
                     onPatch={onPatch}
-                    onSendInvoice={onSendInvoice}
-                    onSendPaymentRequest={onSendPaymentRequest}
-                    paymentSettings={paymentSettings}
                   />
                 ))}
               </div>
@@ -270,32 +247,22 @@ export default function Pipeline() {
   )
 }
 
-function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onSaveBilling, onSaveFields, onPatch, onSendInvoice, onSendPaymentRequest, paymentSettings }) {
+function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onSaveBilling, onSaveFields, onPatch }) {
   const ref = useRef(null)
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
-  const [sendingInvoice, setSendingInvoice] = useState(false)
-  const [invoiceError, setInvoiceError] = useState('')
-  const [payMenuOpen, setPayMenuOpen] = useState(false)
-  const [sendingPayment, setSendingPayment] = useState(null)
-  const [paymentError, setPaymentError] = useState('')
-  const payMenuRef = useRef(null)
   // A text input inside a draggable=true element can't take focus in Chrome.
   // Flip the card's draggable flag off imperatively the instant the billing
   // field is touched (before focus), and back on when we leave it.
   const setDraggable = (on) => { if (ref.current) ref.current.draggable = on }
 
-  async function handleSendInvoice(e) {
+  // The card's own invoice, if one's been started -- fetchDefaultPipeline
+  // embeds each opportunity's invoices ordered newest-first, so [0] is it.
+  const invoice = c.invoices?.[0]
+
+  function handleOpenInvoice(e) {
     e.stopPropagation()
-    if (sendingInvoice) return
-    setSendingInvoice(true); setInvoiceError('')
-    try {
-      await onSendInvoice(c.id)
-    } catch (err) {
-      setInvoiceError(err.message || String(err))
-    } finally {
-      setSendingInvoice(false)
-    }
+    navigate(invoice ? `/invoices/${invoice.id}` : `/invoices/new?opportunity_id=${c.id}`)
   }
 
   // No await before shareBooking() -- navigator.share() needs to fire within
@@ -305,28 +272,6 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onSaveBill
     e.stopPropagation()
     shareBooking({ summaryText: bookingSummaryFor(c), recipientPhone: c.contacts?.phone })
   }
-
-  // Fires the request immediately on click -- no confirm step.
-  async function handleRequestPayment(e, method) {
-    e.stopPropagation()
-    setPayMenuOpen(false)
-    if (sendingPayment) return
-    setSendingPayment(method); setPaymentError('')
-    try {
-      await onSendPaymentRequest(c.id, method)
-    } catch (err) {
-      setPaymentError(err.message || String(err))
-    } finally {
-      setSendingPayment(null)
-    }
-  }
-
-  useEffect(() => {
-    if (!payMenuOpen) return
-    const onDocClick = (e) => { if (!payMenuRef.current?.contains(e.target)) setPayMenuOpen(false) }
-    document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
-  }, [payMenuOpen])
 
   if (editing) {
     return (
@@ -381,61 +326,14 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onSaveBill
             onInteractStart={() => setDraggable(false)}
             onInteractEnd={() => setDraggable(true)}
           />
-          <div className="relative" ref={payMenuRef}>
-            <button
-              onClick={(e) => { e.stopPropagation(); setPayMenuOpen((o) => !o) }}
-              disabled={!!sendingPayment}
-              title="Request payment (Zelle / Venmo / Cash App / Apple Pay)"
-              className="rounded p-0.5 text-[11px] font-bold text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-canvas hover:text-accent disabled:cursor-wait disabled:opacity-100"
-            >
-              {sendingPayment ? (
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5 animate-spin">
-                  <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeOpacity="0.25" />
-                  <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              ) : (
-                <span className="flex h-3.5 w-3.5 items-center justify-center">$</span>
-              )}
-            </button>
-            {payMenuOpen && (
-              <div
-                onMouseDown={(e) => e.stopPropagation()}
-                className="absolute right-0 top-full z-10 mt-1 w-40 rounded-lg border border-line bg-surface py-1 shadow-lg"
-              >
-                {PAYMENT_METHODS.map((m) => {
-                  const configured = !!paymentSettings?.[m.handleField]
-                  return (
-                    <button
-                      key={m.value}
-                      type="button"
-                      disabled={!configured}
-                      title={configured ? undefined : `Set your ${m.label} handle in Payment Settings first`}
-                      onClick={(e) => handleRequestPayment(e, m.value)}
-                      className="block w-full px-3 py-1.5 text-left text-xs text-ink hover:bg-canvas disabled:cursor-not-allowed disabled:text-muted disabled:opacity-50"
-                    >
-                      {m.label}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
           <button
-            onClick={handleSendInvoice}
-            disabled={sendingInvoice}
-            title={c.wave_invoice_id ? 'Resend Wave invoice' : 'Send Wave invoice'}
-            className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-canvas hover:text-accent disabled:cursor-wait disabled:opacity-100"
+            onClick={handleOpenInvoice}
+            title={invoice ? `Open invoice ${invoice.invoice_number}` : 'Create an invoice for this job'}
+            className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-canvas hover:text-accent"
           >
-            {sendingInvoice ? (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5 animate-spin">
-                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeOpacity="0.25" />
-                <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
-                <path d="M8 1.5a1 1 0 0 1 1 1v.55a3 3 0 0 1 2.45 2.45 1 1 0 1 1-1.97.35A1 1 0 0 0 8.5 5H7.2a1.2 1.2 0 0 0-.35 2.35l1.9.63A3.2 3.2 0 0 1 7.65 14.5v.5a1 1 0 1 1-2 0v-.55a3 3 0 0 1-2.45-2.45 1 1 0 1 1 1.97-.35A1 1 0 0 0 6.15 12H7.4a1.2 1.2 0 0 0 .35-2.35l-1.9-.63A3.2 3.2 0 0 1 6.85 2.5V2a1 1 0 0 1 1-1Z" />
-              </svg>
-            )}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+              <path d="M8 1.5a1 1 0 0 1 1 1v.55a3 3 0 0 1 2.45 2.45 1 1 0 1 1-1.97.35A1 1 0 0 0 8.5 5H7.2a1.2 1.2 0 0 0-.35 2.35l1.9.63A3.2 3.2 0 0 1 7.65 14.5v.5a1 1 0 1 1-2 0v-.55a3 3 0 0 1-2.45-2.45 1 1 0 1 1 1.97-.35A1 1 0 0 0 6.15 12H7.4a1.2 1.2 0 0 0 .35-2.35l-1.9-.63A3.2 3.2 0 0 1 6.85 2.5V2a1 1 0 0 1 1-1Z" />
+            </svg>
           </button>
           <button
             onClick={handleShareBooking}
@@ -484,22 +382,8 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onSaveBill
           paid={c.paid}
           onToggle={() => onPatch(c.id, { paid: !c.paid })}
         />
-        {c.wave_invoice_id && <PaymentStatusBadge status={c.payment_status} />}
-        {c.payment_requested_at && (
-          <span
-            title={`Requested ${new Date(c.payment_requested_at).toLocaleString()}`}
-            className="rounded-full bg-canvas px-2 py-0.5 text-[10px] font-semibold text-muted ring-1 ring-inset ring-line"
-          >
-            {methodLabel(c.payment_method_requested)} requested
-          </span>
-        )}
+        {invoice && <InvoiceStatusBadge status={invoice.status} />}
       </div>
-      {invoiceError && (
-        <p className="mt-1.5 text-[11px] text-port" title={invoiceError}>⚠️ {invoiceError}</p>
-      )}
-      {paymentError && (
-        <p className="mt-1.5 text-[11px] text-port" title={paymentError}>⚠️ {paymentError}</p>
-      )}
 
       <BillingField
         value={c.billing_number}
@@ -875,18 +759,19 @@ function PaidToggle({ paid, onToggle }) {
   )
 }
 
-// Wave invoice status, shown once an invoice has been sent for this job.
-const PAYMENT_STATUS_STYLE = {
+// This job's in-app invoice status, shown once one's been started.
+const INVOICE_STATUS_STYLE = {
   paid: 'bg-starboard/15 text-starboard ring-starboard/30',
   sent: 'bg-accent/15 text-ink ring-accent/40',
-  unpaid: 'bg-canvas text-muted ring-line',
+  overdue: 'bg-red-50 text-red-600 ring-red-200',
+  draft: 'bg-canvas text-muted ring-line',
 }
-const PAYMENT_STATUS_LABEL = { paid: 'Invoice paid', sent: 'Invoice sent', unpaid: 'Invoice unpaid' }
-function PaymentStatusBadge({ status }) {
-  const key = status && PAYMENT_STATUS_STYLE[status] ? status : 'unpaid'
+const INVOICE_STATUS_LABEL = { paid: 'Invoice paid', sent: 'Invoice sent', overdue: 'Invoice overdue', draft: 'Invoice draft' }
+function InvoiceStatusBadge({ status }) {
+  const key = status && INVOICE_STATUS_STYLE[status] ? status : 'draft'
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${PAYMENT_STATUS_STYLE[key]}`}>
-      {PAYMENT_STATUS_LABEL[key]}
+    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${INVOICE_STATUS_STYLE[key]}`}>
+      {INVOICE_STATUS_LABEL[key]}
     </span>
   )
 }

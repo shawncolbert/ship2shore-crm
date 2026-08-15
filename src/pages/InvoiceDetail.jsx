@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchInvoice, fetchInvoiceBusinessInfo, fetchContactsForInvoice, fetchServicesForInvoice,
-  createInvoice, updateInvoice, sendInvoice, markInvoicePaidManually, computeTotals,
+  fetchOpportunityForInvoice, createInvoice, updateInvoice, sendInvoice, markInvoicePaidManually, computeTotals,
 } from '../lib/invoices'
 import { fetchPaymentSettings } from '../lib/supabase'
 import InvoicePreview from '../components/InvoicePreview'
@@ -46,6 +46,8 @@ export default function InvoiceDetail() {
   const isNew = !id
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const opportunityId = isNew ? searchParams.get('opportunity_id') : null
 
   const { data: businessInfo } = useQuery({ queryKey: ['invoiceBusinessInfo'], queryFn: fetchInvoiceBusinessInfo })
   const { data: contacts } = useQuery({ queryKey: ['contactsForInvoice'], queryFn: fetchContactsForInvoice })
@@ -53,6 +55,14 @@ export default function InvoiceDetail() {
   const { data: paymentSettings } = useQuery({ queryKey: ['paymentSettings'], queryFn: fetchPaymentSettings })
   const { data: existing, isLoading } = useQuery({
     queryKey: ['invoice', id], queryFn: () => fetchInvoice(id), enabled: !isNew,
+  })
+  // Started from a pipeline card's Invoice button -- prefills Bill To and a
+  // line item from the job, so the dispatcher isn't retyping the customer
+  // and amount that are already sitting right there on the card.
+  const { data: sourceOpportunity } = useQuery({
+    queryKey: ['opportunityForInvoice', opportunityId],
+    queryFn: () => fetchOpportunityForInvoice(opportunityId),
+    enabled: !!opportunityId,
   })
 
   const [fields, setFields] = useState(EMPTY_FIELDS)
@@ -64,6 +74,7 @@ export default function InvoiceDetail() {
   const [err, setErr] = useState('')
   const [notice, setNotice] = useState(null)
   const [invoiceId, setInvoiceId] = useState(isNew ? null : id)
+  const [prefilledFrom, setPrefilledFrom] = useState(null)
 
   useEffect(() => {
     if (existing?.invoice) {
@@ -87,6 +98,20 @@ export default function InvoiceDetail() {
       setWaveCheckoutUrl(inv.wave_checkout_url || '')
     }
   }, [existing])
+
+  useEffect(() => {
+    if (sourceOpportunity && prefilledFrom !== sourceOpportunity.id) {
+      const contact = sourceOpportunity.contacts
+      setFields((f) => ({
+        ...f,
+        contact_id: sourceOpportunity.contact_id || '',
+        po_number: sourceOpportunity.billing_number || '',
+        ...(contact ? fillBillToFromContact(contact) : {}),
+      }))
+      setLineItems([{ service_id: '', description: sourceOpportunity.title || '', quantity: 1, unit_price: Number(sourceOpportunity.value) || 0 }])
+      setPrefilledFrom(sourceOpportunity.id)
+    }
+  }, [sourceOpportunity, prefilledFrom])
 
   const togglePaymentOption = (key) => setPaymentOptions((o) => ({ ...o, [key]: !o[key] }))
 
@@ -138,7 +163,7 @@ export default function InvoiceDetail() {
     if (usableLineItems.length === 0) { setErr('Add at least one line item first.'); return null }
     setErr(''); setSaving(true)
     try {
-      const fieldsToSave = { ...fields, payment_options: paymentOptions, wave_checkout_url: waveCheckoutUrl }
+      const fieldsToSave = { ...fields, payment_options: paymentOptions, wave_checkout_url: waveCheckoutUrl, opportunity_id: opportunityId }
       const result = isNew && !invoiceId
         ? await createInvoice({ fields: fieldsToSave, lineItems: usableLineItems })
         : await updateInvoice(invoiceId || id, { fields: fieldsToSave, lineItems: usableLineItems })
