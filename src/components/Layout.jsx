@@ -76,6 +76,49 @@ function Brand() {
   )
 }
 
+const COLLAPSED_GROUPS_KEY = 'sidebarCollapsedGroups'
+
+function loadCollapsedGroups() {
+  try { return JSON.parse(localStorage.getItem(COLLAPSED_GROUPS_KEY) || '{}') } catch { return {} }
+}
+
+// A section header you can click to fold its items away -- state persists
+// across reloads (localStorage, not the DB) since it's a per-device display
+// preference, not something that needs to sync across a dispatcher's
+// different devices or be visible to other users in the org.
+function CollapsibleGroup({ group, label, children }) {
+  const [collapsed, setCollapsed] = useState(() => !!loadCollapsedGroups()[group])
+
+  const toggle = () => {
+    setCollapsed((was) => {
+      const next = !was
+      const all = loadCollapsedGroups()
+      all[group] = next
+      localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify(all))
+      return next
+    })
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={!collapsed}
+        className="mb-1 flex w-full items-center justify-between rounded px-3 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] hover:bg-white/5"
+        style={{ color: 'var(--color-brass)' }}
+      >
+        <span>{label}</span>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"
+          className={`h-3 w-3 shrink-0 transition-transform ${collapsed ? '-rotate-90' : ''}`}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6l4 4 4-4" />
+        </svg>
+      </button>
+      {!collapsed && <div className="space-y-0.5">{children}</div>}
+    </div>
+  )
+}
+
 function NavItems({ onNavigate }) {
   const { data: profile } = useQuery({ queryKey: ['myProfile'], queryFn: fetchMyProfile })
   const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
@@ -154,12 +197,9 @@ function NavItems({ onNavigate }) {
     return (
       <nav className="flex-1 space-y-4 overflow-y-auto px-3 pb-2">
         {byGroup.map(({ group, items: groupItems }) => (
-          <div key={group}>
-            <div className="mb-1 px-3 text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--color-brass)' }}>
-              {labels[group] || group}
-            </div>
-            <div className="space-y-0.5">{groupItems.map(item)}</div>
-          </div>
+          <CollapsibleGroup key={group} group={group} label={labels[group] || group}>
+            {groupItems.map(item)}
+          </CollapsibleGroup>
         ))}
       </nav>
     )
