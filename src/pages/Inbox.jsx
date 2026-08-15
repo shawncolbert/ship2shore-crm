@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchConversations, fetchMessages, subscribeMessages, sendEmail, deleteConversation, supabase, fetchMyOrg,
+  fetchConversations, fetchMessages, subscribeMessages, sendEmail, deleteConversation, deleteMessage, supabase, fetchMyOrg,
 } from '../lib/supabase'
 
 const fmtTime = (d) =>
@@ -189,6 +189,36 @@ function ChannelTag({ channel }) {
   )
 }
 
+// Removes one message from a thread (a duplicate send, a stray leftover
+// draft) without deleting the whole conversation. Only shows on hover so it
+// doesn't clutter every bubble.
+function DeleteMessageButton({ messageId, conversationId }) {
+  const qc = useQueryClient()
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDelete = async () => {
+    if (!window.confirm('Delete this message? This only removes it here, not from the customer\'s own inbox if it was already sent.')) return
+    setDeleting(true)
+    try {
+      await deleteMessage(messageId)
+      qc.invalidateQueries({ queryKey: ['messages', conversationId] })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleDelete}
+      disabled={deleting}
+      title="Delete message"
+      className="shrink-0 rounded p-1 text-muted opacity-0 transition-opacity hover:bg-red-50 hover:text-red-500 disabled:opacity-50 group-hover:opacity-100"
+    >
+      ✕
+    </button>
+  )
+}
+
 function Thread({ conversation, orgName, onBack, onDelete }) {
   const qc = useQueryClient()
   const [body, setBody] = useState('')
@@ -258,7 +288,8 @@ function Thread({ conversation, orgName, onBack, onDelete }) {
         {messages?.map((m) => {
           const out = m.direction === 'outbound'
           return (
-            <div key={m.id} className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
+            <div key={m.id} className={`group flex items-center gap-1.5 ${out ? 'justify-end' : 'justify-start'}`}>
+              {out && <DeleteMessageButton messageId={m.id} conversationId={conversation.id} />}
               <div className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${
                 out ? 'bg-brand text-white' : 'bg-surface text-ink border border-line'
               }`}>
@@ -267,6 +298,7 @@ function Thread({ conversation, orgName, onBack, onDelete }) {
                   {m.ai_generated ? 'AI · ' : ''}{fmtTime(m.created_at)}
                 </div>
               </div>
+              {!out && <DeleteMessageButton messageId={m.id} conversationId={conversation.id} />}
             </div>
           )
         })}

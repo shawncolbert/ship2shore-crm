@@ -245,6 +245,16 @@ export async function fetchContact(id) {
   }
 }
 
+// Cascades: their conversations/messages, Timeline (activities), and
+// uploaded documents/photos go with them. Jobs, appointments, and invoices
+// are kept but orphaned (contact_id set to null) rather than deleted --
+// billing history and the pipeline board shouldn't vanish just because a
+// contact record was cleaned up.
+export async function deleteContact(id) {
+  const { error } = await supabase.from('contacts').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function fetchDefaultPipeline() {
   const { data: pipeline, error: pErr } = await supabase
     .from('pipelines').select('id, name').eq('is_default', true).limit(1).single()
@@ -354,6 +364,15 @@ export async function cancelOpportunity(id) {
 // (opportunity), only the calendar/appointment row itself.
 export async function deleteAppointment(id) {
   const { error } = await supabase.from('appointments').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Hard delete, distinct from cancelOpportunity's soft status change -- for
+// removing a job entirely (a duplicate, a test booking) rather than just
+// taking it off the active board. Any linked invoice/appointment/attachment
+// is kept, just unlinked (opportunity_id set to null).
+export async function deleteOpportunity(id) {
+  const { error } = await supabase.from('opportunities').delete().eq('id', id)
   if (error) throw error
 }
 

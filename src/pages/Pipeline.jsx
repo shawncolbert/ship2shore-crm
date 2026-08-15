@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchDefaultPipeline, moveOpportunity, cancelOpportunity, setOpportunityBilling, patchOpportunity,
+  fetchDefaultPipeline, moveOpportunity, cancelOpportunity, deleteOpportunity, setOpportunityBilling, patchOpportunity,
   updateOpportunity,
   uploadCompletionVideo, fetchCompletionVideo, fetchMyOrgId, fetchLatestJobNote, fetchVehiclePhotoUrl,
 } from '../lib/supabase'
@@ -78,6 +78,22 @@ export default function Pipeline() {
     })
     try {
       await cancelOpportunity(id)
+    } finally {
+      qc.invalidateQueries({ queryKey: ['pipeline'] })
+      setCancelling(null)
+    }
+  }
+
+  // Hard delete -- distinct from onCancel's soft status change. Same
+  // optimistic-remove-then-refetch shape.
+  const onDelete = async (id) => {
+    setCancelling(id)
+    qc.setQueryData(['pipeline'], (prev) => {
+      if (!prev) return prev
+      return { ...prev, opportunities: prev.opportunities.filter((o) => o.id !== id) }
+    })
+    try {
+      await deleteOpportunity(id)
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
       setCancelling(null)
@@ -231,6 +247,7 @@ export default function Pipeline() {
                     setDragId={setDragId}
                     cancelling={cancelling}
                     onCancel={onCancel}
+                    onDelete={onDelete}
                     onSaveBilling={onSaveBilling}
                     onSaveFields={onSaveFields}
                     onPatch={onPatch}
@@ -247,7 +264,7 @@ export default function Pipeline() {
   )
 }
 
-function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onSaveBilling, onSaveFields, onPatch }) {
+function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, onSaveBilling, onSaveFields, onPatch }) {
   const ref = useRef(null)
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
@@ -281,6 +298,9 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onSaveBill
         onSave={async (patch) => { await onSaveFields(c.id, patch); setEditing(false) }}
         onCancelJob={() => {
           if (window.confirm(`Cancel "${c.title || 'this job'}"? It'll disappear from the board.`)) onCancel(c.id)
+        }}
+        onDeleteJob={() => {
+          if (window.confirm(`Permanently delete "${c.title || 'this job'}"? This can't be undone. Any linked invoice/appointment stays, just unlinked from this job.`)) onDelete(c.id)
         }}
         cancelling={cancelling === c.id}
       />
@@ -492,7 +512,7 @@ function CompletionVideoField({ opportunityId, contactId, onInteractStart, onInt
 
 // Inline editor for a job card's title, port and scheduled time. Replaces the
 // card while open so the compact card stays uncluttered. Not draggable.
-function JobEditor({ c, onCancel, onSave, onCancelJob, cancelling }) {
+function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling }) {
   const [title, setTitle] = useState(c.title || '')
   const [port, setPort] = useState(c.port || '')
   const [vehicle, setVehicle] = useState(c.vehicle || '')
@@ -646,6 +666,15 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, cancelling }) {
             className="ml-auto rounded px-2.5 py-1 text-[11px] font-medium text-port hover:bg-red-50 disabled:opacity-50"
           >
             {cancelling ? 'Cancelling…' : 'Cancel job'}
+          </button>
+          <button
+            type="button"
+            onClick={onDeleteJob}
+            disabled={saving || cancelling}
+            title="Permanently delete this job — not just cancel it"
+            className="rounded px-2.5 py-1 text-[11px] font-medium text-port hover:bg-red-50 disabled:opacity-50"
+          >
+            Delete job
           </button>
         </div>
       </div>

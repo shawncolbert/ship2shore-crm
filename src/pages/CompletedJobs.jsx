@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { fetchCompletedJobs, markInvoicePaidManually, setInvoiceStatus } from '../lib/invoices'
+import { fetchCompletedJobs, markInvoicePaidManually, setInvoiceStatus, unmarkInvoiceComplete } from '../lib/invoices'
 
 const money = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(n || 0))
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—')
@@ -27,6 +27,13 @@ export default function CompletedJobs() {
     qc.invalidateQueries({ queryKey: ['completedJobs'] })
     qc.invalidateQueries({ queryKey: ['invoice', invoiceId] })
     qc.invalidateQueries({ queryKey: ['invoices'] })
+  }
+
+  const handleRemove = async (job) => {
+    if (!window.confirm(`Remove "${job.invoice_number}" from Completed Jobs? This just un-marks it as done -- the invoice itself isn't deleted, and you can mark it done again any time.`)) return
+    await unmarkInvoiceComplete(job.id)
+    qc.invalidateQueries({ queryKey: ['completedJobs'] })
+    qc.invalidateQueries({ queryKey: ['invoice', job.id] })
   }
 
   return (
@@ -62,11 +69,12 @@ export default function CompletedJobs() {
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 font-semibold">Paid</th>
                 <th className="px-4 py-3 text-right font-semibold">Amount</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
               {jobs.map((job) => (
-                <tr key={job.id} className="border-b border-line/60 last:border-0 hover:bg-canvas">
+                <tr key={job.id} className="group border-b border-line/60 last:border-0 hover:bg-canvas">
                   <td className="px-4 py-3 text-ink">{job.contacts?.full_name || job.contacts?.company || '—'}</td>
                   <td className="px-4 py-3">
                     <Link to={`/invoices/${job.id}`} className="font-semibold text-accent hover:underline">{job.invoice_number}</Link>
@@ -85,6 +93,15 @@ export default function CompletedJobs() {
                     {job.paid_at ? `${fmtDate(job.paid_at)}${job.payment_method ? ` · ${job.payment_method}` : ''}` : '—'}
                   </td>
                   <td className="px-4 py-3 text-right font-semibold text-ink">{money(job.total)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => handleRemove(job)}
+                      title="Remove from Completed Jobs (un-mark done)"
+                      className="rounded p-1 text-muted opacity-0 transition-opacity hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
+                    >
+                      ✕
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

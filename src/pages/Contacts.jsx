@@ -1,22 +1,38 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { fetchContacts } from '../lib/supabase'
+import { fetchContacts, deleteContact } from '../lib/supabase'
 import SegmentFilter from '../components/SegmentFilter'
 import Badge from '../components/Badge'
 import NewContactModal from '../components/NewContactModal'
 import BusinessCardScanner from '../components/BusinessCardScanner'
 
 export default function Contacts() {
+  const qc = useQueryClient()
   const [segment, setSegment] = useState(null)
   const [search, setSearch] = useState('')
   const [showNew, setShowNew] = useState(false)
   const [showScanner, setShowScanner] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['contacts', segment, search],
     queryFn: () => fetchContacts({ segment, search }),
   })
+
+  const handleDelete = async (e, contact) => {
+    e.preventDefault(); e.stopPropagation()
+    if (!window.confirm(`Delete ${contact.full_name || 'this contact'}? Their conversation history, timeline, and any uploaded documents/photos go with them. Jobs and invoices stay, just unlinked from a contact.`)) return
+    setDeletingId(contact.id)
+    try {
+      await deleteContact(contact.id)
+      qc.invalidateQueries({ queryKey: ['contacts'] })
+    } catch (err) {
+      alert(err.message || 'Could not delete this contact.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -79,7 +95,7 @@ export default function Contacts() {
           <Link
             key={c.id}
             to={`/contacts/${c.id}`}
-            className={`flex items-center justify-between px-4 py-3 hover:bg-canvas ${
+            className={`group flex items-center justify-between px-4 py-3 hover:bg-canvas ${
               i !== 0 ? 'border-t border-line' : ''
             }`}
           >
@@ -94,7 +110,17 @@ export default function Contacts() {
                 {[c.company, c.phone].filter(Boolean).join(' · ')}
               </div>
             </div>
-            <span className="ml-3 text-muted">›</span>
+            <div className="ml-3 flex shrink-0 items-center gap-2">
+              <button
+                onClick={(e) => handleDelete(e, c)}
+                disabled={deletingId === c.id}
+                title="Delete contact"
+                className="rounded p-1 text-muted opacity-0 transition-opacity hover:bg-red-50 hover:text-red-500 disabled:opacity-50 group-hover:opacity-100"
+              >
+                ✕
+              </button>
+              <span className="text-muted">›</span>
+            </div>
           </Link>
         ))}
       </div>

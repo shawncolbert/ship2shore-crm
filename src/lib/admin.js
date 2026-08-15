@@ -42,3 +42,9 @@ export async function setOrgFeature({ orgId, featureKey, enabled }) {
   const { organization } = await authedFetch('admin-update-org-features', { orgId, featureKey, enabled })
   return organization
 }
+
+// Removes one person from one org -- not the org itself, and not their
+// profile/account, which may still belong to other orgs.
+export async function removeMember({ orgId, profileId }) {
+  return authedFetch('admin-remove-member', { orgId, profileId })
+}

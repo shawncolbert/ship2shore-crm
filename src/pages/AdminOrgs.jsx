@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchOrgs, createOrg, inviteUser, fetchOrgStats, setOrgFeature } from '../lib/admin'
+import { fetchOrgs, createOrg, inviteUser, fetchOrgStats, setOrgFeature, removeMember } from '../lib/admin'
 import { fetchMyProfile } from '../lib/supabase'
 import { FEATURES, isFeatureEnabled } from '../lib/features'
 
@@ -121,12 +121,7 @@ export default function AdminOrgs() {
             <div className="mt-3 space-y-1">
               {org.members?.length === 0 && <p className="text-xs text-muted">No members yet.</p>}
               {org.members?.map((m, i) => (
-                <div key={i} className="flex items-center justify-between text-xs">
-                  <span className="text-ink">{m.fullName || m.email}</span>
-                  <span className="rounded-full bg-canvas px-2 py-0.5 font-medium uppercase tracking-wide text-muted ring-1 ring-inset ring-line">
-                    {m.role}
-                  </span>
-                </div>
+                <MemberRow key={i} orgId={org.id} member={m} onRemoved={invalidate} />
               ))}
             </div>
 
@@ -136,6 +131,48 @@ export default function AdminOrgs() {
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+// Removes this one person from this one org -- their account and any other
+// org they belong to are untouched. Deliberately no "delete organization"
+// action anywhere on this page: that would cascade-delete a live client's
+// entire CRM (contacts, jobs, invoices, everything), and that blast radius
+// is too severe to expose as a click-through button.
+function MemberRow({ orgId, member, onRemoved }) {
+  const [removing, setRemoving] = useState(false)
+
+  const handleRemove = async () => {
+    if (!member.profileId) return
+    if (!window.confirm(`Remove ${member.fullName || member.email} from this org? Their account itself isn't deleted.`)) return
+    setRemoving(true)
+    try {
+      await removeMember({ orgId, profileId: member.profileId })
+      onRemoved()
+    } catch (e) {
+      alert(e.message || 'Could not remove this member.')
+    } finally {
+      setRemoving(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between text-xs">
+      <span className="text-ink">{member.fullName || member.email}</span>
+      <div className="flex items-center gap-2">
+        <span className="rounded-full bg-canvas px-2 py-0.5 font-medium uppercase tracking-wide text-muted ring-1 ring-inset ring-line">
+          {member.role}
+        </span>
+        <button
+          onClick={handleRemove}
+          disabled={removing || !member.profileId}
+          title="Remove from this org"
+          className="rounded p-1 text-muted hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+        >
+          ✕
+        </button>
       </div>
     </div>
   )

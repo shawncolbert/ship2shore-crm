@@ -1,10 +1,11 @@
 import { useState, useRef, Fragment } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import {
   fetchContact, fetchMyOrgId, fetchMyOrg, fetchAttachments, uploadDeliveryOrder,
   signedAttachmentUrl, deleteAttachment, createUploadLink, updateContact,
   sendEmail, markAttachmentViewed, deleteAppointment, renameAttachment, fetchSignedUrls,
+  deleteContact,
 } from '../lib/supabase'
 import { calendlyPrefillUrl, mailtoUrl } from '../lib/config'
 import Badge from '../components/Badge'
@@ -26,7 +27,9 @@ const h2 = 'mb-3 text-xs font-semibold uppercase tracking-wide text-muted'
 export default function ContactDetail() {
   const { id } = useParams()
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const [emailOpen, setEmailOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const { data, isLoading, error } = useQuery({ queryKey: ['contact', id], queryFn: () => fetchContact(id) })
   const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
 
@@ -39,6 +42,19 @@ export default function ContactDetail() {
     if (!confirm(`Delete this appointment (${a.title || a.service_code || 'Appointment'} — ${fmtDate(a.start_at)})? This can't be undone.`)) return
     await deleteAppointment(a.id)
     qc.invalidateQueries({ queryKey: ['contact', id] })
+  }
+
+  const handleDeleteContact = async () => {
+    if (!window.confirm(`Delete ${contact.full_name || 'this contact'}? Their conversation history, Timeline, and any uploaded documents/photos go with them. Jobs and invoices stay, just unlinked from a contact. This can't be undone.`)) return
+    setDeleting(true)
+    try {
+      await deleteContact(id)
+      qc.invalidateQueries({ queryKey: ['contacts'] })
+      navigate('/contacts')
+    } catch (e) {
+      alert(e.message || 'Could not delete this contact.')
+      setDeleting(false)
+    }
   }
 
   return (
@@ -66,6 +82,9 @@ export default function ContactDetail() {
               📅 Connect Calendly to book
             </Link>
           )}
+          <button onClick={handleDeleteContact} disabled={deleting} className="rounded p-2 text-muted hover:bg-red-50 hover:text-red-500 disabled:opacity-50" title="Delete contact">
+            🗑️
+          </button>
         </div>
       </header>
 

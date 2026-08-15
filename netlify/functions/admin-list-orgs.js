@@ -20,10 +20,10 @@ export const handler = async (event) => {
 
   const { data: members } = await admin
     .from('memberships')
-    .select('org_id, role, profiles(email, full_name)')
+    .select('org_id, profile_id, role, profiles(email, full_name)')
   const byOrg = {}
   for (const m of members || []) {
-    (byOrg[m.org_id] ||= []).push({ role: m.role, email: m.profiles?.email, fullName: m.profiles?.full_name })
+    (byOrg[m.org_id] ||= []).push({ profileId: m.profile_id, role: m.role, email: m.profiles?.email, fullName: m.profiles?.full_name })
   }
 
   return json(200, { organizations: (data || []).map((o) => ({ ...o, members: byOrg[o.id] || [] })) })

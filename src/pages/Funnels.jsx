@@ -14,6 +14,7 @@ export default function Funnels() {
   const [showNew, setShowNew] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [publishing, setPublishing] = useState(null)
+  const [deleting, setDeleting] = useState(null)
 
   const { data: funnels, isLoading } = useQuery({
     queryKey: ['funnels'],
@@ -43,6 +44,25 @@ export default function Funnels() {
       if (res.ok) qc.invalidateQueries({ queryKey: ['funnels'] })
     } finally {
       setPublishing(null)
+    }
+  }
+
+  const handleDelete = async (funnel) => {
+    if (!window.confirm(`Delete "${funnel.name}"? Its steps and any submitted leads go with it. This can't be undone.`)) return
+    setDeleting(funnel.id)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/.netlify/functions/funnels-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({ funnelId: funnel.id }),
+      })
+      if (res.ok) qc.invalidateQueries({ queryKey: ['funnels'] })
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -103,6 +123,14 @@ export default function Funnels() {
                 className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:border-accent"
               >
                 {editingId === funnel.id ? 'Hide' : 'Edit'}
+              </button>
+              <button
+                onClick={() => handleDelete(funnel)}
+                disabled={deleting === funnel.id}
+                title="Delete funnel"
+                className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:border-red-300 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+              >
+                Delete
               </button>
             </div>
           </div>

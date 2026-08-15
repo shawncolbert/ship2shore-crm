@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { fetchInvoices, fetchInvoiceBusinessInfo, saveInvoiceBusinessInfo, uploadInvoiceLogo } from '../lib/invoices'
+import { fetchInvoices, fetchInvoiceBusinessInfo, saveInvoiceBusinessInfo, uploadInvoiceLogo, deleteInvoice } from '../lib/invoices'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)] space-y-3'
 const btnAccent = 'rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-accent-600'
@@ -17,8 +17,24 @@ const STATUS_STYLES = {
 }
 
 export default function Invoices() {
+  const qc = useQueryClient()
   const [showSettings, setShowSettings] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
   const { data: invoices, isLoading } = useQuery({ queryKey: ['invoices'], queryFn: fetchInvoices })
+
+  const handleDelete = async (e, inv) => {
+    e.preventDefault(); e.stopPropagation()
+    if (!window.confirm(`Delete invoice ${inv.invoice_number}? This can't be undone.`)) return
+    setDeletingId(inv.id)
+    try {
+      await deleteInvoice(inv.id)
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+    } catch (err) {
+      alert(err.message || 'Could not delete this invoice.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -53,11 +69,12 @@ export default function Invoices() {
                 <th className="px-4 py-3 font-semibold">Due</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 text-right font-semibold">Amount due</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
               {invoices.map((inv) => (
-                <tr key={inv.id} className="border-b border-line/60 last:border-0 hover:bg-canvas">
+                <tr key={inv.id} className="group border-b border-line/60 last:border-0 hover:bg-canvas">
                   <td className="px-4 py-3">
                     <Link to={`/invoices/${inv.id}`} className="font-semibold text-accent hover:underline">{inv.invoice_number}</Link>
                   </td>
@@ -73,6 +90,16 @@ export default function Invoices() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right font-semibold text-ink">{money(inv.amount_due)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={(e) => handleDelete(e, inv)}
+                      disabled={deletingId === inv.id}
+                      title="Delete invoice"
+                      className="rounded p-1 text-muted opacity-0 transition-opacity hover:bg-red-50 hover:text-red-500 disabled:opacity-50 group-hover:opacity-100"
+                    >
+                      ✕
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

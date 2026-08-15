@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchInvoice, fetchInvoiceBusinessInfo, fetchContactsForInvoice, fetchServicesForInvoice,
   fetchOpportunityForInvoice, createInvoice, updateInvoice, sendInvoice, markInvoicePaidManually,
-  markInvoiceComplete, unmarkInvoiceComplete, computeTotals,
+  markInvoiceComplete, unmarkInvoiceComplete, deleteInvoice, computeTotals,
 } from '../lib/invoices'
 import { fetchPaymentSettings, fetchWaveCheckoutLinks } from '../lib/supabase'
 import InvoicePreview from '../components/InvoicePreview'
@@ -269,6 +269,17 @@ export default function InvoiceDetail() {
     }
   }
 
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete invoice ${invoice?.invoice_number || ''}? This can't be undone.`)) return
+    try {
+      await deleteInvoice(invoiceId || id)
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      navigate('/invoices')
+    } catch (e) {
+      setErr(e.message || 'Could not delete this invoice.')
+    }
+  }
+
   const publicUrl = invoiceId || id ? `${window.location.origin}/invoice/${invoiceId || id}` : null
 
   return (
@@ -301,6 +312,9 @@ export default function InvoiceDetail() {
             {publicUrl && (
               <a href={publicUrl} target="_blank" rel="noreferrer" className={btn}>View customer page ↗</a>
             )}
+            <button onClick={handleDelete} className="rounded p-2 text-muted hover:bg-red-50 hover:text-red-500" title="Delete invoice">
+              🗑️
+            </button>
           </div>
         )}
       </header>
