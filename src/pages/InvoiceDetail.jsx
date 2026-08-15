@@ -5,7 +5,7 @@ import {
   fetchInvoice, fetchInvoiceBusinessInfo, fetchContactsForInvoice, fetchServicesForInvoice,
   fetchOpportunityForInvoice, createInvoice, updateInvoice, sendInvoice, markInvoicePaidManually, computeTotals,
 } from '../lib/invoices'
-import { fetchPaymentSettings } from '../lib/supabase'
+import { fetchPaymentSettings, fetchWaveCheckoutLinks } from '../lib/supabase'
 import InvoicePreview from '../components/InvoicePreview'
 
 const DEFAULT_PAYMENT_OPTIONS = { stripe: true, wave: false, zelle: false, venmo: false, cashapp: false, apple_pay: false }
@@ -53,6 +53,7 @@ export default function InvoiceDetail() {
   const { data: contacts } = useQuery({ queryKey: ['contactsForInvoice'], queryFn: fetchContactsForInvoice })
   const { data: services } = useQuery({ queryKey: ['servicesForInvoice'], queryFn: fetchServicesForInvoice })
   const { data: paymentSettings } = useQuery({ queryKey: ['paymentSettings'], queryFn: fetchPaymentSettings })
+  const { data: waveLinks } = useQuery({ queryKey: ['waveCheckoutLinks'], queryFn: fetchWaveCheckoutLinks })
   const { data: existing, isLoading } = useQuery({
     queryKey: ['invoice', id], queryFn: () => fetchInvoice(id), enabled: !isNew,
   })
@@ -68,7 +69,7 @@ export default function InvoiceDetail() {
   const [fields, setFields] = useState(EMPTY_FIELDS)
   const [lineItems, setLineItems] = useState([blankLineItem()])
   const [paymentOptions, setPaymentOptions] = useState(DEFAULT_PAYMENT_OPTIONS)
-  const [waveCheckoutUrl, setWaveCheckoutUrl] = useState('')
+  const [waveCheckoutLinkId, setWaveCheckoutLinkId] = useState('')
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
   const [err, setErr] = useState('')
@@ -95,7 +96,7 @@ export default function InvoiceDetail() {
           : [blankLineItem()]
       )
       setPaymentOptions({ ...DEFAULT_PAYMENT_OPTIONS, ...(inv.payment_options || {}) })
-      setWaveCheckoutUrl(inv.wave_checkout_url || '')
+      setWaveCheckoutLinkId(inv.wave_checkout_link_id || '')
     }
   }, [existing])
 
@@ -145,13 +146,15 @@ export default function InvoiceDetail() {
     paid_at: invoice?.paid_at, payment_method: invoice?.payment_method,
   }
 
+  const selectedWaveLink = waveLinks?.find((l) => l.id === waveCheckoutLinkId) || null
+
   // Live-preview version of the send-time resolver in
   // _shared/invoicePaymentOptions.js -- Stripe's real link doesn't exist
   // until send, so it previews with a placeholder href just to show the
   // button will be there.
   const previewPaymentOptions = [
     ...(paymentOptions.stripe ? [{ method: 'stripe', label: 'Card (Stripe)', kind: 'link', url: '#' }] : []),
-    ...(paymentOptions.wave && waveCheckoutUrl.trim() ? [{ method: 'wave', label: 'Wave Checkout', kind: 'link', url: waveCheckoutUrl.trim() }] : []),
+    ...(paymentOptions.wave && selectedWaveLink ? [{ method: 'wave', label: `Wave Checkout — ${selectedWaveLink.label}`, kind: 'link', url: selectedWaveLink.url }] : []),
     ...HANDLE_METHODS.filter((m) => paymentOptions[m.key] && paymentSettings?.[m.field]).map((m) => ({
       method: m.key, label: m.label,
       kind: m.key === 'venmo' || m.key === 'cashapp' ? 'link' : 'handle',
@@ -163,7 +166,11 @@ export default function InvoiceDetail() {
     if (usableLineItems.length === 0) { setErr('Add at least one line item first.'); return null }
     setErr(''); setSaving(true)
     try {
-      const fieldsToSave = { ...fields, payment_options: paymentOptions, wave_checkout_url: waveCheckoutUrl, opportunity_id: opportunityId }
+      const fieldsToSave = {
+        ...fields, payment_options: paymentOptions, opportunity_id: opportunityId,
+        wave_checkout_link_id: paymentOptions.wave ? waveCheckoutLinkId || null : null,
+        wave_checkout_url: paymentOptions.wave ? selectedWaveLink?.url || null : null,
+      }
       const result = isNew && !invoiceId
         ? await createInvoice({ fields: fieldsToSave, lineItems: usableLineItems })
         : await updateInvoice(invoiceId || id, { fields: fieldsToSave, lineItems: usableLineItems })
@@ -326,22 +333,30 @@ export default function InvoiceDetail() {
               </label>
 
               <div>
-                <label className="flex items-center gap-2 text-sm text-ink">
-                  <input type="checkbox" checked={paymentOptions.wave} onChange={() => togglePaymentOption('wave')} className="h-4 w-4 rounded border-line" />
+                <label className={`flex items-center gap-2 text-sm ${waveLinks?.length ? 'text-ink' : 'text-muted'}`}>
+                  <input
+                    type="checkbox"
+                    checked={paymentOptions.wave}
+                    disabled={!waveLinks?.length}
+                    onChange={() => togglePaymentOption('wave')}
+                    className="h-4 w-4 rounded border-line"
+                  />
                   Wave Checkout link
                 </label>
-                {paymentOptions.wave && (
+                {paymentOptions.wave && waveLinks?.length > 0 && (
                   <div className="mt-1.5 ml-6">
-                    <input
-                      value={waveCheckoutUrl}
-                      onChange={(e) => setWaveCheckoutUrl(e.target.value)}
-                      placeholder="https://link.waveapps.com/…"
-                      className={input}
-                    />
-                    <p className="mt-1 text-[11px] text-muted">
-                      Wave links only work once — paste a fresh one generated for this invoice's exact amount ({money(total)}). Don't reuse a link that's already been paid.
-                    </p>
+                    <select value={waveCheckoutLinkId} onChange={(e) => setWaveCheckoutLinkId(e.target.value)} className={input}>
+                      <option value="">— Pick a saved link —</option>
+                      {waveLinks.map((l) => (
+                        <option key={l.id} value={l.id}>{l.label}{l.amount != null ? ` — ${money(l.amount)}` : ''}</option>
+                      ))}
+                    </select>
                   </div>
+                )}
+                {!waveLinks?.length && (
+                  <p className="mt-1 ml-6 text-[11px] text-muted">
+                    No Wave Checkout links saved yet — add one in <Link to="/payment-settings" className="text-accent hover:underline">Payment Settings</Link>.
+                  </p>
                 )}
               </div>
 

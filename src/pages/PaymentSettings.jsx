@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { fetchPaymentSettings, savePaymentSettings } from '../lib/supabase'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  fetchPaymentSettings, savePaymentSettings,
+  fetchWaveCheckoutLinks, createWaveCheckoutLink, deleteWaveCheckoutLink,
+} from '../lib/supabase'
 import { PAYMENT_METHODS } from '../lib/paymentRequest'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
 const btnAccent = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
+const btn = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50'
 const input = 'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent'
 const label = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-muted'
+const money = (n) => (n == null ? null : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(n)))
 
 const PLACEHOLDER = {
   zelle_handle: 'Phone number or email registered with Zelle',
@@ -55,9 +60,9 @@ export default function PaymentSettings() {
       <header className="mb-6">
         <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-ink">Payment Settings</h1>
         <p className="max-w-2xl text-sm text-muted">
-          Enter your handles once. On a job card, the 💲 button sends the customer a payment request for whichever
-          method you pick — the request goes out immediately, no review step. None of these apps have an API, so
-          you'll still confirm and move the card to Paid yourself once the money actually arrives.
+          Enter your handles once. They show up as check-off options in an invoice's Payment Options, and are
+          used by the "send payment request" automation. None of these apps have an API, so you'll still
+          confirm and mark the invoice/job paid yourself once the money actually arrives.
         </p>
       </header>
 
@@ -93,6 +98,136 @@ export default function PaymentSettings() {
         <button className={btnAccent + ' mt-5'} disabled={saving} onClick={save}>
           {saving ? 'Saving…' : 'Save'}
         </button>
+      </div>
+
+      <WaveCheckoutLinks />
+    </div>
+  )
+}
+
+// Wave has no API to generate a checkout link per invoice, so links are
+// created by hand in Wave and saved here once each -- they're reusable
+// (meant for a customer to come back to), so a small library beats pasting
+// the same URL into every invoice.
+function WaveCheckoutLinks() {
+  const qc = useQueryClient()
+  const { data: links, isLoading } = useQuery({ queryKey: ['waveCheckoutLinks'], queryFn: fetchWaveCheckoutLinks })
+  const { data: paymentSettings } = useQuery({ queryKey: ['paymentSettings'], queryFn: fetchPaymentSettings })
+  const [form, setForm] = useState({ label: '', amount: '', url: '' })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const [dashboardUrl, setDashboardUrl] = useState('')
+  const [dashboardSaving, setDashboardSaving] = useState(false)
+  const [dashboardSaved, setDashboardSaved] = useState(false)
+  useEffect(() => { if (paymentSettings) setDashboardUrl(paymentSettings.wave_dashboard_url || '') }, [paymentSettings])
+
+  async function saveDashboardUrl() {
+    setDashboardSaving(true)
+    try {
+      await savePaymentSettings({ wave_dashboard_url: dashboardUrl.trim() || null })
+      qc.invalidateQueries({ queryKey: ['paymentSettings'] })
+      setDashboardSaved(true); setTimeout(() => setDashboardSaved(false), 1500)
+    } finally {
+      setDashboardSaving(false)
+    }
+  }
+
+  // Wave itself has no way to be linked to directly for "create a checkout"
+  // without a business-specific URL, so this is blank until you paste your
+  // own Wave payouts/checkout settings page URL below -- until then it
+  // falls back to Wave's plain login page.
+  const waveOpenUrl = paymentSettings?.wave_dashboard_url || 'https://my.waveapps.com/login'
+
+  async function add() {
+    if (!form.label.trim() || !form.url.trim()) { setErr('Label and URL are required.'); return }
+    setSaving(true); setErr('')
+    try {
+      await createWaveCheckoutLink(form)
+      setForm({ label: '', amount: '', url: '' })
+      qc.invalidateQueries({ queryKey: ['waveCheckoutLinks'] })
+    } catch (e) {
+      setErr(e.message || String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function remove(id) {
+    if (!window.confirm('Delete this Wave Checkout link? Invoices that already used it keep working.')) return
+    await deleteWaveCheckoutLink(id)
+    qc.invalidateQueries({ queryKey: ['waveCheckoutLinks'] })
+  }
+
+  return (
+    <div className={card + ' mt-4'}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-ink">Wave Checkout links</h2>
+          <p className="mt-1 max-w-xl text-sm text-muted">
+            Generate a link in Wave (Wave has no API for this, so it's a manual step), then save it here with
+            a label so you can pick it from a dropdown when building an invoice. Add as many as you want.
+          </p>
+        </div>
+        <a href={waveOpenUrl} target="_blank" rel="noreferrer" className={btnAccent + ' shrink-0'}>
+          Create a new Wave Checkout ↗
+        </a>
+      </div>
+
+      <div className="mt-3 rounded-lg border border-line bg-canvas/60 p-3">
+        <label className={label}>Your Wave payouts/checkout settings link (optional)</label>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            className={input + ' max-w-md'}
+            value={dashboardUrl}
+            onChange={(e) => { setDashboardUrl(e.target.value); setDashboardSaved(false) }}
+            placeholder="https://my.waveapps.com/login/?next=…"
+          />
+          <button className={btn} disabled={dashboardSaving} onClick={saveDashboardUrl}>
+            {dashboardSaving ? 'Saving…' : dashboardSaved ? 'Saved ✓' : 'Save'}
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-muted">
+          Paste your own Wave dashboard URL here once so "Create a new Wave Checkout" above jumps straight to
+          it instead of Wave's generic login page. Find it by going to Wave → Payments → Payouts and copying
+          the address bar.
+        </p>
+      </div>
+
+      {err && <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
+
+      {isLoading ? (
+        <p className="mt-3 text-sm text-muted">Loading…</p>
+      ) : links?.length ? (
+        <ul className="mt-3 space-y-2">
+          {links.map((l) => (
+            <li key={l.id} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-canvas/60 px-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-ink">{l.label}{money(l.amount) ? ` — ${money(l.amount)}` : ''}</p>
+                <p className="truncate text-xs text-muted">{l.url}</p>
+              </div>
+              <button onClick={() => remove(l.id)} className="shrink-0 rounded p-1.5 text-muted hover:bg-red-50 hover:text-red-500" title="Delete">✕</button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-muted">No Wave Checkout links saved yet.</p>
+      )}
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_2fr_auto] sm:items-end">
+        <div>
+          <label className={label}>Label</label>
+          <input className={input} value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} placeholder="e.g. Escort - $85" />
+        </div>
+        <div>
+          <label className={label}>Amount (optional)</label>
+          <input type="number" min="0" step="0.01" className={input} value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} placeholder="85.00" />
+        </div>
+        <div>
+          <label className={label}>Wave Checkout URL</label>
+          <input className={input} value={form.url} onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))} placeholder="https://link.waveapps.com/…" />
+        </div>
+        <button className={btn} disabled={saving} onClick={add}>{saving ? 'Adding…' : '+ Add'}</button>
       </div>
     </div>
   )

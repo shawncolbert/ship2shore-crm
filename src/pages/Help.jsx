@@ -96,10 +96,11 @@ const SECTIONS = [
 
       Every invoice has its own "Payment options" section where you check off which ways to pay actually go
       out with it: the Stripe pay-now link, and/or your Zelle/Venmo/Cash App/Apple Pay handles from Payment
-      Settings. There's also a Wave Checkout box — Wave's simple payment links work without needing Wave's
-      paid API tier, but each one is single-use, so generate a fresh link in Wave for this invoice's exact
-      amount, paste it in, and check the box. Only the options you check are shown to the customer; nothing
-      is included by default except Stripe.`,
+      Settings. There's also Wave Checkout — Wave's payment links work without needing Wave's paid API tier
+      and are reusable, so build a small library of them once under Payment Settings (name each one, e.g.
+      "Escort - $85"), then just pick the right one from a dropdown when checking the Wave Checkout box on
+      an invoice. Only the options you check are shown to the customer; nothing is included by default
+      except Stripe.`,
   },
   {
     id: 'scheduling',
@@ -160,7 +161,12 @@ const SECTIONS = [
     body: `Enter your Zelle, Venmo, Cash App, and Apple Pay handles once. From then on they're available as
       check-off options in a job's invoice (see Invoices) and in the "send a payment request" automation
       action (see Automations) — no separate app needed. None of these have a way to auto-confirm payment
-      landed, so you'll still mark it paid yourself once it does.`,
+      landed, so you'll still mark it paid yourself once it does.
+
+      This page also holds your Wave Checkout links — Wave has no API to generate one automatically, so you
+      build a link by hand in Wave (the "Create a new Wave Checkout" button jumps you straight there once
+      you've saved your Wave dashboard URL) and save it here with a label. They're reusable, so save as many
+      as you want and just pick the right one from a dropdown when building an invoice.`,
   },
   {
     id: 'documents',
