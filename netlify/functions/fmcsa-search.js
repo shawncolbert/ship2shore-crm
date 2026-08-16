@@ -19,8 +19,13 @@ const SOCRATA_URL = 'https://data.transportation.gov/resource/az4n-8mr2.json'
 // returns nothing, that's the signal to open the URL below yourself and
 // correct the field names here:
 //   https://data.transportation.gov/resource/az4n-8mr2.json?$limit=3
+// mc_number in particular is a guess -- FMCSA's MC (motor carrier authority)
+// number sometimes lives in a separate dataset/table from the DOT census
+// data entirely, not as a column on this one. If MC lookups come back empty
+// while DOT lookups work fine, that's the first thing to check.
 const FIELDS = {
   dotNumber: 'dot_number',
+  mcNumber: 'mc_number',
   legalName: 'legal_name',
   dbaName: 'dba_name',
   phone: 'telephone',
@@ -48,12 +53,19 @@ export const handler = async (event) => {
 
   let payload
   try { payload = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'Bad JSON' }) }
-  const { state, companyName, dotNumber, cargoKeyword, limit = 50, offset = 0 } = payload
-  if (!state && !companyName && !dotNumber) return json(400, { error: 'Enter a state, a company name, or a DOT number.' })
+  const { state, companyName, dotNumber, mcNumber, cargoKeyword, limit = 50, offset = 0 } = payload
+  if (!state && !companyName && !dotNumber && !mcNumber) {
+    return json(400, { error: 'Enter a state, a company name, a DOT number, or an MC number.' })
+  }
 
   const esc = (s) => String(s).replace(/'/g, "''")
   const where = []
   if (dotNumber) where.push(`${FIELDS.dotNumber} = '${esc(String(dotNumber).trim())}'`)
+  if (mcNumber) {
+    // Accepts "MC-123456" or a bare number -- strip any MC- prefix people
+    // naturally type before matching against the raw numeric field.
+    where.push(`${FIELDS.mcNumber} = '${esc(String(mcNumber).trim().replace(/^mc-?/i, ''))}'`)
+  }
   if (state) where.push(`upper(${FIELDS.state}) = upper('${esc(state)}')`)
   if (companyName) {
     where.push(`(upper(${FIELDS.legalName}) like upper('%${esc(companyName)}%') or upper(${FIELDS.dbaName}) like upper('%${esc(companyName)}%'))`)
@@ -92,6 +104,7 @@ export const handler = async (event) => {
   const hasMore = rawRows.length > pageSize
   const leads = rawRows.slice(0, pageSize).map((r) => ({
     dotNumber: r[FIELDS.dotNumber] || '',
+    mcNumber: r[FIELDS.mcNumber] || '',
     legalName: r[FIELDS.legalName] || '',
     dbaName: r[FIELDS.dbaName] || '',
     phone: r[FIELDS.phone] || '',
