@@ -25,13 +25,15 @@ export async function auditLead({ websiteUrl, companyName }) {
   return callFunction('lead-audit', { websiteUrl, companyName })
 }
 
-// Direct DOT and/or MC number lookup -- verifying that whoever called
-// claiming to run under a given number actually matches who's registered to
-// it (a real, common double-brokering risk in freight). Returns the
-// registered company, or null if neither number comes back with a match.
+// Direct DOT and/or MC number lookup against FMCSA's official QCMobile API
+// (fmcsa-verify.js) -- built for exactly this single-company check, unlike
+// the bulk census file the state/company search above uses. Verifies that
+// whoever called claiming to run under a given number actually matches
+// who's registered to it (a real, common double-brokering risk in
+// freight). Returns { carrier, mcMatchesDot } -- carrier is null if
+// nothing came back; mcMatchesDot is only set when both numbers were given.
 export async function verifyCarrier({ dotNumber, mcNumber }) {
-  const { leads } = await callFunction('fmcsa-search', { dotNumber, mcNumber, limit: 1 })
-  return leads[0] || null
+  return callFunction('fmcsa-verify', { dotNumber, mcNumber })
 }
 
 /* ------------------------------------------------------------------ */

@@ -143,15 +143,16 @@ function DotVerify() {
   const [mcNumber, setMcNumber] = useState('')
   const [claimedName, setClaimedName] = useState('')
   const [checking, setChecking] = useState(false)
-  const [result, setResult] = useState(undefined) // undefined = not run yet, null = not found, object = found
+  // undefined = not run yet, null = not found, { carrier, mcMatchesDot } = found
+  const [outcome, setOutcome] = useState(undefined)
   const [err, setErr] = useState('')
 
   const verify = async () => {
     if (!dotNumber.trim() && !mcNumber.trim()) { setErr('Enter a DOT number or an MC number first.'); return }
-    setErr(''); setChecking(true); setResult(undefined)
+    setErr(''); setChecking(true); setOutcome(undefined)
     try {
-      const lead = await verifyCarrier({ dotNumber: dotNumber.trim() || undefined, mcNumber: mcNumber.trim() || undefined })
-      setResult(lead)
+      const { carrier, mcMatchesDot } = await verifyCarrier({ dotNumber: dotNumber.trim() || undefined, mcNumber: mcNumber.trim() || undefined })
+      setOutcome(carrier ? { carrier, mcMatchesDot } : null)
     } catch (e) {
       setErr(e.message || 'Could not look up that number.')
     } finally {
@@ -159,8 +160,9 @@ function DotVerify() {
     }
   }
 
-  const match = result && claimedName.trim()
-    ? namesLooselyMatch(claimedName, result.legalName) || namesLooselyMatch(claimedName, result.dbaName)
+  const carrier = outcome?.carrier
+  const match = carrier && claimedName.trim()
+    ? namesLooselyMatch(claimedName, carrier.legalName) || namesLooselyMatch(claimedName, carrier.dbaName)
     : null
 
   const searchedFor = [dotNumber.trim() && `DOT #${dotNumber.trim()}`, mcNumber.trim() && `MC #${mcNumber.trim()}`]
@@ -170,8 +172,9 @@ function DotVerify() {
     <div className={`${card} mb-6`}>
       <h2 className={h2}>Verify a DOT or MC number</h2>
       <p className="mb-3 text-sm text-muted">
-        Someone claims they're running under a DOT and/or MC number — check who it's actually registered to
-        before handing anything over. Enter both if you have them, to check they point at the same company.
+        Someone claims they're running under a DOT and/or MC number — check who it's actually registered to,
+        and whether their operating authority is active, before handing anything over. Pulls straight from
+        FMCSA's own lookup system, not the state-search list below.
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <label className="block">
@@ -192,35 +195,42 @@ function DotVerify() {
       </div>
       {err && <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
 
-      {result === null && (
+      {outcome === null && (
         <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-port">
-          ⚠️ No carrier or broker is registered under {searchedFor}
-          {dotNumber.trim() && mcNumber.trim() ? ' together' : ''} — {dotNumber.trim() && mcNumber.trim()
-            ? "either they don't belong to the same company, or one of them is wrong."
-            : "that number's either wrong, inactive, or made up."} Don't take it at face value.
+          ⚠️ No carrier or broker is registered under {searchedFor} — that number's either wrong, or made up.
+          Don't take it at face value.
         </p>
       )}
 
-      {result && (
+      {carrier && (
         <div className="mt-3 rounded-lg border border-line bg-canvas/50 p-3">
           {match !== null && (
             <p className={`mb-2 text-sm font-semibold ${match ? 'text-emerald-700' : 'text-port'}`}>
               {match ? '✓ Matches the name they gave you' : '⚠️ Does NOT match the name they gave you'}
             </p>
           )}
+          {outcome.mcMatchesDot !== null && (
+            <p className={`mb-2 text-sm font-semibold ${outcome.mcMatchesDot ? 'text-emerald-700' : 'text-port'}`}>
+              {outcome.mcMatchesDot ? '✓ MC number is registered to this DOT number' : "⚠️ That MC number is NOT registered to this DOT number"}
+            </p>
+          )}
           <p className="text-sm text-ink">
-            <span className="font-medium">{result.legalName || 'Unnamed company'}</span>
-            {result.dbaName && result.dbaName !== result.legalName && <span className="text-muted"> (dba {result.dbaName})</span>}
+            <span className="font-medium">{carrier.legalName || 'Unnamed company'}</span>
+            {carrier.dbaName && carrier.dbaName !== carrier.legalName && <span className="text-muted"> (dba {carrier.dbaName})</span>}
           </p>
           <p className="text-xs text-muted">
-            DOT #{result.dotNumber}{result.mcNumber && ` · MC #${result.mcNumber}`} · {result.city}{result.city && result.state ? ', ' : ''}{result.state}
-            {result.phone && <> · <a href={`tel:${result.phone}`} className="text-accent hover:underline">{result.phone}</a></>}
+            DOT #{carrier.dotNumber}{carrier.mcNumbers?.length > 0 && ` · MC #${carrier.mcNumbers.join(', ')}`}
+            {carrier.mcNumbers?.length === 0 && ' · no MC number on file (fine — only for-hire carriers need one)'}
+            {' · '}{carrier.city}{carrier.city && carrier.state ? ', ' : ''}{carrier.state}
+            {carrier.phone && <> · <a href={`tel:${carrier.phone}`} className="text-accent hover:underline">{carrier.phone}</a></>}
           </p>
           <p className="text-xs text-muted">
-            {result.powerUnits != null && `${result.powerUnits} power units`}
-            {result.powerUnits != null && result.drivers != null && ' · '}
-            {result.drivers != null && `${result.drivers} drivers`}
-            {result.cargoClassification && ` · ${result.cargoClassification}`}
+            {carrier.powerUnits != null && `${carrier.powerUnits} power units`}
+            {carrier.powerUnits != null && carrier.drivers != null && ' · '}
+            {carrier.drivers != null && `${carrier.drivers} drivers`}
+          </p>
+          <p className={`mt-1 text-xs font-medium ${carrier.allowedToOperate ? 'text-emerald-700' : 'text-port'}`}>
+            {carrier.allowedToOperate ? '✓ Currently allowed to operate' : '⚠️ NOT currently allowed to operate'}
           </p>
         </div>
       )}

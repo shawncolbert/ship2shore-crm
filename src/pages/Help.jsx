@@ -59,13 +59,17 @@ const SECTIONS = [
     id: 'lead-finder',
     title: 'Lead Finder',
     nav: '/lead-finder',
-    body: `Also has "Verify a DOT or MC number" at the top — separate from lead-finding: someone claims
-      they're running under a given DOT and/or MC number, you type in whichever they gave you (plus
-      optionally the name they claimed), and it shows exactly who FMCSA has those numbers registered to.
-      Enter both numbers together to check the stricter thing — that they actually point at the same
-      company, not just that each one exists somewhere on its own. A mismatch (or a number that comes back
-      empty) is flagged clearly — worth checking before handing anything over, since claiming someone
-      else's DOT/MC authority is a real, common move in freight fraud.
+    body: `Also has "Verify a DOT or MC number" at the top — separate from lead-finding, and pulling from a
+      different, more authoritative FMCSA source (their official QCMobile lookup, not the bulk state-search
+      file below it). Someone claims they're running under a given DOT and/or MC number, you type in
+      whichever they gave you (plus optionally the name they claimed), and it shows exactly who's
+      registered to those numbers, plus whether their operating authority is currently active. Enter both
+      numbers together to check the stricter thing — that they actually point at the same company, not
+      just that each one exists somewhere on its own. A mismatch (or a number that comes back empty) is
+      flagged clearly — worth checking before handing anything over, since claiming someone else's DOT/MC
+      authority is a real, common move in freight fraud. A blank MC number on a real, active DOT isn't
+      necessarily a red flag by itself — only for-hire carriers need one; a private fleet hauling its own
+      goods doesn't.
 
       Finds brand-new leads, unlike Prospecting (which checks people you already have). Pick a state
       and search — this pulls straight from FMCSA's public carrier/broker registry, no signup required.
