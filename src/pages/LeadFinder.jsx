@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   searchFmcsaLeads, auditLead, saveLead, fetchSavedLeads, updateLeadStatus, deleteLead, verifyCarrier,
-  discoverCompany,
+  discoverCompany, fetchCarrierCompliance,
 } from '../lib/leadFinder'
 import { checkWarmLeads } from '../lib/prospecting'
 
@@ -174,11 +174,15 @@ function DotVerify() {
   const [discovered, setDiscovered] = useState(null)
   const [discoverErr, setDiscoverErr] = useState('')
   const [saved, setSaved] = useState(false)
+  const [complianceChecking, setComplianceChecking] = useState(false)
+  const [compliance, setCompliance] = useState(null)
+  const [complianceErr, setComplianceErr] = useState('')
 
   const verify = async () => {
     if (!dotNumber.trim() && !mcNumber.trim()) { setErr('Enter a DOT number or an MC number first.'); return }
     setErr(''); setChecking(true); setOutcome(undefined)
     setDiscovered(null); setDiscoverErr(''); setSaved(false)
+    setCompliance(null); setComplianceErr('')
     try {
       const { carrier, mcMatchesDot } = await verifyCarrier({ dotNumber: dotNumber.trim() || undefined, mcNumber: mcNumber.trim() || undefined })
       setOutcome(carrier ? { carrier, mcMatchesDot } : null)
@@ -201,6 +205,19 @@ function DotVerify() {
       setDiscoverErr(e.message || 'Could not search for this company.')
     } finally {
       setDiscovering(false)
+    }
+  }
+
+  const checkCompliance = async () => {
+    if (!carrier?.dotNumber) return
+    setComplianceErr(''); setComplianceChecking(true)
+    try {
+      const result = await fetchCarrierCompliance({ dotNumber: carrier.dotNumber })
+      setCompliance(result.carrier)
+    } catch (e) {
+      setComplianceErr(e.message || 'Could not pull insurance/operating-authority info.')
+    } finally {
+      setComplianceChecking(false)
     }
   }
 
@@ -302,6 +319,9 @@ function DotVerify() {
               {discovering ? 'Searching…' : 'Find website & social media'}
             </button>
             <button className={btn} disabled={saved} onClick={saveAsLead}>{saved ? '✓ Saved as lead' : 'Save as lead'}</button>
+            <button className={btn} disabled={complianceChecking} onClick={checkCompliance}>
+              {complianceChecking ? 'Checking…' : 'Check insurance & operating authority'}
+            </button>
           </div>
           {discoverErr && <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {discoverErr}</p>}
           {discovered && (
@@ -317,9 +337,72 @@ function DotVerify() {
               <SocialLinksRow social={discovered.social} />
             </div>
           )}
+          {complianceErr && <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {complianceErr}</p>}
+          {compliance && <ComplianceDetail compliance={compliance} />}
         </div>
       )}
     </div>
+  )
+}
+
+// Business info + operating-authority/insurance filings from FMCSA's Motus
+// system (fmcsa-insurance.js). The operatingAuthorities entries are shown
+// as raw key/value pairs, not a polished table -- their exact field names
+// weren't confirmed before this was built (see the NOTE in
+// fmcsa-insurance.js), so this favors showing real values under slightly
+// technical labels over risking a mislabeled or silently-dropped field.
+function ComplianceDetail({ compliance }) {
+  return (
+    <div className="mt-3 rounded-lg border border-line bg-canvas/50 p-3">
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Business info (FMCSA Motus registration)</p>
+      {compliance.officers?.length > 0 && (
+        <ul className="mb-2 space-y-0.5 text-xs text-ink">
+          {compliance.officers.map((o, i) => (
+            <li key={i}>
+              {o.name}{o.title && ` — ${o.title}`}{o.phone && ` · ${o.phone}`}{o.email && ` · ${o.email}`}
+            </li>
+          ))}
+        </ul>
+      )}
+      {compliance.address && (
+        <p className="mb-1 text-xs text-muted">
+          {compliance.address.line1}{compliance.address.line2 && `, ${compliance.address.line2}`}
+          {compliance.address.city && `, ${compliance.address.city}`}{compliance.address.state && `, ${compliance.address.state}`}
+          {compliance.address.zip && ` ${compliance.address.zip}`}
+        </p>
+      )}
+      {compliance.phones?.length > 0 && <p className="mb-1 text-xs text-muted">Phone: {compliance.phones.join(', ')}</p>}
+      {compliance.emails?.length > 0 && <p className="mb-1 text-xs text-muted">Email: {compliance.emails.join(', ')}</p>}
+      {compliance.outOfService && <p className="mb-1 text-xs font-semibold text-port">⚠️ Marked out of service</p>}
+
+      <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted">Operating authority / insurance filings</p>
+      {compliance.operatingAuthorities?.length > 0 ? (
+        <div className="space-y-2">
+          {compliance.operatingAuthorities.map((a, i) => (
+            <div key={a.entityRegistrationId || i} className="rounded-md border border-line bg-surface p-2">
+              <RawFieldGrid obj={a} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted">No operating authority records came back for this DOT number.</p>
+      )}
+    </div>
+  )
+}
+
+function RawFieldGrid({ obj }) {
+  const entries = Object.entries(obj || {}).filter(([, v]) => v !== null && v !== undefined && v !== '')
+  if (!entries.length) return <p className="text-xs text-muted">No fields returned.</p>
+  return (
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
+      {entries.map(([k, v]) => (
+        <div key={k} className="min-w-0">
+          <dt className="truncate text-muted">{k}</dt>
+          <dd className="truncate text-ink">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</dd>
+        </div>
+      ))}
+    </dl>
   )
 }
 

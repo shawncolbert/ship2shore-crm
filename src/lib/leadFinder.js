@@ -44,6 +44,14 @@ export async function verifyCarrier({ dotNumber, mcNumber }) {
   return callFunction('fmcsa-verify', { dotNumber, mcNumber })
 }
 
+// Business info + operating authority/insurance filings straight from
+// FMCSA's Motus registration system (fmcsa-insurance.js) -- a separate,
+// newer public system from the QCMobile API verifyCarrier above uses.
+// Returns { carrier } -- carrier is null if that DOT number isn't found.
+export async function fetchCarrierCompliance({ dotNumber }) {
+  return callFunction('fmcsa-insurance', { dotNumber })
+}
+
 /* ------------------------------------------------------------------ */
 /* Saved leads -- org-scoped tracking once a lead's worth following up  */
 /* on (see fmcsa_leads migration).                                      */

@@ -71,6 +71,13 @@ const SECTIONS = [
       necessarily a red flag by itself — only for-hire carriers need one; a private fleet hauling its own
       goods doesn't.
 
+      Once a carrier's found, "Check insurance & operating authority" pulls a second, separate FMCSA source
+      (their newer Motus registration system) — company officials, business address/phone, and their actual
+      filed insurance (insurer name, policy number, coverage amount) and operating-authority status. This is
+      the real thing to check before trusting someone's authority on a load, not just that a DOT/MC number
+      exists. The insurance/authority fields show up as raw data labels rather than a polished form for
+      now — the values are real, the presentation is still first-pass.
+
       Finds brand-new leads, unlike Prospecting (which checks people you already have). Pick a state
       and search — this pulls straight from FMCSA's public carrier/broker registry, no signup required.
       Try a cargo keyword like "Motor Vehicles" to narrow results to car haulers specifically. Already have
