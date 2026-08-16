@@ -19,6 +19,7 @@ const nav = [
   { to: '/inbox', label: 'Inbox', key: 'inbox', group: 'Clients & Bookings' },
   { to: '/contacts', label: 'Contacts', key: 'contacts', group: 'Clients & Bookings' },
   { to: '/prospecting', label: 'Prospecting', key: 'prospecting', group: 'Clients & Bookings' },
+  { to: '/lead-finder', label: 'Lead Finder', key: 'lead_finder', group: 'Marketing' },
   { to: '/pipeline', label: 'Pipeline', key: 'pipeline', group: 'Clients & Bookings' },
   { to: '/settings/pipeline-stages', label: 'Pipeline Stages', key: 'pipeline_stages', group: 'Clients & Bookings' },
   { to: '/calendar', label: 'Calendar', key: 'calendar', group: 'Clients & Bookings' },

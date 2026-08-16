@@ -17,6 +17,7 @@ export const FEATURES = [
   { key: 'inbox', label: 'Inbox', path: '/inbox' },
   { key: 'contacts', label: 'Contacts', path: '/contacts' },
   { key: 'prospecting', label: 'Prospecting', path: '/prospecting' },
+  { key: 'lead_finder', label: 'Lead Finder', path: '/lead-finder' },
   { key: 'pipeline', label: 'Pipeline', path: '/pipeline' },
   { key: 'pipeline_stages', label: 'Pipeline Stages', path: '/settings/pipeline-stages' },
   { key: 'calendar', label: 'Calendar', path: '/calendar' },

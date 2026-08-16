@@ -12,6 +12,7 @@ import Contacts from './pages/Contacts'
 import ImportContacts from './pages/ImportContacts'
 import ContactDetail from './pages/ContactDetail'
 import Prospecting from './pages/Prospecting'
+import LeadFinder from './pages/LeadFinder'
 import Pipeline from './pages/Pipeline'
 import Dashboard from './pages/Dashboard'
 import Inbox from './pages/Inbox'
@@ -97,6 +98,7 @@ function App() {
                 <Route path="contacts/import" element={<FeatureGate featureKey="contacts"><ImportContacts /></FeatureGate>} />
                 <Route path="contacts/:id" element={<FeatureGate featureKey="contacts"><ContactDetail /></FeatureGate>} />
                 <Route path="prospecting" element={<FeatureGate featureKey="prospecting"><Prospecting /></FeatureGate>} />
+                <Route path="lead-finder" element={<FeatureGate featureKey="lead_finder"><LeadFinder /></FeatureGate>} />
                 <Route path="pipeline" element={<FeatureGate featureKey="pipeline"><Pipeline /></FeatureGate>} />
                 <Route path="calendar" element={<FeatureGate featureKey="calendar"><Calendar /></FeatureGate>} />
                 <Route path="documents" element={<FeatureGate featureKey="documents"><Documents /></FeatureGate>} />
