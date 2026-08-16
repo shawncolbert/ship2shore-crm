@@ -30,17 +30,49 @@ export async function fetchContacts({ segment = null, search = '' } = {}) {
   return data
 }
 
-// The org the signed-in user belongs to. Inserts must carry this org_id
-// so they satisfy the row-level-security policy (with check org_id in my orgs).
+// The org the signed-in user is currently working in. Inserts must carry
+// this org_id so they satisfy the row-level-security policy (with check
+// org_id in my orgs). Same active_org_id preference as orgForUser() on the
+// server (_shared/supabaseAdmin.js) -- keep the two in sync if this logic
+// changes.
 export async function fetchMyOrgId() {
-  const { data, error } = await supabase
+  const { data: memberships, error } = await supabase
     .from('memberships')
     .select('org_id')
-    .limit(1)
-    .maybeSingle()
   if (error) throw error
-  if (!data) throw new Error('No organization found for this user.')
-  return data.org_id
+  if (!memberships?.length) throw new Error('No organization found for this user.')
+  if (memberships.length === 1) return memberships[0].org_id
+
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: profile } = await supabase
+    .from('profiles').select('active_org_id').eq('id', user.id).maybeSingle()
+  const active = profile?.active_org_id
+  if (active && memberships.some((m) => m.org_id === active)) return active
+
+  return memberships[0].org_id
+}
+
+// All orgs the signed-in user belongs to, with names -- for the org
+// switcher. Only meaningful when there's more than one.
+export async function fetchMyMemberships() {
+  const { data, error } = await supabase
+    .from('memberships')
+    .select('org_id, organizations(id, name)')
+  if (error) throw error
+  return (data || []).map((m) => ({ id: m.organizations.id, name: m.organizations.name }))
+}
+
+// Switches which org fetchMyOrgId()/orgForUser() resolve to for this user.
+// Not itself a security boundary -- RLS on every org-scoped table still
+// checks real membership rows independently, so this can't grant access to
+// an org the user isn't actually a member of.
+export async function switchActiveOrg(orgId) {
+  const { data: { user } } = await supabase.auth.getUser()
+  const { error } = await supabase
+    .from('profiles')
+    .update({ active_org_id: orgId })
+    .eq('id', user.id)
+  if (error) throw error
 }
 
 // The signed-in user's own profile, incl. whether they're a platform admin

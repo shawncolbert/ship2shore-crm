@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
-import { fetchMyProfile, fetchMyOrg, fetchNewBookingCount } from '../lib/supabase'
+import { fetchMyProfile, fetchMyOrg, fetchNewBookingCount, fetchMyMemberships, switchActiveOrg } from '../lib/supabase'
 import { fetchCustomLinks } from '../lib/customLinks'
 import { isFeatureEnabled } from '../lib/features'
 import { applyTheme, cacheTheme } from '../lib/theme'
@@ -78,6 +78,40 @@ function Brand() {
         )}
       </div>
     </div>
+  )
+}
+
+// Only ever shows for a user who belongs to more than one org (a platform
+// admin testing/managing multiple client orgs) -- the vast majority of
+// users have exactly one membership and never see this at all. A full page
+// reload after switching is deliberate: dozens of queries throughout the
+// app resolve their org via fetchMyOrgId(), and reloading is the simplest
+// way to guarantee every one of them re-resolves against the new org
+// instead of tracking down and invalidating each query key individually.
+function OrgSwitcher() {
+  const { data: memberships } = useQuery({ queryKey: ['myMemberships'], queryFn: fetchMyMemberships, staleTime: 5 * 60 * 1000 })
+  const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
+
+  if (!memberships || memberships.length < 2) return null
+
+  const handleChange = async (e) => {
+    const orgId = e.target.value
+    if (!orgId || orgId === org?.id) return
+    await switchActiveOrg(orgId)
+    window.location.reload()
+  }
+
+  return (
+    <label className="mt-2 block">
+      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">Working in</span>
+      <select
+        value={org?.id || ''}
+        onChange={handleChange}
+        className="w-full rounded-md border border-white/10 bg-white/10 px-2 py-1 text-xs text-white/90"
+      >
+        {memberships.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+      </select>
+    </label>
   )
 }
 
@@ -241,6 +275,7 @@ export default function Layout({ children }) {
   const Account = () => (
     <div className="border-t border-white/10 px-4 py-4">
       <div className="truncate text-xs text-white/50">{session?.user?.email}</div>
+      <OrgSwitcher />
       <button
         onClick={handleSignOut}
         className="mt-2 text-xs text-white/70 underline-offset-2 hover:text-accent hover:underline"

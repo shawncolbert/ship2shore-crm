@@ -21,8 +21,22 @@ export async function userFromToken(token) {
   return data.user
 }
 
+// Prefers profiles.active_org_id when it's set AND still a real membership
+// (a user who belonged to an org that got deleted, or was removed from,
+// shouldn't get stuck pointing at it). Falls back to "any membership" --
+// fine for the common case of a user with exactly one org, which is most
+// of them; a user with several and no active_org_id set yet just gets a
+// deterministic first pick until they use the org switcher.
 export async function orgForUser(userId) {
-  const { data } = await admin
-    .from('memberships').select('org_id').eq('profile_id', userId).limit(1).maybeSingle()
-  return data?.org_id || null
+  const { data: memberships } = await admin
+    .from('memberships').select('org_id').eq('profile_id', userId)
+  if (!memberships?.length) return null
+  if (memberships.length === 1) return memberships[0].org_id
+
+  const { data: profile } = await admin
+    .from('profiles').select('active_org_id').eq('id', userId).maybeSingle()
+  const active = profile?.active_org_id
+  if (active && memberships.some((m) => m.org_id === active)) return active
+
+  return memberships[0].org_id
 }
