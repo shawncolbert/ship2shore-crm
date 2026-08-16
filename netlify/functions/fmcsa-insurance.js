@@ -13,18 +13,68 @@ const json = (statusCode, body) => ({
 // live site, which fires no network call of its own beyond this one) holds
 // the operating-authority + insurance-filing data too.
 //
-// NOTE: only the top-level shape below (entityName, entityDotNumber,
-// entityOfficers, phoneNumbers, locations, emailAddresses) was confirmed
-// against a real response. The exact field names *inside*
-// entityRegistrations (policy number, insurer name, coverage amount, etc.)
-// were not -- the live walkthrough never scrolled far enough to confirm
-// them before this was built. `operatingAuthorities` below is passed
-// through close to raw rather than remapped to specific field names, so
-// the UI can render whatever's actually in there generically instead of
-// silently dropping or mislabeling it. Fix this once a real response comes
-// back from production (Netlify can reach motus.dot.gov; this dev sandbox
-// can't).
+// UPDATE: the nested insurance/authority field names below (policyNumber,
+// maxCovAmount, docketNumber, operatingAuthorityStatusName, etc.) are now
+// confirmed against a real live response -- read directly off a
+// production test run, not guessed. They live somewhere inside
+// entityRegistrations -> entityRegistrationOperatingAuthorities, nested a
+// couple of levels deep in a shape that wasn't fully pinned down from the
+// screenshots (some sibling/nesting ambiguity). Rather than hard-code an
+// exact path that might be subtly wrong, findAll() below walks the whole
+// response looking for objects that carry a given field -- e.g. any object
+// with a `policyNumber` is treated as one insurance filing, regardless of
+// exactly how deep it's nested. That's robust to the path being slightly
+// off; it's only wrong if FMCSA reuses those exact field names for
+// something unrelated elsewhere in the payload, which hasn't shown up.
 const BASE = 'https://motus.dot.gov/api/carriers'
+
+function findAll(root, predicate) {
+  const out = []
+  const seen = new Set()
+  function walk(node) {
+    if (!node || typeof node !== 'object' || seen.has(node)) return
+    seen.add(node)
+    if (!Array.isArray(node) && predicate(node)) out.push(node)
+    for (const v of Object.values(node)) {
+      if (v && typeof v === 'object') walk(v)
+    }
+  }
+  walk(root)
+  return out
+}
+
+function money(v) {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+function dateOnly(v) {
+  if (!v) return null
+  const d = new Date(v)
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('en-US')
+}
+
+function mapInsuranceFilings(raw) {
+  return findAll(raw, (o) => 'policyNumber' in o && o.policyNumber)
+    .map((f) => ({
+      policyNumber: f.policyNumber,
+      coverageAmount: money(f.maxCovAmount),
+      receivedDate: dateOnly(f.receivedDate),
+      effectiveDate: dateOnly(f.effectiveDate),
+      cancellationDate: dateOnly(f.cancellationDate),
+    }))
+}
+
+function mapOperatingAuthorities(raw) {
+  return findAll(raw, (o) => o.operatingAuthorityStatusName != null || o.docketNumber != null || o.dockNumber != null)
+    .map((a) => ({
+      docketNumber: a.docketNumber || a.dockNumber || '',
+      status: a.operatingAuthorityStatusName || '',
+      type: typeof a.operatingAuthorityType === 'string' ? a.operatingAuthorityType : (a.operatingAuthorityType?.operatingAuthorityType || ''),
+    }))
+    .filter((a) => a.docketNumber || a.status)
+}
 
 async function fetchCarrier(dotNumber) {
   const res = await fetch(`${BASE}/${encodeURIComponent(dotNumber)}`, {
@@ -68,8 +118,8 @@ function mapCarrier(c) {
       state: primaryAddress.state || '',
       zip: [primaryAddress.zipCode, primaryAddress.zipPlus4].filter(Boolean).join('-'),
     } : null,
-    // Passed through close to raw -- see NOTE above on why.
-    operatingAuthorities: Array.isArray(c.entityRegistrations) ? c.entityRegistrations : [],
+    operatingAuthorities: mapOperatingAuthorities(c),
+    insuranceFilings: mapInsuranceFilings(c),
   }
 }
 

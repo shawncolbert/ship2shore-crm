@@ -345,16 +345,14 @@ function DotVerify() {
   )
 }
 
+const money = (n) => n == null ? null : n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+
 // Business info + operating-authority/insurance filings from FMCSA's Motus
-// system (fmcsa-insurance.js). The operatingAuthorities entries are shown
-// as raw key/value pairs, not a polished table -- their exact field names
-// weren't confirmed before this was built (see the NOTE in
-// fmcsa-insurance.js), so this favors showing real values under slightly
-// technical labels over risking a mislabeled or silently-dropped field.
+// system (fmcsa-insurance.js) -- plain-English, not raw FMCSA field names.
 function ComplianceDetail({ compliance }) {
   return (
     <div className="mt-3 rounded-lg border border-line bg-canvas/50 p-3">
-      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Business info (FMCSA Motus registration)</p>
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Business info (FMCSA registration)</p>
       {compliance.officers?.length > 0 && (
         <ul className="mb-2 space-y-0.5 text-xs text-ink">
           {compliance.officers.map((o, i) => (
@@ -375,40 +373,37 @@ function ComplianceDetail({ compliance }) {
       {compliance.emails?.length > 0 && <p className="mb-1 text-xs text-muted">Email: {compliance.emails.join(', ')}</p>}
       {compliance.outOfService && <p className="mb-1 text-xs font-semibold text-port">⚠️ Marked out of service</p>}
 
-      <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted">Operating authority / insurance filings</p>
+      <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted">Operating authority</p>
       {compliance.operatingAuthorities?.length > 0 ? (
-        <div className="space-y-2">
+        <ul className="mb-2 space-y-0.5 text-sm text-ink">
           {compliance.operatingAuthorities.map((a, i) => (
-            <div key={a.entityRegistrationId || i} className="rounded-md border border-line bg-surface p-2">
-              <RawFieldGrid obj={a} />
-            </div>
+            <li key={i}>
+              {a.docketNumber && <span className="font-medium">{a.docketNumber}</span>}
+              {a.status && <span className={a.status.toLowerCase() === 'active' ? ' text-emerald-700' : ' text-port'}> — {a.status}</span>}
+              {a.type && <span className="text-muted"> · {a.type}</span>}
+            </li>
           ))}
-        </div>
+        </ul>
       ) : (
-        <p className="text-xs text-muted">No operating authority records came back for this DOT number.</p>
+        <p className="mb-2 text-xs text-muted">No operating authority on file for this DOT number.</p>
       )}
-    </div>
-  )
-}
 
-// Nothing here truncates -- an earlier version cut long values off with
-// CSS `truncate`, which hid exactly the kind of nested JSON (insurance
-// filing details buried inside entityRegistrationOperatingAuthorities,
-// confirmed live) this exists to surface. Nested objects/arrays are
-// pretty-printed in full instead of collapsed to a one-line ellipsis.
-function RawFieldGrid({ obj }) {
-  const entries = Object.entries(obj || {}).filter(([, v]) => v !== null && v !== undefined && v !== '')
-  if (!entries.length) return <p className="text-xs text-muted">No fields returned.</p>
-  return (
-    <div className="space-y-1.5 text-xs">
-      {entries.map(([k, v]) => (
-        <div key={k}>
-          <span className="font-medium text-muted">{k}: </span>
-          <span className="whitespace-pre-wrap break-words text-ink">
-            {typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v)}
-          </span>
-        </div>
-      ))}
+      <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted">Insurance on file</p>
+      {compliance.insuranceFilings?.length > 0 ? (
+        <ul className="space-y-1 text-sm text-ink">
+          {compliance.insuranceFilings.map((f, i) => (
+            <li key={i}>
+              Policy <span className="font-medium">{f.policyNumber}</span>
+              {f.coverageAmount != null && <> — {money(f.coverageAmount)} coverage</>}
+              {f.receivedDate && <span className="text-muted"> · filed {f.receivedDate}</span>}
+              {f.effectiveDate && <span className="text-muted">, effective {f.effectiveDate}</span>}
+              {f.cancellationDate && <span className="font-medium text-port"> · CANCELLED {f.cancellationDate}</span>}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-muted">No insurance filings came back for this DOT number.</p>
+      )}
     </div>
   )
 }
