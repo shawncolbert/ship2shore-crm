@@ -48,17 +48,27 @@ export const handler = async (event) => {
 
   let payload
   try { payload = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'Bad JSON' }) }
-  const { state, cargoKeyword, limit = 50 } = payload
-  if (!state) return json(400, { error: 'A state is required.' })
+  const { state, companyName, cargoKeyword, limit = 50, offset = 0 } = payload
+  if (!state && !companyName) return json(400, { error: 'Enter a state or a company name.' })
 
-  const where = [`upper(${FIELDS.state}) = upper('${String(state).replace(/'/g, "''")}')`]
+  const esc = (s) => String(s).replace(/'/g, "''")
+  const where = []
+  if (state) where.push(`upper(${FIELDS.state}) = upper('${esc(state)}')`)
+  if (companyName) {
+    where.push(`(upper(${FIELDS.legalName}) like upper('%${esc(companyName)}%') or upper(${FIELDS.dbaName}) like upper('%${esc(companyName)}%'))`)
+  }
   if (cargoKeyword) {
-    where.push(`${FIELDS.cargoClassification} like '%${String(cargoKeyword).replace(/'/g, "''")}%'`)
+    where.push(`${FIELDS.cargoClassification} like '%${esc(cargoKeyword)}%'`)
   }
 
+  const pageSize = Math.min(Number(limit) || 50, 200)
   const params = new URLSearchParams({
     $where: where.join(' AND '),
-    $limit: String(Math.min(Number(limit) || 50, 200)),
+    // One extra row requested so "did this page fill up" (== there's
+    // probably a next page) can be read off the response length instead of
+    // a separate $select=count(*) round trip.
+    $limit: String(pageSize + 1),
+    $offset: String(Math.max(Number(offset) || 0, 0)),
   })
 
   const headers = {}
@@ -77,7 +87,9 @@ export const handler = async (event) => {
     return json(502, { error: 'FMCSA data service error', detail: rows })
   }
 
-  const leads = (Array.isArray(rows) ? rows : []).map((r) => ({
+  const rawRows = Array.isArray(rows) ? rows : []
+  const hasMore = rawRows.length > pageSize
+  const leads = rawRows.slice(0, pageSize).map((r) => ({
     dotNumber: r[FIELDS.dotNumber] || '',
     legalName: r[FIELDS.legalName] || '',
     dbaName: r[FIELDS.dbaName] || '',
@@ -89,5 +101,5 @@ export const handler = async (event) => {
     cargoClassification: r[FIELDS.cargoClassification] || '',
   })).filter((l) => l.dotNumber)
 
-  return json(200, { leads })
+  return json(200, { leads, hasMore })
 }

@@ -17,9 +17,8 @@ async function callFunction(name, body) {
 /* persisted until the user clicks "Save" on a specific lead.           */
 /* ------------------------------------------------------------------ */
 
-export async function searchFmcsaLeads({ state, cargoKeyword, limit }) {
-  const { leads } = await callFunction('fmcsa-search', { state, cargoKeyword, limit })
-  return leads
+export async function searchFmcsaLeads({ state, companyName, cargoKeyword, limit, offset }) {
+  return callFunction('fmcsa-search', { state, companyName, cargoKeyword, limit, offset })
 }
 
 export async function auditLead({ websiteUrl, companyName }) {
@@ -57,6 +56,7 @@ export async function saveLead(lead) {
     website_url: lead.websiteUrl || null,
     site_notes: lead.siteNotes || null,
     pitch_email: lead.pitchEmail || null,
+    contact_email: lead.contactEmail || null,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'org_id,dot_number' })
   if (error) throw error

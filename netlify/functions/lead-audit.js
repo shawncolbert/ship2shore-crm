@@ -24,10 +24,49 @@ function isBlockedHost(hostname) {
   return false
 }
 
+const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
+// Regex-shaped false positives that show up constantly in raw HTML/markdown:
+// responsive image filenames (logo@2x.png), tracking/CDN boilerplate, and
+// obvious placeholder addresses from a site's own template.
+const JUNK_SUFFIX = /\.(png|jpe?g|gif|svg|webp|ico|css|js|woff2?|ttf|eot)$/i
+const JUNK_DOMAINS = ['sentry.io', 'wixpress.com', 'schema.org', 'w3.org', 'example.com', 'godaddy.com', 'sentry-cdn.com']
+
+// Pulled from the RAW fetched content (HTML or markdown), not the
+// tag-stripped text used for Claude's prompt -- a mailto: link's address
+// usually only exists in the href attribute, not the visible link text, so
+// extracting after stripping tags would silently lose it.
+function extractEmails(raw) {
+  const found = (raw.match(EMAIL_RE) || [])
+    .map((e) => e.toLowerCase())
+    .filter((e) => !JUNK_SUFFIX.test(e))
+    .filter((e) => !JUNK_DOMAINS.some((d) => e.endsWith(`@${d}`) || e.includes(`.${d}`)))
+  return [...new Set(found)].slice(0, 5)
+}
+
+// Best-effort only: a homepage often has no email at all, while a Contact
+// page usually does. Plain fetch regardless of Firecrawl config -- these are
+// simple static pages even on an otherwise JS-heavy site, not worth the
+// extra Firecrawl call. Failures here are silent; this is a bonus pass, not
+// the primary path.
+async function tryContactPageEmails(baseUrl) {
+  for (const p of ['/contact', '/contact-us', '/contactus', '/about']) {
+    try {
+      const u = new URL(p, baseUrl).toString()
+      const res = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LeadFinderBot/1.0)' } })
+      if (!res.ok) continue
+      const found = extractEmails(await res.text())
+      if (found.length) return found
+    } catch {
+      // best-effort only
+    }
+  }
+  return []
+}
+
 // Firecrawl handles JS-heavy/protected sites much better than a plain fetch,
 // but it's optional -- FIRECRAWL_API_KEY unset just falls back to fetching
-// the raw HTML and stripping tags, which is enough for most small trucking
-// company sites (plain server-rendered pages, no client-side framework).
+// the raw HTML directly, which is enough for most small trucking company
+// sites (plain server-rendered pages, no client-side framework).
 async function scrapeSite(url) {
   if (process.env.FIRECRAWL_API_KEY) {
     const res = await fetch('https://api.firecrawl.dev/v1/scrape', {
@@ -40,19 +79,22 @@ async function scrapeSite(url) {
     })
     const data = await res.json()
     if (!res.ok) throw new Error('Firecrawl error: ' + JSON.stringify(data))
-    return (data?.data?.markdown || '').slice(0, 8000)
+    const markdown = data?.data?.markdown || ''
+    return { text: markdown.slice(0, 8000), emails: extractEmails(markdown) }
   }
 
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LeadFinderBot/1.0)' } })
   if (!res.ok) throw new Error(`Could not fetch ${url} (status ${res.status})`)
   const html = await res.text()
-  return html
+  const emails = extractEmails(html)
+  const text = html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 8000)
+  return { text, emails }
 }
 
 const SYSTEM_PROMPT = `You are a freight operations specialist reviewing a trucking/logistics company's
@@ -85,19 +127,24 @@ export const handler = async (event) => {
   try { parsedUrl = new URL(url) } catch { return json(400, { error: 'That doesn\'t look like a valid URL.' }) }
   if (isBlockedHost(parsedUrl.hostname)) return json(400, { error: 'That host isn\'t allowed.' })
 
-  let pageText
+  let scraped
   try {
-    pageText = await scrapeSite(url)
+    scraped = await scrapeSite(url)
   } catch (e) {
     return json(502, { error: 'Could not read that website: ' + (e.message || e) })
   }
-  if (!pageText) return json(502, { error: 'That page came back empty -- nothing to analyze.' })
+  if (!scraped.text) return json(502, { error: 'That page came back empty -- nothing to analyze.' })
+
+  let emails = scraped.emails
+  if (!emails.length) {
+    emails = await tryContactPageEmails(url)
+  }
 
   let raw
   try {
     raw = await askClaude({
       system: SYSTEM_PROMPT,
-      prompt: `Company: ${companyName || 'Unknown'}\nWebsite: ${url}\n\nPage text:\n${pageText}`,
+      prompt: `Company: ${companyName || 'Unknown'}\nWebsite: ${url}\n\nPage text:\n${scraped.text}`,
       maxTokens: 700,
     })
   } catch (e) {
@@ -116,5 +163,6 @@ export const handler = async (event) => {
   return json(200, {
     bottlenecks: Array.isArray(parsed.bottlenecks) ? parsed.bottlenecks : [],
     pitchEmail: parsed.pitchEmail || '',
+    emails,
   })
 }

@@ -61,16 +61,24 @@ const SECTIONS = [
     nav: '/lead-finder',
     body: `Finds brand-new leads, unlike Prospecting (which checks people you already have). Pick a state
       and search — this pulls straight from FMCSA's public carrier/broker registry, no signup required.
-      Try a cargo keyword like "Motor Vehicles" to narrow results to car haulers specifically. FMCSA
-      doesn't publish company websites or emails, so type one in per result to run "Audit & draft pitch" —
-      Claude reads the site, calls out a couple of concrete operational weaknesses (no online quote form,
-      no dispatch tracking, that kind of thing), and drafts a short personalized cold email you can copy and
-      send yourself (nothing sends automatically). "Check against my contacts" runs the same warm/cold check
-      as Prospecting, so you don't cold-pitch someone you already know. Click "Save" on anything worth
-      tracking — it moves to Saved Leads below with a status you can update (New → Contacted → Added to
-      Contacts, or Dismissed) any time. Needs your Claude API key set up on the server side (ask whoever
-      set up your account if audits come back with an error); a Firecrawl key improves results on
-      JavaScript-heavy sites but isn't required.`,
+      Try a cargo keyword like "Motor Vehicles" to narrow results to car haulers specifically. Already have
+      a company's name from a call and just need their DOT number? Type it into the "Company name" box
+      instead — state is optional when searching by name. Results come 50 at a time with Previous/Next at
+      the bottom, so a big state pull doesn't dump everything on one page.
+
+      FMCSA doesn't publish company websites or emails, so type a website in per result to run "Audit &
+      draft pitch" — it pulls any email address it can find on that company's homepage or an obvious
+      Contact page, and separately has Claude read the site to call out a couple of concrete operational
+      weaknesses (no online quote form, no dispatch tracking, that kind of thing) and draft a short
+      personalized cold email you can copy and send yourself (nothing sends automatically). If no email
+      turns up, that means the site genuinely doesn't show one anywhere Lead Finder checked — worth a quick
+      manual look at their site yourself before giving up on it.
+
+      "Check against my contacts" runs the same warm/cold check as Prospecting, so you don't cold-pitch
+      someone you already know. Click "Save" on anything worth tracking — it moves to Saved Leads below
+      with a status you can update (New → Contacted → Added to Contacts, or Dismissed) any time. Needs your
+      Claude API key set up on the server side (ask whoever set up your account if audits come back with an
+      error); a Firecrawl key improves results on JavaScript-heavy sites but isn't required.`,
   },
   {
     id: 'pipeline',

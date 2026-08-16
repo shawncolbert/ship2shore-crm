@@ -13,20 +13,32 @@ const h2 = 'mb-3 text-xs font-semibold uppercase tracking-wide text-muted'
 const input = 'rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent'
 
 const STATUS_LABELS = { new: 'New', contacted: 'Contacted', added_to_contacts: 'Added to Contacts', dismissed: 'Dismissed' }
+const PAGE_SIZE = 50
 
 export default function LeadFinder() {
   const [state, setState] = useState('')
+  const [companyName, setCompanyName] = useState('')
   const [cargoKeyword, setCargoKeyword] = useState('')
   const [searching, setSearching] = useState(false)
   const [leads, setLeads] = useState(null)
+  const [hasMore, setHasMore] = useState(false)
+  const [page, setPage] = useState(0)
   const [err, setErr] = useState('')
 
-  const search = async () => {
-    if (!state.trim()) { setErr('Enter a two-letter state code (e.g. CA) first.'); return }
+  const runSearch = async (pageNum) => {
+    if (!state.trim() && !companyName.trim()) { setErr('Enter a state or a company name first.'); return }
     setErr(''); setSearching(true)
     try {
-      const results = await searchFmcsaLeads({ state: state.trim(), cargoKeyword: cargoKeyword.trim() || undefined, limit: 50 })
+      const { leads: results, hasMore: more } = await searchFmcsaLeads({
+        state: state.trim() || undefined,
+        companyName: companyName.trim() || undefined,
+        cargoKeyword: cargoKeyword.trim() || undefined,
+        limit: PAGE_SIZE,
+        offset: pageNum * PAGE_SIZE,
+      })
       setLeads(results)
+      setHasMore(more)
+      setPage(pageNum)
     } catch (e) {
       setErr(e.message || 'Could not search FMCSA.')
     } finally {
@@ -52,31 +64,48 @@ export default function LeadFinder() {
             <input value={state} onChange={(e) => setState(e.target.value.toUpperCase())} placeholder="CA" maxLength={2} className={`${input} w-20 uppercase`} />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-muted">Cargo keyword (optional — try "Motor Vehicles" for car haulers)</span>
-            <input value={cargoKeyword} onChange={(e) => setCargoKeyword(e.target.value)} placeholder="Motor Vehicles" className={`${input} w-72`} />
+            <span className="mb-1 block text-xs font-medium text-muted">Company name — e.g. a carrier gave you their name and you want their DOT #</span>
+            <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Acme Trucking" className={`${input} w-64`} />
           </label>
-          <button className={btnAccent} disabled={searching} onClick={search}>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-muted">Cargo keyword (optional — try "Motor Vehicles" for car haulers)</span>
+            <input value={cargoKeyword} onChange={(e) => setCargoKeyword(e.target.value)} placeholder="Motor Vehicles" className={`${input} w-56`} />
+          </label>
+          <button className={btnAccent} disabled={searching} onClick={() => runSearch(0)}>
             {searching ? 'Searching…' : 'Search FMCSA'}
           </button>
         </div>
         {err && <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
         <p className="mt-2 text-xs text-muted">
-          FMCSA doesn't publish company websites or emails — add a website URL per result below to run an
-          audit and draft a pitch. If a search errors out, the field name it names is the one that needs
-          fixing (see the comment at the top of <span className="font-[family-name:var(--font-mono)]">fmcsa-search.js</span>).
+          State and company name can be used together or on their own — enter just a company name to look
+          up its DOT number without knowing the state. FMCSA doesn't publish websites or emails — add a
+          website URL per result below to run an audit. If a search errors out, the field name it names is
+          the one that needs fixing (see the comment at the top of{' '}
+          <span className="font-[family-name:var(--font-mono)]">fmcsa-search.js</span>).
         </p>
       </div>
 
       {leads && (
         <div className={`${card} mb-6`}>
-          <h2 className={h2}>Results ({leads.length})</h2>
+          <h2 className={h2}>Results {leads.length ? `(page ${page + 1})` : ''}</h2>
           {leads.length === 0 ? (
-            <p className="text-sm text-muted">No results for that search.</p>
+            <p className="text-sm text-muted">No results for that search{page > 0 ? ' — try a previous page.' : '.'}</p>
           ) : (
             <div className="space-y-3">
               {leads.map((l) => (
                 <LeadRow key={l.dotNumber} lead={l} />
               ))}
+            </div>
+          )}
+          {(page > 0 || hasMore) && (
+            <div className="mt-4 flex items-center justify-between">
+              <button className={btn} disabled={page === 0 || searching} onClick={() => runSearch(page - 1)}>
+                ← Previous
+              </button>
+              <span className="text-xs text-muted">Page {page + 1}</span>
+              <button className={btn} disabled={!hasMore || searching} onClick={() => runSearch(page + 1)}>
+                Next →
+              </button>
             </div>
           )}
         </div>
@@ -126,6 +155,7 @@ function LeadRow({ lead }) {
         websiteUrl: websiteUrl.trim() || null,
         siteNotes: audit?.bottlenecks?.join('; ') || null,
         pitchEmail: audit?.pitchEmail || null,
+        contactEmail: audit?.emails?.[0] || null,
       })
       setSaved(true)
     } catch (e) {
@@ -180,6 +210,19 @@ function LeadRow({ lead }) {
 
       {audit && (
         <div className="mt-3 rounded-lg border border-line bg-canvas/50 p-3">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Email found on site</p>
+          {audit.emails?.length > 0 ? (
+            <p className="mb-3 text-sm text-ink">
+              {audit.emails.map((e, i) => (
+                <span key={e}>
+                  {i > 0 && ', '}
+                  <a href={`mailto:${e}`} className="text-accent hover:underline">{e}</a>
+                </span>
+              ))}
+            </p>
+          ) : (
+            <p className="mb-3 text-sm text-muted">None found on the homepage or an obvious contact page — try the pitch email as a starting point and hunt manually, or check a different page on their site.</p>
+          )}
           {audit.bottlenecks.length > 0 && (
             <>
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">What Claude noticed</p>
@@ -227,6 +270,7 @@ function SavedLeads() {
                 <div className="text-xs text-muted">
                   DOT #{l.dot_number} · {l.city}{l.city && l.state ? ', ' : ''}{l.state}
                   {l.website_url && <> · <a href={/^https?:\/\//i.test(l.website_url) ? l.website_url : `https://${l.website_url}`} target="_blank" rel="noreferrer" className="text-accent hover:underline">website ↗</a></>}
+                  {l.contact_email && <> · <a href={`mailto:${l.contact_email}`} className="text-accent hover:underline">{l.contact_email}</a></>}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
