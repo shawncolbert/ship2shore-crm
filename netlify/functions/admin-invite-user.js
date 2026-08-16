@@ -7,6 +7,10 @@ const json = (statusCode, body) => ({
 
 const ROLES = ['owner', 'admin', 'agent', 'viewer']
 
+function siteOrigin(event) {
+  return process.env.URL || process.env.DEPLOY_PRIME_URL || `https://${event.headers.host}`
+}
+
 // Invites a person to a specific org with a role. If they already have an
 // account (e.g. they're being added to a second org), skips the invite
 // email and just adds the membership -- they can already log in.
@@ -28,7 +32,12 @@ export const handler = async (event) => {
 
   let userId
   let invited = false
-  const { data: invite, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email.trim().toLowerCase())
+  // Without redirectTo, Supabase falls back to its generic default instead
+  // of this app's actual set-password page -- the same page Login.jsx's own
+  // "Forgot password" flow already correctly points at.
+  const { data: invite, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email.trim().toLowerCase(), {
+    redirectTo: `${siteOrigin(event)}/reset-password`,
+  })
   if (inviteErr) {
     // Most likely: this person already has an account. Fall back to
     // finding their existing profile rather than failing the whole request.
