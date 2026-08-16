@@ -92,13 +92,13 @@ export const handler = async (event) => {
   try {
     // Two searches, not five -- one for the company's own site, and ONE
     // combined query for all four social platforms at once (OR'd site:
-    // filters), instead of a separate call per platform. That was burning
-    // 5 Firecrawl calls per click and hitting free-tier rate limits after
-    // just a couple of lookups; this cuts it to 2.
-    [websiteResults, socialResults] = await Promise.all([
-      firecrawlSearch(`${named} trucking company official website`, 5),
-      firecrawlSearch(`${named} (site:facebook.com OR site:instagram.com OR site:tiktok.com OR site:linkedin.com)`, 10),
-    ])
+    // filters), instead of a separate call per platform. Run sequentially,
+    // not in parallel -- Firecrawl's free tier caps concurrent requests at
+    // 2, and two calls fired at once from here plus anything else in
+    // flight (another tab, a retry) is enough to trip that ceiling. One at
+    // a time keeps us comfortably under it regardless of plan.
+    websiteResults = await firecrawlSearch(`${named} trucking company official website`, 5)
+    socialResults = await firecrawlSearch(`${named} (site:facebook.com OR site:instagram.com OR site:tiktok.com OR site:linkedin.com)`, 10)
   } catch (e) {
     return json(502, { error: e.message || 'Could not search for this company.' })
   }
