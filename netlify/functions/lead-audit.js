@@ -78,6 +78,9 @@ async function scrapeSite(url) {
       body: JSON.stringify({ url, formats: ['markdown'] }),
     })
     const data = await res.json()
+    if (res.status === 429) {
+      throw new Error("Firecrawl's rate limit was hit. Wait a bit before trying again, or raise your limit at firecrawl.dev (Dashboard → Settings → Plan).")
+    }
     if (!res.ok) throw new Error('Firecrawl error: ' + JSON.stringify(data))
     const markdown = data?.data?.markdown || ''
     return { text: markdown.slice(0, 8000), emails: extractEmails(markdown) }

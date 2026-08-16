@@ -42,6 +42,9 @@ async function firecrawlSearch(query, limit) {
     body: JSON.stringify({ query, limit }),
   })
   const data = await res.json().catch(() => null)
+  if (res.status === 429) {
+    throw new Error("Firecrawl's rate limit was hit. Wait a bit before trying again, or raise your limit at firecrawl.dev (Dashboard → Settings → Plan).")
+  }
   if (!res.ok) throw new Error('Firecrawl search error: ' + JSON.stringify(data))
   return Array.isArray(data?.data) ? data.data : []
 }
@@ -66,6 +69,8 @@ function firstFromDomain(results, domain) {
   return null
 }
 
+const SOCIAL_DOMAINS = { facebook: 'facebook.com', instagram: 'instagram.com', tiktok: 'tiktok.com', linkedin: 'linkedin.com' }
+
 export const handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { error: 'POST only' })
 
@@ -83,31 +88,28 @@ export const handler = async (event) => {
   const location = [city, state].filter(Boolean).join(' ')
   const named = `"${companyName.trim()}"${location ? ` ${location}` : ''}`
 
-  let results
+  let websiteResults, socialResults
   try {
-    // Five targeted searches in parallel -- one for the company's own
-    // site, one per social platform via a site: filter. Firecrawl's search
-    // (like most web search) supports the standard site: operator.
-    results = await Promise.all([
+    // Two searches, not five -- one for the company's own site, and ONE
+    // combined query for all four social platforms at once (OR'd site:
+    // filters), instead of a separate call per platform. That was burning
+    // 5 Firecrawl calls per click and hitting free-tier rate limits after
+    // just a couple of lookups; this cuts it to 2.
+    [websiteResults, socialResults] = await Promise.all([
       firecrawlSearch(`${named} trucking company official website`, 5),
-      firecrawlSearch(`site:facebook.com ${named}`, 3),
-      firecrawlSearch(`site:instagram.com ${named}`, 3),
-      firecrawlSearch(`site:tiktok.com ${named}`, 3),
-      firecrawlSearch(`site:linkedin.com ${named}`, 3),
+      firecrawlSearch(`${named} (site:facebook.com OR site:instagram.com OR site:tiktok.com OR site:linkedin.com)`, 10),
     ])
   } catch (e) {
     return json(502, { error: e.message || 'Could not search for this company.' })
   }
 
-  const [websiteResults, fbResults, igResults, ttResults, liResults] = results
+  const social = {}
+  for (const [key, domain] of Object.entries(SOCIAL_DOMAINS)) {
+    social[key] = firstFromDomain(socialResults, domain)
+  }
 
   return json(200, {
     website: firstOwnSite(websiteResults),
-    social: {
-      facebook: firstFromDomain(fbResults, 'facebook.com'),
-      instagram: firstFromDomain(igResults, 'instagram.com'),
-      tiktok: firstFromDomain(ttResults, 'tiktok.com'),
-      linkedin: firstFromDomain(liResults, 'linkedin.com'),
-    },
+    social,
   })
 }
