@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   searchFmcsaLeads, auditLead, saveLead, fetchSavedLeads, updateLeadStatus, deleteLead, verifyCarrier,
+  discoverCompany,
 } from '../lib/leadFinder'
 import { checkWarmLeads } from '../lib/prospecting'
 
@@ -129,6 +130,29 @@ function namesLooselyMatch(claimed, actual) {
   return a.includes(c) || c.includes(a)
 }
 
+// Whichever platforms discoverCompany() found, as a compact linked row --
+// used under both the verify box and each search result.
+function SocialLinksRow({ social }) {
+  const items = [
+    social?.facebook && { label: 'Facebook', url: social.facebook },
+    social?.instagram && { label: 'Instagram', url: social.instagram },
+    social?.tiktok && { label: 'TikTok', url: social.tiktok },
+    social?.linkedin && { label: 'LinkedIn', url: social.linkedin },
+  ].filter(Boolean)
+
+  if (!items.length) return <p className="text-xs text-muted">No social media presence found.</p>
+  return (
+    <p className="text-xs">
+      {items.map((it, i) => (
+        <span key={it.label}>
+          {i > 0 && ' · '}
+          <a href={it.url} target="_blank" rel="noreferrer" className="font-semibold text-accent hover:underline">{it.label} ↗</a>
+        </span>
+      ))}
+    </p>
+  )
+}
+
 // A carrier or driver calls claiming to run under a given DOT # and/or MC #,
 // or hands over paperwork with them printed on it -- this checks who FMCSA
 // actually has those numbers registered to, so a mismatch (a classic
@@ -146,10 +170,15 @@ function DotVerify() {
   // undefined = not run yet, null = not found, { carrier, mcMatchesDot } = found
   const [outcome, setOutcome] = useState(undefined)
   const [err, setErr] = useState('')
+  const [discovering, setDiscovering] = useState(false)
+  const [discovered, setDiscovered] = useState(null)
+  const [discoverErr, setDiscoverErr] = useState('')
+  const [saved, setSaved] = useState(false)
 
   const verify = async () => {
     if (!dotNumber.trim() && !mcNumber.trim()) { setErr('Enter a DOT number or an MC number first.'); return }
     setErr(''); setChecking(true); setOutcome(undefined)
+    setDiscovered(null); setDiscoverErr(''); setSaved(false)
     try {
       const { carrier, mcMatchesDot } = await verifyCarrier({ dotNumber: dotNumber.trim() || undefined, mcNumber: mcNumber.trim() || undefined })
       setOutcome(carrier ? { carrier, mcMatchesDot } : null)
@@ -161,6 +190,41 @@ function DotVerify() {
   }
 
   const carrier = outcome?.carrier
+
+  const findOnline = async () => {
+    if (!carrier) return
+    setDiscoverErr(''); setDiscovering(true)
+    try {
+      const result = await discoverCompany({ companyName: carrier.legalName || carrier.dbaName, city: carrier.city, state: carrier.state })
+      setDiscovered(result)
+    } catch (e) {
+      setDiscoverErr(e.message || 'Could not search for this company.')
+    } finally {
+      setDiscovering(false)
+    }
+  }
+
+  const saveAsLead = async () => {
+    if (!carrier) return
+    try {
+      await saveLead({
+        dotNumber: carrier.dotNumber,
+        mcNumber: carrier.mcNumbers?.[0] || null,
+        legalName: carrier.legalName,
+        dbaName: carrier.dbaName,
+        phone: carrier.phone,
+        city: carrier.city,
+        state: carrier.state,
+        powerUnits: carrier.powerUnits,
+        drivers: carrier.drivers,
+        websiteUrl: discovered?.website || null,
+        socialLinks: discovered?.social || null,
+      })
+      setSaved(true)
+    } catch (e) {
+      alert(e.message || 'Could not save this lead.')
+    }
+  }
   const match = carrier && claimedName.trim()
     ? namesLooselyMatch(claimedName, carrier.legalName) || namesLooselyMatch(claimedName, carrier.dbaName)
     : null
@@ -232,6 +296,27 @@ function DotVerify() {
           <p className={`mt-1 text-xs font-medium ${carrier.allowedToOperate ? 'text-emerald-700' : 'text-port'}`}>
             {carrier.allowedToOperate ? '✓ Currently allowed to operate' : '⚠️ NOT currently allowed to operate'}
           </p>
+
+          <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
+            <button className={btn} disabled={discovering} onClick={findOnline}>
+              {discovering ? 'Searching…' : 'Find website & social media'}
+            </button>
+            <button className={btn} disabled={saved} onClick={saveAsLead}>{saved ? '✓ Saved as lead' : 'Save as lead'}</button>
+          </div>
+          {discoverErr && <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {discoverErr}</p>}
+          {discovered && (
+            <div className="mt-2 space-y-1">
+              <p className="text-sm text-ink">
+                Website:{' '}
+                {discovered.website ? (
+                  <a href={discovered.website} target="_blank" rel="noreferrer" className="font-semibold text-accent hover:underline">{discovered.website} ↗</a>
+                ) : (
+                  <span className="text-muted">not found</span>
+                )}
+              </p>
+              <SocialLinksRow social={discovered.social} />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -246,6 +331,22 @@ function LeadRow({ lead }) {
   const [checking, setChecking] = useState(false)
   const [warmMatch, setWarmMatch] = useState(null)
   const [saved, setSaved] = useState(false)
+  const [discovering, setDiscovering] = useState(false)
+  const [discovered, setDiscovered] = useState(null)
+  const [discoverErr, setDiscoverErr] = useState('')
+
+  const findOnline = async () => {
+    setDiscoverErr(''); setDiscovering(true)
+    try {
+      const result = await discoverCompany({ companyName: lead.legalName || lead.dbaName, city: lead.city, state: lead.state })
+      setDiscovered(result)
+      if (result.website && !websiteUrl.trim()) setWebsiteUrl(result.website)
+    } catch (e) {
+      setDiscoverErr(e.message || 'Could not search for this company.')
+    } finally {
+      setDiscovering(false)
+    }
+  }
 
   const runAudit = async () => {
     if (!websiteUrl.trim()) { setAuditErr('Enter a website URL first.'); return }
@@ -275,6 +376,7 @@ function LeadRow({ lead }) {
       await saveLead({
         ...lead,
         websiteUrl: websiteUrl.trim() || null,
+        socialLinks: discovered?.social || null,
         siteNotes: audit?.bottlenecks?.join('; ') || null,
         pitchEmail: audit?.pitchEmail || null,
         contactEmail: audit?.emails?.[0] || null,
@@ -317,6 +419,14 @@ function LeadRow({ lead }) {
           </Link>
         </p>
       )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button className={btn} disabled={discovering} onClick={findOnline}>
+          {discovering ? 'Searching…' : 'Find website & social media'}
+        </button>
+      </div>
+      {discoverErr && <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {discoverErr}</p>}
+      {discovered && <div className="mt-2"><SocialLinksRow social={discovered.social} /></div>}
+
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <input
           value={websiteUrl}
@@ -394,6 +504,9 @@ function SavedLeads() {
                   {l.website_url && <> · <a href={/^https?:\/\//i.test(l.website_url) ? l.website_url : `https://${l.website_url}`} target="_blank" rel="noreferrer" className="text-accent hover:underline">website ↗</a></>}
                   {l.contact_email && <> · <a href={`mailto:${l.contact_email}`} className="text-accent hover:underline">{l.contact_email}</a></>}
                 </div>
+                {l.social_links && Object.values(l.social_links).some(Boolean) && (
+                  <div className="mt-0.5"><SocialLinksRow social={l.social_links} /></div>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <select

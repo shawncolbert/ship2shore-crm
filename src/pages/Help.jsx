@@ -78,19 +78,25 @@ const SECTIONS = [
       instead — state is optional when searching by name. Results come 50 at a time with Previous/Next at
       the bottom, so a big state pull doesn't dump everything on one page.
 
-      FMCSA doesn't publish company websites or emails, so type a website in per result to run "Audit &
-      draft pitch" — it pulls any email address it can find on that company's homepage or an obvious
-      Contact page, and separately has Claude read the site to call out a couple of concrete operational
-      weaknesses (no online quote form, no dispatch tracking, that kind of thing) and draft a short
-      personalized cold email you can copy and send yourself (nothing sends automatically). If no email
-      turns up, that means the site genuinely doesn't show one anywhere Lead Finder checked — worth a quick
-      manual look at their site yourself before giving up on it.
+      FMCSA doesn't publish company websites, social media, or emails — click "Find website & social media"
+      on any result (or in the verify box above, once a carrier's found) and it searches the web for their
+      site plus Facebook, Instagram, TikTok, and LinkedIn pages, filtering out directory/review sites that
+      tend to outrank a small company's own page. A found website auto-fills the website box below it.
+
+      Then run "Audit & draft pitch" — it pulls any email address it can find on that company's homepage or
+      an obvious Contact page, and separately has Claude read the site to call out a couple of concrete
+      operational weaknesses (no online quote form, no dispatch tracking, that kind of thing) and draft a
+      short personalized cold email you can copy and send yourself (nothing sends automatically). If no
+      email turns up, that means the site genuinely doesn't show one anywhere Lead Finder checked — worth a
+      quick manual look at their site yourself before giving up on it.
 
       "Check against my contacts" runs the same warm/cold check as Prospecting, so you don't cold-pitch
-      someone you already know. Click "Save" on anything worth tracking — it moves to Saved Leads below
-      with a status you can update (New → Contacted → Added to Contacts, or Dismissed) any time. Needs your
-      Claude API key set up on the server side (ask whoever set up your account if audits come back with an
-      error); a Firecrawl key improves results on JavaScript-heavy sites but isn't required.`,
+      someone you already know. Click "Save" on anything worth tracking (or "Save as lead" in the verify
+      box) — it moves to Saved Leads below with a status you can update (New → Contacted → Added to
+      Contacts, or Dismissed) any time, keeping whatever website/social/email were found. Needs your Claude
+      API key set up on the server side (ask whoever set up your account if audits come back with an
+      error); a Firecrawl key is required for both the website/social search and improves the audit step on
+      JavaScript-heavy sites.`,
   },
   {
     id: 'pipeline',

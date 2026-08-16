@@ -25,6 +25,14 @@ export async function auditLead({ websiteUrl, companyName }) {
   return callFunction('lead-audit', { websiteUrl, companyName })
 }
 
+// Finds a company's own website and social media (Facebook, Instagram,
+// TikTok, LinkedIn) from just its name via Firecrawl search -- FMCSA has
+// none of this. Returns { website, social: { facebook, instagram, tiktok,
+// linkedin } }, any of which may be null if nothing turned up.
+export async function discoverCompany({ companyName, city, state }) {
+  return callFunction('lead-discover', { companyName, city, state })
+}
+
 // Direct DOT and/or MC number lookup against FMCSA's official QCMobile API
 // (fmcsa-verify.js) -- built for exactly this single-company check, unlike
 // the bulk census file the state/company search above uses. Verifies that
@@ -66,6 +74,7 @@ export async function saveLead(lead) {
     drivers: lead.drivers ?? null,
     cargo_classification: lead.cargoClassification || null,
     website_url: lead.websiteUrl || null,
+    social_links: lead.socialLinks || null,
     site_notes: lead.siteNotes || null,
     pitch_email: lead.pitchEmail || null,
     contact_email: lead.contactEmail || null,
