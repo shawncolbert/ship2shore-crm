@@ -48,9 +48,12 @@ const SECTIONS = [
     body: `Before you cold-call a list of leads, paste it in here — one prospect per line as
       "Name, Phone, Email" (phone and email are optional). Click "Check for warm leads" and anyone who
       matches an existing contact by name, phone, or email gets flagged 🔥 Warm with a link straight to
-      that contact — meaning they (or someone connected to them, via Known Connections on their contact
-      page) are already known to your business, so it's worth mentioning that on the call. Everyone else
-      shows as a plain "New lead" with a one-click "+ Add contact" to bring them into your Contacts list.`,
+      that contact. Click the ▸ next to a warm row to see who that contact is already linked to (via Known
+      Connections on their contact page) — useful context before the call. An exact phone or email match
+      is almost certainly the same person, so only the link to their existing record shows; a match on
+      name alone might be a different, related person, so those rows also get "+ Add as new contact,
+      linked" — creates a separate contact and connects the two automatically. Everyone with no match at
+      all shows as a plain "New lead" with a one-click "+ Add contact" to bring them into your Contacts list.`,
   },
   {
     id: 'pipeline',

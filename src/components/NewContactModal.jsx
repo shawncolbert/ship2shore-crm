@@ -35,7 +35,7 @@ const emptyBooking = {
   value: '',
 }
 
-export default function NewContactModal({ open, onClose, initial }) {
+export default function NewContactModal({ open, onClose, initial, onCreated }) {
   const qc = useQueryClient()
   const [form, setForm] = useState(empty)
   const [addBooking, setAddBooking] = useState(false)
@@ -87,7 +87,7 @@ export default function NewContactModal({ open, onClose, initial }) {
     setError('')
     setBusy(true)
     try {
-      await createContactWithBooking({
+      const { contact } = await createContactWithBooking({
         contact: form,
         booking: addBooking ? booking : null,
       })
@@ -95,6 +95,7 @@ export default function NewContactModal({ open, onClose, initial }) {
       qc.invalidateQueries({ queryKey: ['contacts'] })
       qc.invalidateQueries({ queryKey: ['pipeline'] })
       qc.invalidateQueries({ queryKey: ['dashboard'] })
+      if (onCreated) await onCreated(contact)
       onClose()
     } catch (err) {
       setError(err?.message || 'Could not save. Please try again.')
