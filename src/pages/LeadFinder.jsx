@@ -393,7 +393,8 @@ function ComplianceDetail({ compliance }) {
         <ul className="space-y-1 text-sm text-ink">
           {compliance.insuranceFilings.map((f, i) => (
             <li key={i}>
-              Policy <span className="font-medium">{f.policyNumber}</span>
+              {f.insurerName ? <span className="font-medium">{f.insurerName}</span> : <span className="italic text-muted">Insurer name not on file</span>}
+              {' — '}Policy <span className="font-medium">{f.policyNumber}</span>
               {f.coverageAmount != null && <> — {money(f.coverageAmount)} coverage</>}
               {f.receivedDate && <span className="text-muted"> · filed {f.receivedDate}</span>}
               {f.effectiveDate && <span className="text-muted">, effective {f.effectiveDate}</span>}
@@ -402,7 +403,22 @@ function ComplianceDetail({ compliance }) {
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-muted">No insurance filings came back for this DOT number.</p>
+        <p className="mb-2 text-xs text-muted">No insurance filings came back for this DOT number.</p>
+      )}
+
+      <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted">Process agent (BOC-3)</p>
+      {compliance.processAgents?.length > 0 ? (
+        <ul className="space-y-0.5 text-sm text-ink">
+          {compliance.processAgents.map((a, i) => (
+            <li key={i}>
+              {a.name ? <span className="font-medium">{a.name}</span> : <span className="italic text-muted">Agent name not on file</span>}
+              {a.receivedDate && <span className="text-muted"> · filed {a.receivedDate}</span>}
+              {a.cancellationDate && <span className="font-medium text-port"> · CANCELLED {a.cancellationDate}</span>}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-muted">No process agent filing came back for this DOT number.</p>
       )}
     </div>
   )

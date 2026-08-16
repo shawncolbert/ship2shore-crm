@@ -55,14 +55,51 @@ function dateOnly(v) {
   return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('en-US')
 }
 
+// Insurer/process-agent NAMES, not just policy numbers -- best-effort.
+// Filing objects carry an insuranceEntityId/blanketEntityId that looks
+// like a reference to a separate entity record for the insurer or agent's
+// name, but whether that record is actually included anywhere in this
+// same response (vs. living in a separate resource this endpoint doesn't
+// return) is unconfirmed. resolveNameById() only searches within the
+// payload already fetched -- if nothing matches, the name comes back
+// blank rather than guessed, and the UI says so plainly instead of
+// showing a wrong or fabricated name.
+const NAME_KEYS = ['insuranceCompanyName', 'companyName', 'insurerName', 'filerName', 'legalName', 'entityName', 'name']
+
+function pickName(o) {
+  for (const k of NAME_KEYS) {
+    if (typeof o[k] === 'string' && o[k].trim()) return o[k].trim()
+  }
+  return ''
+}
+
+function resolveNameById(raw, id) {
+  if (!id) return ''
+  for (const o of findAll(raw, (o) => o.entityId === id || o.id === id || o.companyId === id)) {
+    const name = pickName(o)
+    if (name) return name
+  }
+  return ''
+}
+
 function mapInsuranceFilings(raw) {
   return findAll(raw, (o) => 'policyNumber' in o && o.policyNumber)
     .map((f) => ({
       policyNumber: f.policyNumber,
+      insurerName: pickName(f) || resolveNameById(raw, f.insuranceEntityId),
       coverageAmount: money(f.maxCovAmount),
       receivedDate: dateOnly(f.receivedDate),
       effectiveDate: dateOnly(f.effectiveDate),
       cancellationDate: dateOnly(f.cancellationDate),
+    }))
+}
+
+function mapProcessAgents(raw) {
+  return findAll(raw, (o) => 'blanketFilingsId' in o)
+    .map((b) => ({
+      name: pickName(b) || resolveNameById(raw, b.blanketEntityId),
+      receivedDate: dateOnly(b.receivedDate),
+      cancellationDate: dateOnly(b.cancellationDate),
     }))
 }
 
@@ -120,6 +157,7 @@ function mapCarrier(c) {
     } : null,
     operatingAuthorities: mapOperatingAuthorities(c),
     insuranceFilings: mapInsuranceFilings(c),
+    processAgents: mapProcessAgents(c),
   }
 }
 
