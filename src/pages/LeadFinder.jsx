@@ -391,18 +391,25 @@ function ComplianceDetail({ compliance }) {
   )
 }
 
+// Nothing here truncates -- an earlier version cut long values off with
+// CSS `truncate`, which hid exactly the kind of nested JSON (insurance
+// filing details buried inside entityRegistrationOperatingAuthorities,
+// confirmed live) this exists to surface. Nested objects/arrays are
+// pretty-printed in full instead of collapsed to a one-line ellipsis.
 function RawFieldGrid({ obj }) {
   const entries = Object.entries(obj || {}).filter(([, v]) => v !== null && v !== undefined && v !== '')
   if (!entries.length) return <p className="text-xs text-muted">No fields returned.</p>
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
+    <div className="space-y-1.5 text-xs">
       {entries.map(([k, v]) => (
-        <div key={k} className="min-w-0">
-          <dt className="truncate text-muted">{k}</dt>
-          <dd className="truncate text-ink">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</dd>
+        <div key={k}>
+          <span className="font-medium text-muted">{k}: </span>
+          <span className="whitespace-pre-wrap break-words text-ink">
+            {typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v)}
+          </span>
         </div>
       ))}
-    </dl>
+    </div>
   )
 }
 
