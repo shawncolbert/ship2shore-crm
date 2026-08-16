@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  searchFmcsaLeads, auditLead, saveLead, fetchSavedLeads, updateLeadStatus, deleteLead,
+  searchFmcsaLeads, auditLead, saveLead, fetchSavedLeads, updateLeadStatus, deleteLead, verifyDotNumber,
 } from '../lib/leadFinder'
 import { checkWarmLeads } from '../lib/prospecting'
 
@@ -55,6 +55,8 @@ export default function LeadFinder() {
           website and draft a personalized cold outreach email.
         </p>
       </header>
+
+      <DotVerify />
 
       <div className={`${card} mb-6`}>
         <h2 className={h2}>Search FMCSA</h2>
@@ -112,6 +114,103 @@ export default function LeadFinder() {
       )}
 
       <SavedLeads />
+    </div>
+  )
+}
+
+// Loose match, not exact-string -- "ACME TRUCKING" should match a claim of
+// "Acme Trucking LLC" or "Acme". Normalizes case/punctuation, then checks
+// either name contains the other.
+function namesLooselyMatch(claimed, actual) {
+  const norm = (s) => (s || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim()
+  const c = norm(claimed)
+  const a = norm(actual)
+  if (!c || !a) return false
+  return a.includes(c) || c.includes(a)
+}
+
+// A carrier or driver calls claiming to run under a given DOT #, or hands
+// over paperwork with one printed on it -- this checks who FMCSA actually
+// has that number registered to, so a mismatch (a classic double-brokering/
+// identity-theft move in freight) gets caught before a load gets handed
+// over to the wrong outfit. Deliberately separate from the search/save flow
+// below -- this is a quick yes/no check, not lead generation.
+function DotVerify() {
+  const [dotNumber, setDotNumber] = useState('')
+  const [claimedName, setClaimedName] = useState('')
+  const [checking, setChecking] = useState(false)
+  const [result, setResult] = useState(undefined) // undefined = not run yet, null = not found, object = found
+  const [err, setErr] = useState('')
+
+  const verify = async () => {
+    if (!dotNumber.trim()) { setErr('Enter a DOT number first.'); return }
+    setErr(''); setChecking(true); setResult(undefined)
+    try {
+      const lead = await verifyDotNumber(dotNumber.trim())
+      setResult(lead)
+    } catch (e) {
+      setErr(e.message || 'Could not look up that DOT number.')
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const match = result && claimedName.trim()
+    ? namesLooselyMatch(claimedName, result.legalName) || namesLooselyMatch(claimedName, result.dbaName)
+    : null
+
+  return (
+    <div className={`${card} mb-6`}>
+      <h2 className={h2}>Verify a DOT number</h2>
+      <p className="mb-3 text-sm text-muted">
+        Someone claims they're running under a DOT number — check who it's actually registered to before
+        handing anything over.
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-muted">DOT number</span>
+          <input value={dotNumber} onChange={(e) => setDotNumber(e.target.value)} placeholder="1234567" className={`${input} w-32`} />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-muted">Name they gave you (optional — checks for a match)</span>
+          <input value={claimedName} onChange={(e) => setClaimedName(e.target.value)} placeholder="Acme Trucking" className={`${input} w-64`} />
+        </label>
+        <button className={btnAccent} disabled={checking} onClick={verify}>
+          {checking ? 'Checking…' : 'Verify'}
+        </button>
+      </div>
+      {err && <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
+
+      {result === null && (
+        <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-port">
+          ⚠️ No carrier or broker is registered under DOT #{dotNumber.trim()} — that number's either wrong,
+          inactive, or made up. Don't take it at face value.
+        </p>
+      )}
+
+      {result && (
+        <div className="mt-3 rounded-lg border border-line bg-canvas/50 p-3">
+          {match !== null && (
+            <p className={`mb-2 text-sm font-semibold ${match ? 'text-emerald-700' : 'text-port'}`}>
+              {match ? '✓ Matches the name they gave you' : '⚠️ Does NOT match the name they gave you'}
+            </p>
+          )}
+          <p className="text-sm text-ink">
+            <span className="font-medium">{result.legalName || 'Unnamed company'}</span>
+            {result.dbaName && result.dbaName !== result.legalName && <span className="text-muted"> (dba {result.dbaName})</span>}
+          </p>
+          <p className="text-xs text-muted">
+            DOT #{result.dotNumber} · {result.city}{result.city && result.state ? ', ' : ''}{result.state}
+            {result.phone && <> · <a href={`tel:${result.phone}`} className="text-accent hover:underline">{result.phone}</a></>}
+          </p>
+          <p className="text-xs text-muted">
+            {result.powerUnits != null && `${result.powerUnits} power units`}
+            {result.powerUnits != null && result.drivers != null && ' · '}
+            {result.drivers != null && `${result.drivers} drivers`}
+            {result.cargoClassification && ` · ${result.cargoClassification}`}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

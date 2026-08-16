@@ -59,7 +59,13 @@ const SECTIONS = [
     id: 'lead-finder',
     title: 'Lead Finder',
     nav: '/lead-finder',
-    body: `Finds brand-new leads, unlike Prospecting (which checks people you already have). Pick a state
+    body: `Also has "Verify a DOT number" at the top — separate from lead-finding: someone claims they're
+      running under a given DOT number, you type it in (plus optionally the name they gave you), and it
+      shows exactly who FMCSA has that number registered to. A mismatch is flagged clearly — worth checking
+      before handing anything over, since claiming someone else's DOT number is a real, common move in
+      freight fraud.
+
+      Finds brand-new leads, unlike Prospecting (which checks people you already have). Pick a state
       and search — this pulls straight from FMCSA's public carrier/broker registry, no signup required.
       Try a cargo keyword like "Motor Vehicles" to narrow results to car haulers specifically. Already have
       a company's name from a call and just need their DOT number? Type it into the "Company name" box

@@ -25,6 +25,15 @@ export async function auditLead({ websiteUrl, companyName }) {
   return callFunction('lead-audit', { websiteUrl, companyName })
 }
 
+// Direct DOT-number lookup -- verifying that whoever called claiming to run
+// under a given DOT # actually matches who's registered to it (a real,
+// common double-brokering risk in freight). Returns the registered company,
+// or null if that DOT # doesn't come back at all.
+export async function verifyDotNumber(dotNumber) {
+  const { leads } = await callFunction('fmcsa-search', { dotNumber, limit: 1 })
+  return leads[0] || null
+}
+
 /* ------------------------------------------------------------------ */
 /* Saved leads -- org-scoped tracking once a lead's worth following up  */
 /* on (see fmcsa_leads migration).                                      */

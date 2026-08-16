@@ -48,11 +48,12 @@ export const handler = async (event) => {
 
   let payload
   try { payload = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'Bad JSON' }) }
-  const { state, companyName, cargoKeyword, limit = 50, offset = 0 } = payload
-  if (!state && !companyName) return json(400, { error: 'Enter a state or a company name.' })
+  const { state, companyName, dotNumber, cargoKeyword, limit = 50, offset = 0 } = payload
+  if (!state && !companyName && !dotNumber) return json(400, { error: 'Enter a state, a company name, or a DOT number.' })
 
   const esc = (s) => String(s).replace(/'/g, "''")
   const where = []
+  if (dotNumber) where.push(`${FIELDS.dotNumber} = '${esc(String(dotNumber).trim())}'`)
   if (state) where.push(`upper(${FIELDS.state}) = upper('${esc(state)}')`)
   if (companyName) {
     where.push(`(upper(${FIELDS.legalName}) like upper('%${esc(companyName)}%') or upper(${FIELDS.dbaName}) like upper('%${esc(companyName)}%'))`)
