@@ -18,6 +18,7 @@ const nav = [
   { to: '/settings/card-links', label: 'Digital Business Cards', key: 'digital_business_cards', group: 'Marketing' },
   { to: '/inbox', label: 'Inbox', key: 'inbox', group: 'Clients & Bookings' },
   { to: '/contacts', label: 'Contacts', key: 'contacts', group: 'Clients & Bookings' },
+  { to: '/prospecting', label: 'Prospecting', key: 'prospecting', group: 'Clients & Bookings' },
   { to: '/pipeline', label: 'Pipeline', key: 'pipeline', group: 'Clients & Bookings' },
   { to: '/settings/pipeline-stages', label: 'Pipeline Stages', key: 'pipeline_stages', group: 'Clients & Bookings' },
   { to: '/calendar', label: 'Calendar', key: 'calendar', group: 'Clients & Bookings' },

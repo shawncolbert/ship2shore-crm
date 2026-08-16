@@ -35,7 +35,7 @@ const emptyBooking = {
   value: '',
 }
 
-export default function NewContactModal({ open, onClose }) {
+export default function NewContactModal({ open, onClose, initial }) {
   const qc = useQueryClient()
   const [form, setForm] = useState(empty)
   const [addBooking, setAddBooking] = useState(false)
@@ -52,7 +52,7 @@ export default function NewContactModal({ open, onClose }) {
   // Reset the form each time the modal is opened, and support Esc to close.
   useEffect(() => {
     if (open) {
-      setForm(empty)
+      setForm({ ...empty, ...initial })
       setAddBooking(false)
       setBooking(emptyBooking)
       setError('')

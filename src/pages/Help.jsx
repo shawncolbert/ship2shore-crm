@@ -32,12 +32,25 @@ const SECTIONS = [
       one), and AI reads off the name, company, title, phone, email, address, and website for you. You review
       and correct anything before it saves — nothing goes in automatically — and if that person's already in
       your contacts it'll ask whether to update their existing record instead of creating a second one. Once
-      saved, "Save to Phone Contacts" hands it straight to your phone's own Add Contact screen.
+      saved, "Save to Phone Contacts" hands it straight to your phone's own Add Contact screen. Open any
+      contact and scroll to "Known Connections" to link them to referrals, coworkers, or family already in
+      your contacts, with an optional note — this is what powers Prospecting (below).
 
       To bring your whole phone contact list in at once instead of one at a time: on an iPhone, open
       Contacts → Lists → All Contacts → Select → Select All → Share → Save to Files (this makes one .vcf file
       with everyone in it); on Android/Google, go to contacts.google.com on a computer, select the contacts
       you want, and Export → vCard format. Either file uploads straight into the vCard import above.`,
+  },
+  {
+    id: 'prospecting',
+    title: 'Prospecting',
+    nav: '/prospecting',
+    body: `Before you cold-call a list of leads, paste it in here — one prospect per line as
+      "Name, Phone, Email" (phone and email are optional). Click "Check for warm leads" and anyone who
+      matches an existing contact by name, phone, or email gets flagged 🔥 Warm with a link straight to
+      that contact — meaning they (or someone connected to them, via Known Connections on their contact
+      page) are already known to your business, so it's worth mentioning that on the call. Everyone else
+      shows as a plain "New lead" with a one-click "+ Add contact" to bring them into your Contacts list.`,
   },
   {
     id: 'pipeline',

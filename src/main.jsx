@@ -11,6 +11,7 @@ import ResetPassword from './pages/ResetPassword'
 import Contacts from './pages/Contacts'
 import ImportContacts from './pages/ImportContacts'
 import ContactDetail from './pages/ContactDetail'
+import Prospecting from './pages/Prospecting'
 import Pipeline from './pages/Pipeline'
 import Dashboard from './pages/Dashboard'
 import Inbox from './pages/Inbox'
@@ -95,6 +96,7 @@ function App() {
                 <Route path="contacts" element={<FeatureGate featureKey="contacts"><Contacts /></FeatureGate>} />
                 <Route path="contacts/import" element={<FeatureGate featureKey="contacts"><ImportContacts /></FeatureGate>} />
                 <Route path="contacts/:id" element={<FeatureGate featureKey="contacts"><ContactDetail /></FeatureGate>} />
+                <Route path="prospecting" element={<FeatureGate featureKey="prospecting"><Prospecting /></FeatureGate>} />
                 <Route path="pipeline" element={<FeatureGate featureKey="pipeline"><Pipeline /></FeatureGate>} />
                 <Route path="calendar" element={<FeatureGate featureKey="calendar"><Calendar /></FeatureGate>} />
                 <Route path="documents" element={<FeatureGate featureKey="documents"><Documents /></FeatureGate>} />

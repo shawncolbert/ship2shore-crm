@@ -2,11 +2,12 @@ import { useState, useRef, Fragment } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import {
-  fetchContact, fetchMyOrgId, fetchMyOrg, fetchAttachments, uploadDeliveryOrder,
+  fetchContact, fetchContacts, fetchMyOrgId, fetchMyOrg, fetchAttachments, uploadDeliveryOrder,
   signedAttachmentUrl, deleteAttachment, createUploadLink, updateContact,
   sendEmail, markAttachmentViewed, deleteAppointment, renameAttachment, fetchSignedUrls,
   deleteContact,
 } from '../lib/supabase'
+import { fetchConnections, addConnection, deleteConnection } from '../lib/prospecting'
 import { calendlyPrefillUrl, mailtoUrl } from '../lib/config'
 import Badge from '../components/Badge'
 import EmailComposer from '../components/EmailComposer'
@@ -166,6 +167,8 @@ export default function ContactDetail() {
               </ul>
             )}
           </div>
+
+          <Connections contactId={contact.id} />
         </section>
       </div>
 
@@ -206,6 +209,138 @@ export default function ContactDetail() {
       )}
 
       {emailOpen && <EmailComposer contact={contact} onClose={() => setEmailOpen(false)} />}
+    </div>
+  )
+}
+
+// "Known Connections" -- who this contact is linked to (referred by,
+// coworker, spouse, same company, whatever note explains it), so the
+// prospecting tool can flag a new lead as "warm" when it matches someone
+// already connected to an existing client. Storage is directional but this
+// reads/writes it as a plain symmetric relationship.
+function Connections({ contactId }) {
+  const qc = useQueryClient()
+  const [adding, setAdding] = useState(false)
+  const [search, setSearch] = useState('')
+  const [pickedId, setPickedId] = useState('')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const { data: connections, isLoading } = useQuery({
+    queryKey: ['connections', contactId],
+    queryFn: () => fetchConnections(contactId),
+  })
+
+  const { data: candidates } = useQuery({
+    queryKey: ['contacts', null, search],
+    queryFn: () => fetchContacts({ search }),
+    enabled: adding && search.trim().length > 1,
+  })
+
+  const alreadyConnected = new Set((connections || []).map((c) => c.contact.id))
+  const options = (candidates || []).filter((c) => c.id !== contactId && !alreadyConnected.has(c.id))
+
+  function startAdd() {
+    setSearch(''); setPickedId(''); setNote(''); setErr(''); setAdding(true)
+  }
+
+  async function save() {
+    setSaving(true); setErr('')
+    try {
+      await addConnection({ contactId, connectedContactId: pickedId, note })
+      await qc.invalidateQueries({ queryKey: ['connections', contactId] })
+      setAdding(false)
+    } catch (e) {
+      setErr(e.message || 'Could not save this connection.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function remove(c) {
+    if (!confirm(`Remove the connection to ${c.contact.full_name || 'this contact'}?`)) return
+    try {
+      await deleteConnection(c.id)
+      qc.invalidateQueries({ queryKey: ['connections', contactId] })
+    } catch (e) {
+      alert(e.message || 'Could not remove this connection.')
+    }
+  }
+
+  return (
+    <div className={card}>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className={h2 + ' mb-0'}>Known Connections</h2>
+        {!adding && (
+          <button className="text-xs font-medium text-accent hover:underline" onClick={startAdd}>+ Add connection</button>
+        )}
+      </div>
+
+      {adding && (
+        <div className="mb-4 space-y-2 rounded-lg border border-line bg-canvas/50 p-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted">Connected contact</label>
+            <input
+              value={pickedId ? (candidates || []).find((c) => c.id === pickedId)?.full_name || search : search}
+              onChange={(e) => { setSearch(e.target.value); setPickedId('') }}
+              placeholder="Search by name, company, phone…"
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            />
+            {!pickedId && search.trim().length > 1 && (
+              <div className="mt-1 max-h-40 divide-y divide-line overflow-y-auto rounded-lg border border-line bg-surface">
+                {options.length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-muted">No match.</p>
+                ) : (
+                  options.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => { setPickedId(c.id); setSearch(c.full_name) }}
+                      className="block w-full px-3 py-2 text-left text-sm text-ink hover:bg-canvas"
+                    >
+                      {c.full_name || 'Unnamed contact'}{c.company ? ` — ${c.company}` : ''}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted">Note (optional)</label>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="e.g. referred by, coworker, spouse"
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            />
+          </div>
+          {err && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
+          <div className="flex items-center gap-2 pt-1">
+            <button className={btnAccent} disabled={saving || !pickedId} onClick={save}>{saving ? 'Saving…' : 'Save'}</button>
+            <button className={btn} disabled={saving} onClick={() => setAdding(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <p className="text-sm text-muted">Loading…</p>
+      ) : !connections?.length ? (
+        <p className="text-sm text-muted">No known connections yet. Link this contact to referrals, coworkers, or family so warm leads get flagged automatically.</p>
+      ) : (
+        <ul className="divide-y divide-line">
+          {connections.map((c) => (
+            <li key={c.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+              <div className="min-w-0">
+                <Link to={`/contacts/${c.contact.id}`} className="font-medium text-accent hover:underline">
+                  {c.contact.full_name || 'Unnamed contact'}
+                </Link>
+                {c.note && <span className="ml-2 text-xs text-muted">{c.note}</span>}
+              </div>
+              <button onClick={() => remove(c)} title="Remove connection" className="shrink-0 rounded p-1 text-muted hover:bg-red-50 hover:text-red-500">🗑️</button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
