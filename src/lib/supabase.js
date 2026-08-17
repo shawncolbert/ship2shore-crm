@@ -313,7 +313,7 @@ export async function fetchDefaultPipeline() {
 
   const { data: opps, error: oErr } = await supabase
     .from('opportunities')
-    .select('id, title, service_code, port, vehicle, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, contacts(full_name, company, email, phone), invoices(id, status, invoice_number, total, amount_due, created_at)')
+    .select('id, title, service_code, port, vehicle, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, source_board, board_order_number, contacts(full_name, company, email, phone), invoices(id, status, invoice_number, total, amount_due, created_at)')
     .eq('pipeline_id', pipeline.id)
     .order('created_at', { ascending: false, foreignTable: 'invoices' })
   if (oErr) throw oErr
@@ -470,6 +470,9 @@ export async function updateOpportunity(id, patch) {
     const n = Number(patch.value)
     allowed.value = Number.isFinite(n) && n >= 0 ? n : null
   }
+  if ('source_board' in patch) allowed.source_board = patch.source_board || null
+  if ('board_order_number' in patch)
+    allowed.board_order_number = patch.board_order_number?.trim() || null
   const { data, error } = await supabase
     .from('opportunities').update(allowed).eq('id', id).select('*').single()
   if (error) throw error

@@ -48,6 +48,19 @@ const PORT_LABEL = {
   other: 'Other',
 }
 
+// Which load board (if any) a job came from -- no API access on any plan
+// available from either board, so this is a manual tag rather than
+// something auto-populated (yet -- see the note on ContactDetail's
+// document-request presets for the same "started manual, org can extend
+// it" pattern this could grow into later).
+const SOURCE_BOARD_LABEL = {
+  central_dispatch: 'Central Dispatch',
+  super_dispatch: 'Super Dispatch',
+  direct: 'Direct',
+  referral: 'Referral',
+  other: 'Other',
+}
+
 // <input type="datetime-local"> works in the device's local time. Shawn runs
 // Pacific, so this matches the Pacific display on the card.
 const toLocalInput = (iso) => {
@@ -390,6 +403,14 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, 
       <div className="mt-1 flex items-center gap-2 text-xs text-muted">
         {c.service_code && <span className="truncate capitalize">{c.service_code.replace(/_/g, ' ')}</span>}
         {c.port && <span className="shrink-0">· {PORT_LABEL[c.port] || c.port}</span>}
+        {c.source_board && (
+          <span
+            title={c.board_order_number ? `Board order #${c.board_order_number}` : undefined}
+            className="shrink-0 rounded-full bg-canvas px-1.5 py-0.5 text-[10px] font-semibold text-muted ring-1 ring-inset ring-line"
+          >
+            {SOURCE_BOARD_LABEL[c.source_board] || c.source_board}
+          </span>
+        )}
       </div>
 
       {/* Cleared (NC/C) and Paid toggles */}
@@ -518,6 +539,8 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling }
   const [vehicle, setVehicle] = useState(c.vehicle || '')
   const [when, setWhen] = useState(toLocalInput(c.scheduled_at))
   const [amount, setAmount] = useState(c.value ?? '')
+  const [sourceBoard, setSourceBoard] = useState(c.source_board || '')
+  const [boardOrderNumber, setBoardOrderNumber] = useState(c.board_order_number || '')
   const [saving, setSaving] = useState(false)
   const stop = (e) => e.stopPropagation()
 
@@ -544,6 +567,8 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling }
         vehicle: vehicle.trim() || null,
         scheduled_at: fromLocalInput(when),
         value: amount === '' ? null : amount,
+        source_board: sourceBoard || null,
+        board_order_number: boardOrderNumber || null,
       })
     } finally {
       setSaving(false)
@@ -623,6 +648,30 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling }
             ))}
           </select>
         </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Source</label>
+          <select
+            value={sourceBoard}
+            onChange={(e) => setSourceBoard(e.target.value)}
+            className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent"
+          >
+            <option value="">—</option>
+            {Object.entries(SOURCE_BOARD_LABEL).map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+          </select>
+        </div>
+        {sourceBoard && sourceBoard !== 'direct' && sourceBoard !== 'referral' && (
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Board order #</label>
+            <input
+              value={boardOrderNumber}
+              onChange={(e) => setBoardOrderNumber(e.target.value)}
+              placeholder="e.g. CD-482910"
+              className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+            />
+          </div>
+        )}
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Vehicle</label>
           <input

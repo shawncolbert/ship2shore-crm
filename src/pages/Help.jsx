@@ -117,7 +117,14 @@ const SECTIONS = [
       "Pipeline" link in the sidebar tells you how many jobs are sitting in your intake stage and still need
       your attention — that's your first stop most mornings. Hover a card for its quick actions: the invoice
       icon opens (or starts, prefilled from the job) that customer's invoice — see Invoices for the payment
-      options you can put on it — and the pencil opens the full editor.`,
+      options you can put on it — and the pencil opens the full editor.
+
+      If you book loads through Central Dispatch, Super Dispatch, or similar boards, the editor also has a
+      "Source" field (plus a board order # once you pick one) — tag a job with where it came from and it
+      shows as a small badge on the card. Neither board offers API access on the plans available to us, so
+      this is manual for now — worth doing anyway since it means every job lives on this one board instead
+      of scattered across board account and CRM, and you can always see where your revenue's actually coming
+      from. Both boards are also one click away from the sidebar (see Custom Links) to book/check a load.`,
   },
   {
     id: 'pipeline-stages',
