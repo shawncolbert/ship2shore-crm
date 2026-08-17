@@ -100,7 +100,10 @@ const SECTIONS = [
       "Check against my contacts" runs the same warm/cold check as Prospecting, so you don't cold-pitch
       someone you already know. Click "Save" on anything worth tracking (or "Save as lead" in the verify
       box) — it moves to Saved Leads below with a status you can update (New → Contacted → Added to
-      Contacts, or Dismissed) any time, keeping whatever website/social/email were found. Needs your Claude
+      Contacts, or Dismissed) any time, keeping whatever website/social/email were found. That status is
+      just a note to yourself, though — for an actual Contacts record (so they show up everywhere else in
+      the CRM), click "+ Add to Contacts" on the saved lead itself; it's pre-filled from whatever name,
+      phone, and email were found. Needs your Claude
       API key set up on the server side (ask whoever set up your account if audits come back with an
       error); a Firecrawl key is required for both the website/social search and improves the audit step on
       JavaScript-heavy sites.`,

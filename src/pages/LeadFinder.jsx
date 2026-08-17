@@ -6,6 +6,7 @@ import {
   discoverCompany, fetchCarrierCompliance,
 } from '../lib/leadFinder'
 import { checkWarmLeads } from '../lib/prospecting'
+import { createContactWithBooking } from '../lib/supabase'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
 const btn = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
@@ -575,6 +576,7 @@ function LeadRow({ lead }) {
 function SavedLeads() {
   const qc = useQueryClient()
   const { data: saved, isLoading } = useQuery({ queryKey: ['fmcsaLeads'], queryFn: fetchSavedLeads })
+  const [addingId, setAddingId] = useState(null)
 
   const setStatus = async (id, status) => {
     await updateLeadStatus(id, status)
@@ -585,6 +587,35 @@ function SavedLeads() {
     if (!confirm(`Remove ${l.legal_name || l.dba_name || 'this lead'} from your saved list?`)) return
     await deleteLead(l.id)
     qc.invalidateQueries({ queryKey: ['fmcsaLeads'] })
+  }
+
+  // Separate from the "Added to Contacts" status label above -- that was
+  // just a note to yourself; this actually creates the Contacts record,
+  // pre-filled from what FMCSA/the audit already found (name, phone, email).
+  // No booking/pipeline card -- just the contact, same as clicking "+ New
+  // contact" and typing it in by hand.
+  const addToContacts = async (l) => {
+    setAddingId(l.id)
+    try {
+      await createContactWithBooking({
+        contact: {
+          full_name: l.legal_name || l.dba_name || 'Unnamed company',
+          company: (l.dba_name && l.dba_name !== l.legal_name) ? l.dba_name : null,
+          phone: l.phone || '',
+          email: l.contact_email || '',
+          segment: /broker/i.test(l.entity_type || '') ? 'broker' : 'transporter',
+        },
+        booking: null,
+      })
+      await setStatus(l.id, 'added_to_contacts')
+    } catch (e) {
+      const msg = /duplicate key/i.test(e.message || '')
+        ? 'Looks like this is already in your Contacts (matching phone or email).'
+        : (e.message || 'Could not add this lead to Contacts.')
+      alert(msg)
+    } finally {
+      setAddingId(null)
+    }
   }
 
   return (
@@ -617,6 +648,13 @@ function SavedLeads() {
                 >
                   {Object.entries(STATUS_LABELS).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
                 </select>
+                <button
+                  onClick={() => addToContacts(l)}
+                  disabled={addingId === l.id}
+                  className="rounded-lg border border-line bg-surface px-2 py-1 text-xs font-medium text-ink hover:bg-canvas disabled:opacity-50"
+                >
+                  {addingId === l.id ? 'Adding…' : l.status === 'added_to_contacts' ? '✓ In Contacts' : '+ Add to Contacts'}
+                </button>
                 <button onClick={() => remove(l)} title="Remove" className="rounded p-1 text-muted hover:bg-red-50 hover:text-red-500">🗑️</button>
               </div>
             </li>
