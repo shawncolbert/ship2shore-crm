@@ -5,6 +5,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const DOCS_BUCKET = "delivery-orders";
 // Every org with a row in gmail_oauth_tokens gets synced, not just
 // Ship2Shore -- each org's own connected Gmail account, scoped to that
@@ -251,6 +252,212 @@ async function processAttachments(
   return stats;
 }
 
+// ---------------------------------------------------------------------------
+// Load-board confirmation ingestion (Central Dispatch / Super Dispatch)
+// ---------------------------------------------------------------------------
+//
+// Phase 2 of the load-board integration -- Phase 1 (manual "Source" tag on
+// a job) shipped first. Neither board offers API access on any plan
+// available to us, so this reads the confirmation EMAIL each board already
+// sends to the connected inbox, never their systems directly -- no login,
+// no scraping, nothing that needs their permission, since it's just mail
+// the org already owns.
+//
+// NOTE: the sender-domain match below is a best guess from training
+// knowledge, not confirmed against a real confirmation email from either
+// board -- same caveat this project has hit before with FMCSA/Firecrawl
+// (see fmcsa-search.js, lead-discover.js for the same pattern). If real
+// confirmation emails never trigger this, forward one and check its actual
+// From address against BOARD_DOMAINS below.
+const BOARD_DOMAINS: Record<string, string> = {
+  "centraldispatch.com": "central_dispatch",
+  "superdispatch.com": "super_dispatch",
+};
+
+function detectBoardEmail(fromEmail: string): string | null {
+  const domain = fromEmail.split("@")[1] || "";
+  for (const [suffix, board] of Object.entries(BOARD_DOMAINS)) {
+    if (domain === suffix || domain.endsWith(`.${suffix}`)) return board;
+  }
+  return null;
+}
+
+const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
+const CLAUDE_MODEL = "claude-sonnet-5";
+
+const DISPATCH_EXTRACT_SYSTEM = `You read auto-transport load-board confirmation emails (Central Dispatch,
+Super Dispatch) and extract structured data. If this email is NOT actually a load/dispatch confirmation
+(e.g. it's a marketing email, password reset, or account notice from the board), return
+{"is_dispatch_confirmation": false} and nothing else.
+
+Otherwise extract every field you can find. Do not invent anything not present in the text -- use null for
+anything missing. Respond with ONLY valid JSON, no other text, in this exact shape:
+{"is_dispatch_confirmation": true, "order_number": "string or null", "broker_name": "string or null",
+"broker_email": "string or null", "broker_phone": "string or null", "pay_amount": number or null,
+"vehicles": [{"year": "string", "make": "string", "model": "string", "vin": "string"}],
+"pickup": {"city": "string or null", "state": "string or null"},
+"delivery": {"city": "string or null", "state": "string or null"}}`;
+
+async function extractDispatchInfo(subject: string, bodyText: string): Promise<any | null> {
+  if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured for this project's Edge Functions");
+  const res = await fetch(CLAUDE_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 800,
+      system: DISPATCH_EXTRACT_SYSTEM,
+      messages: [{ role: "user", content: `Subject: ${subject}\n\nBody:\n${bodyText}` }],
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error("Claude API error: " + JSON.stringify(data));
+  const raw = (data.content || []).map((b: any) => b.text || "").join("").trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, ""));
+  } catch {
+    return null; // Claude didn't return clean JSON -- skip this message rather than guess
+  }
+  if (!parsed?.is_dispatch_confirmation) return null;
+  return parsed;
+}
+
+// Same "take the oldest match, phone as a second key" shape as
+// gmail-enrichment's contact matching -- kept independent here rather than
+// shared, since gmail-enrichment matches on the EMAIL SENDER while this
+// matches on a BROKER named inside the email body, a different lookup.
+async function findOrCreateBrokerContact(supabase: any, orgId: string, broker: any) {
+  const email = broker.broker_email?.trim()?.toLowerCase() || null;
+  const phone = broker.broker_phone?.trim() || null;
+  const name = broker.broker_name?.trim() || null;
+  if (!email && !phone && !name) return null;
+
+  if (email) {
+    const { data } = await supabase
+      .from("contacts").select("id").eq("org_id", orgId).eq("email", email)
+      .order("created_at", { ascending: true }).limit(1);
+    if (data?.[0]) return data[0].id;
+  }
+  if (phone) {
+    const { data } = await supabase
+      .from("contacts").select("id").eq("org_id", orgId).eq("phone", phone)
+      .order("created_at", { ascending: true }).limit(1);
+    if (data?.[0]) return data[0].id;
+  }
+
+  const { data: created, error } = await supabase
+    .from("contacts")
+    .insert({
+      org_id: orgId,
+      full_name: name || email || phone,
+      email,
+      phone,
+      segment: "broker",
+      source: "gmail_dispatch_ingest",
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return created.id;
+}
+
+async function getIntakePipelineStage(supabase: any, orgId: string) {
+  const { data: pipeline } = await supabase
+    .from("pipelines").select("id").eq("org_id", orgId).eq("is_default", true).maybeSingle();
+  if (!pipeline) return null;
+
+  const { data: stages } = await supabase
+    .from("stages").select("id, name, is_intake").eq("pipeline_id", pipeline.id);
+  if (!stages?.length) return null;
+
+  const stage = stages.find((s: any) => s.is_intake) ||
+    stages.find((s: any) => s.name.toLowerCase() === "new booking") || null;
+  if (!stage) return null;
+  return { pipelineId: pipeline.id, stageId: stage.id };
+}
+
+const addressLine = (loc: any) => [loc?.city, loc?.state].filter(Boolean).join(", ") || null;
+
+// Runs once per matched confirmation email. Creates/matches the broker as a
+// Contact, drops one Opportunity per vehicle onto the org's default
+// pipeline (tagged with source_board + board_order_number so Phase 1's
+// badge shows it), and logs the email itself into that contact's Inbox
+// conversation -- which doubles as this run's dedupe marker via the same
+// provider_msg_id uniqueness the rest of this file already relies on.
+async function handleBoardConfirmation(
+  supabase: any,
+  orgId: string,
+  board: string,
+  subject: string,
+  body: string,
+  msgId: string,
+  fromEmail: string,
+  toEmail: string,
+  sentAt: string,
+) {
+  const info = await extractDispatchInfo(subject, body);
+  if (!info || !info.order_number) return { opportunitiesCreated: 0, skipped: true };
+
+  const contactId = await findOrCreateBrokerContact(supabase, orgId, info);
+  const pipelineStage = await getIntakePipelineStage(supabase, orgId);
+
+  if (contactId) {
+    const { data: existingConvo } = await supabase
+      .from("conversations").select("id")
+      .eq("org_id", orgId).eq("contact_id", contactId).eq("channel", "email").maybeSingle();
+    let conversationId = existingConvo?.id;
+    if (!conversationId) {
+      const { data: newConvo } = await supabase
+        .from("conversations")
+        .insert({ org_id: orgId, contact_id: contactId, channel: "email", last_message_at: sentAt, unread: true })
+        .select("id").single();
+      conversationId = newConvo?.id;
+    } else {
+      await supabase.from("conversations").update({ last_message_at: sentAt, unread: true }).eq("id", conversationId);
+    }
+    if (conversationId) {
+      await supabase.rpc("insert_gmail_message", {
+        p_org_id: orgId, p_conversation_id: conversationId, p_direction: "inbound", p_body: body,
+        p_from_addr: fromEmail, p_to_addr: toEmail, p_provider_msg_id: msgId, p_created_at: sentAt,
+      });
+    }
+  }
+
+  if (!pipelineStage) return { opportunitiesCreated: 0, skipped: true }; // no default pipeline configured for this org yet
+
+  const vehicles = Array.isArray(info.vehicles) && info.vehicles.length ? info.vehicles : [{}];
+  let created = 0;
+  for (const [i, v] of vehicles.entries()) {
+    const vehicleDesc = [v.year, v.make, v.model].filter(Boolean).join(" ");
+    const { error } = await supabase.from("opportunities").insert({
+      org_id: orgId,
+      contact_id: contactId,
+      pipeline_id: pipelineStage.pipelineId,
+      stage_id: pipelineStage.stageId,
+      title: [info.broker_name, vehicleDesc].filter(Boolean).join(" — ") || `Load #${info.order_number}`,
+      // Pay is for the whole order, not per vehicle -- only the first
+      // opportunity on a multi-car load gets it, so revenue reporting
+      // doesn't multiply one payment across several cards.
+      value: i === 0 ? info.pay_amount : null,
+      vehicle_year: v.year || null,
+      vehicle_make: v.make || null,
+      vehicle_model: v.model || null,
+      vehicle_vin: v.vin || null,
+      pickup_address: addressLine(info.pickup),
+      dropoff_address: addressLine(info.delivery),
+      source_board: board,
+      board_order_number: info.order_number,
+    });
+    if (!error) created++;
+  }
+  return { opportunitiesCreated: created, skipped: false };
+}
+
 async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<string, string>, opps: any[]) {
   const orgId = tokenRow.org_id;
   let accessToken = tokenRow.access_token;
@@ -278,6 +485,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
   const messages = listData.messages || [];
   let created = 0, skipped = 0, notContact = 0;
   const docs = { stored: 0, matched: 0, review: 0, irrelevant: 0 };
+  const dispatches = { detected: 0, opportunitiesCreated: 0 };
   const errors: any[] = [];
 
   for (const msg of messages) {
@@ -296,6 +504,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
     const headers = msgData.payload?.headers || [];
     const fromHeader = headers.find((h: any) => h.name === "From")?.value || "";
     const toHeader = headers.find((h: any) => h.name === "To")?.value || "";
+    const subjectHeader = headers.find((h: any) => h.name === "Subject")?.value || "";
     const dateHeader = headers.find((h: any) => h.name === "Date")?.value;
 
     const { email: fromEmail } = parseFromHeader(fromHeader);
@@ -305,8 +514,30 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
     const direction = fromEmail === selfEmail ? "outbound" : "inbound";
     const counterpartEmail = direction === "outbound" ? toEmail : fromEmail;
 
-    const contactId = emailToContact.get(counterpartEmail);
     const body = decodeBody(msgData.payload);
+    const sentAt = dateHeader ? new Date(dateHeader).toISOString() : new Date().toISOString();
+
+    // A load-board confirmation comes FROM the board's own system address,
+    // not from a saved contact -- handled as its own path, separate from
+    // (and before) the normal "is this from someone I know" flow below,
+    // since the board itself is never going to be a contact worth saving.
+    if (direction === "inbound") {
+      const board = detectBoardEmail(fromEmail);
+      if (board) {
+        dispatches.detected++;
+        try {
+          const result = await handleBoardConfirmation(
+            supabase, orgId, board, subjectHeader, body, msg.id, fromEmail, toEmail, sentAt,
+          );
+          dispatches.opportunitiesCreated += result.opportunitiesCreated;
+        } catch (e) {
+          errors.push({ board, msgId: msg.id, detail: String(e) });
+        }
+        continue;
+      }
+    }
+
+    const contactId = emailToContact.get(counterpartEmail);
 
     // Scan attachments regardless of whether the sender is a known contact —
     // Delivery Orders and gate passes often come from shipping lines/terminals.
@@ -330,7 +561,6 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
       .maybeSingle();
 
     let conversationId = existingConvo?.id;
-    const sentAt = dateHeader ? new Date(dateHeader).toISOString() : new Date().toISOString();
 
     if (!conversationId) {
       const { data: newConvo } = await supabase
@@ -360,7 +590,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
     else created++;
   }
 
-  return { account: tokenRow.email, scanned: messages.length, created, skipped, non_contact: notContact, documents: docs, errors };
+  return { account: tokenRow.email, scanned: messages.length, created, skipped, non_contact: notContact, documents: docs, dispatches, errors };
 }
 
 Deno.serve(async (_req: Request) => {
