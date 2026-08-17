@@ -36,6 +36,24 @@ function parseFromHeader(from: string) {
   return { name, email };
 }
 
+// Gmail's own -category:promotions/-category:social filter (below) catches
+// a lot but not everything -- plenty of marketing/transactional senders
+// (order confirmations, account alerts, community digests) land in the
+// plain Inbox category and slip through untouched. Real customers don't
+// usually email from an address that starts with "no-reply" etc., and
+// List-Unsubscribe is the actual IETF-standard signal (RFC 2369/8058) that
+// virtually every bulk sender includes -- a real one-to-one correspondent
+// never sets it. Catching this here (contact creation) is enough: gmail-sync
+// only ever creates a conversation for a sender with an existing contact
+// row, so skipping the contact keeps them out of the Inbox entirely too.
+const AUTOMATED_LOCAL_PART_RE = /^(no-?reply|do-?not-?reply|notifications?|mailer-?daemon|bounce)/i;
+
+function looksAutomated(email: string, headers: any[]): boolean {
+  const localPart = email.split("@")[0] || "";
+  if (AUTOMATED_LOCAL_PART_RE.test(localPart)) return true;
+  return !!headers.find((h: any) => h.name === "List-Unsubscribe")?.value;
+}
+
 function guessCompany(email: string) {
   const domain = email.split("@")[1] || "";
   const freeProviders = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "aol.com"];
@@ -78,16 +96,18 @@ async function enrichAccount(supabase: any, tokenRow: any) {
 
   for (const msg of messages) {
     const msgRes = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From`,
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=List-Unsubscribe`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
     const msgData = await msgRes.json();
-    const fromHeader = msgData.payload?.headers?.find((h: any) => h.name === "From")?.value;
+    const headers = msgData.payload?.headers || [];
+    const fromHeader = headers.find((h: any) => h.name === "From")?.value;
     if (!fromHeader) { skipped++; continue; }
 
     const { name, email } = parseFromHeader(fromHeader);
     if (!email || !email.includes("@")) { skipped++; continue; }
     if (email === tokenRow.email.toLowerCase()) { skipped++; continue; } // skip self
+    if (looksAutomated(email, headers)) { skipped++; continue; } // marketing/no-reply sender, not a real correspondent
 
     // NOTE: this used .maybeSingle(), which returns an ERROR (not null) when
     // more than one row matches -- and that error was being destructured away.
