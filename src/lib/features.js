@@ -33,6 +33,7 @@ export const FEATURES = [
   { key: 'custom_links', label: 'Custom Links', path: '/settings/custom-links' },
   { key: 'document_requests', label: 'Document Requests', path: '/settings/document-requests' },
   { key: 'scheduling', label: 'Scheduling', path: '/settings/scheduling' },
+  { key: 'dispatch_assignment', label: 'Dispatch Assignment', path: '/settings/dispatch-assignment' },
   { key: 'landing_pages', label: 'Landing Pages', path: '/landing-pages' },
   { key: 'funnels', label: 'Funnels', path: '/funnels' },
   { key: 'social_posts', label: 'Social Posts', path: '/social-posts' },

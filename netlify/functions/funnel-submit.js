@@ -1,5 +1,6 @@
 import { admin } from './_shared/supabaseAdmin.js'
 import { getDefaultPipeline, getIntakeStage } from './_shared/pipeline.js'
+import { autoAssignDispatcher } from './_shared/dispatchAssignment.js'
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -65,7 +66,7 @@ export const handler = async (event) => {
 
       const details = Object.entries(data).map(([k, v]) => `${k}: ${v}`).join(' | ')
 
-      const { error: oppErr } = await admin
+      const { data: newOpp, error: oppErr } = await admin
         .from('opportunities')
         .insert({
           org_id: orgId,
@@ -74,8 +75,21 @@ export const handler = async (event) => {
           contact_id: contact.id,
           title: `${contact.full_name} - ${data.service_type || 'Funnel Lead'}${details ? ` (${details})` : ''}`,
         })
+        .select('id')
+        .single()
 
       if (oppErr) return json(500, { error: oppErr.message })
+
+      // Hands the lead straight to whoever's next in the dispatcher
+      // rotation, when the org has auto-assign turned on (Settings >
+      // Dispatch Assignment). No-ops -- leaves the job unassigned for
+      // manual pick -- when it's off or nobody's marked "in rotation".
+      // Never blocks the customer's submission on a notification hiccup.
+      try {
+        await autoAssignDispatcher({ orgId, opportunityId: newOpp.id })
+      } catch (e) {
+        console.error('❌ autoAssignDispatcher failed:', e)
+      }
     }
 
     // Log submission

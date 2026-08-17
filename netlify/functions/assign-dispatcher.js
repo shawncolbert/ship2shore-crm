@@ -1,5 +1,5 @@
 import { admin, userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
-import { sendCustomerEmail } from './_shared/email.js'
+import { notifyDispatcherOfLead } from './_shared/dispatchAssignment.js'
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -8,11 +8,10 @@ const json = (statusCode, body) => ({
 })
 
 // Hands a Pipeline job off to a dispatcher contact and, in the same request,
-// emails that dispatcher the lead details -- manual for now (Shawn picks who
-// gets each lead), same "send_customer_email" mechanism the stage-change
-// automations use underneath, just aimed at a teammate instead of a
-// customer. sendCustomerEmail also logs the email into the dispatcher
-// contact's own Inbox conversation, so the handoff has a visible paper trail.
+// emails that dispatcher the lead details -- manual, Shawn picks who gets
+// each lead. See _shared/dispatchAssignment.js for the notification (shared
+// with auto-assignment) and autoAssignDispatcher (the automated version of
+// this same handoff, run from funnel-submit.js when an org has it enabled).
 export const handler = async (event) => {
   try {
     if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' })
@@ -62,40 +61,8 @@ export const handler = async (event) => {
 
     let emailSent = false
     let emailError = null
-
     if (dispatcher) {
-      if (!dispatcher.email) {
-        emailError = `${dispatcher.full_name || dispatcher.company || 'This dispatcher'} has no email on file — the job was assigned, but no notification was sent.`
-      } else {
-        const { data: org } = await admin.from('organizations').select('name').eq('id', orgId).maybeSingle()
-        const orgName = org?.name || 'Dispatch'
-        const customerName = opp.contacts?.full_name || 'Customer'
-        const vehicleDesc = [opp.vehicle_year, opp.vehicle_make, opp.vehicle_model].filter(Boolean).join(' ') || opp.vehicle || null
-
-        const lines = [
-          `Hi ${dispatcher.full_name || dispatcher.company || 'there'},`,
-          '',
-          `${orgName} just assigned you a new lead:`,
-          '',
-          `Customer: ${customerName}`,
-          `Phone: ${opp.contacts?.phone || '—'}`,
-          `Email: ${opp.contacts?.email || '—'}`,
-        ]
-        if (vehicleDesc) lines.push(`Vehicle: ${vehicleDesc}`)
-        if (opp.vehicle_vin) lines.push(`VIN: ${opp.vehicle_vin}`)
-        if (opp.pickup_address) lines.push(`Pickup: ${opp.pickup_address}`)
-        if (opp.dropoff_address) lines.push(`Drop-off: ${opp.dropoff_address}`)
-        if (opp.value) lines.push(`Estimated value: $${opp.value}`)
-        lines.push('', 'Please reach out and take it from here.', '', 'Thanks,', orgName)
-
-        const subject = `New lead assigned: ${customerName}${opp.title ? ` — ${opp.title}` : ''}`
-        try {
-          await sendCustomerEmail({ orgId, to: dispatcher.email, subject, body: lines.join('\n'), contactId: dispatcher.id })
-          emailSent = true
-        } catch (e) {
-          emailError = `Job was assigned, but the notification email failed: ${e.message}`
-        }
-      }
+      ({ emailSent, emailError } = await notifyDispatcherOfLead({ orgId, dispatcher, opportunity: opp }))
     }
 
     return json(200, { success: true, emailSent, emailError })
