@@ -5,6 +5,7 @@ import {
   fetchDefaultPipeline, moveOpportunity, cancelOpportunity, deleteOpportunity, setOpportunityBilling, patchOpportunity,
   updateOpportunity,
   uploadCompletionVideo, fetchCompletionVideo, fetchMyOrgId, fetchLatestJobNote, fetchVehiclePhotoUrl,
+  fetchDispatcherContacts, assignDispatcher,
 } from '../lib/supabase'
 import { buildBookingSummary, shareBooking } from '../lib/shareBooking'
 import NewContactModal from '../components/NewContactModal'
@@ -81,6 +82,14 @@ export default function Pipeline() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['pipeline'],
     queryFn: fetchDefaultPipeline,
+  })
+
+  // Who a lead can be handed off to -- contacts tagged segment='dispatcher'
+  // (e.g. Warrior Auto Transport, Team Auto Transport/Dispatch), not CRM
+  // logins. Fetched once for the whole board rather than per-card.
+  const { data: dispatchers } = useQuery({
+    queryKey: ['dispatcherContacts'],
+    queryFn: fetchDispatcherContacts,
   })
 
   const onCancel = async (id) => {
@@ -163,6 +172,32 @@ export default function Pipeline() {
     })
     try {
       await setOpportunityBilling(id, value)
+    } finally {
+      qc.invalidateQueries({ queryKey: ['pipeline'] })
+    }
+  }
+
+  // Hand a job off to a dispatcher contact (or clear it, when dispatcherId
+  // is null). Optimistic so the card's badge updates immediately; the email
+  // notification happens server-side and its result is returned, not shown
+  // optimistically, so a failure (e.g. dispatcher has no email on file)
+  // still surfaces even though the assignment itself already stuck.
+  const onAssignDispatcher = async (id, dispatcherId) => {
+    const dispatcher = dispatcherId ? dispatchers?.find((d) => d.id === dispatcherId) : null
+    qc.setQueryData(['pipeline'], (prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        opportunities: prev.opportunities.map((o) =>
+          o.id === id ? { ...o, assigned_dispatcher_id: dispatcherId || null, assigned_dispatcher: dispatcher || null } : o
+        ),
+      }
+    })
+    try {
+      const result = await assignDispatcher(id, dispatcherId)
+      if (result.emailError) alert(result.emailError)
+    } catch (e) {
+      alert(e.message || 'Failed to assign dispatcher')
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
     }
@@ -264,6 +299,8 @@ export default function Pipeline() {
                     onSaveBilling={onSaveBilling}
                     onSaveFields={onSaveFields}
                     onPatch={onPatch}
+                    dispatchers={dispatchers}
+                    onAssignDispatcher={onAssignDispatcher}
                   />
                 ))}
               </div>
@@ -277,7 +314,7 @@ export default function Pipeline() {
   )
 }
 
-function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, onSaveBilling, onSaveFields, onPatch }) {
+function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, onSaveBilling, onSaveFields, onPatch, dispatchers, onAssignDispatcher }) {
   const ref = useRef(null)
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
@@ -316,6 +353,8 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, 
           if (window.confirm(`Permanently delete "${c.title || 'this job'}"? This can't be undone. Any linked invoice/appointment stays, just unlinked from this job.`)) onDelete(c.id)
         }}
         cancelling={cancelling === c.id}
+        dispatchers={dispatchers}
+        onAssignDispatcher={onAssignDispatcher}
       />
     )
   }
@@ -426,6 +465,14 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, 
         {invoice && <InvoiceStatusBadge status={invoice.status} />}
       </div>
 
+      <DispatcherAssignField
+        value={c.assigned_dispatcher_id}
+        dispatchers={dispatchers}
+        onAssign={(id) => onAssignDispatcher(c.id, id)}
+        onInteractStart={() => setDraggable(false)}
+        onInteractEnd={() => setDraggable(true)}
+      />
+
       <BillingField
         value={c.billing_number}
         onSave={(v) => onSaveBilling(c.id, v)}
@@ -533,7 +580,7 @@ function CompletionVideoField({ opportunityId, contactId, onInteractStart, onInt
 
 // Inline editor for a job card's title, port and scheduled time. Replaces the
 // card while open so the compact card stays uncluttered. Not draggable.
-function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling }) {
+function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, dispatchers, onAssignDispatcher }) {
   const [title, setTitle] = useState(c.title || '')
   const [port, setPort] = useState(c.port || '')
   const [vehicle, setVehicle] = useState(c.vehicle || '')
@@ -672,6 +719,15 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling }
             />
           </div>
         )}
+        <div>
+          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Assign to dispatcher</label>
+          <DispatcherAssignField
+            value={c.assigned_dispatcher_id}
+            dispatchers={dispatchers}
+            onAssign={(id) => onAssignDispatcher(c.id, id)}
+            bare
+          />
+        </div>
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Vehicle</label>
           <input
@@ -943,6 +999,61 @@ function BillingField({ value, onSave, onInteractStart, onInteractEnd }) {
       >
         {saved ? 'Saved ✓' : saving ? '…' : 'Enter'}
       </button>
+    </div>
+  )
+}
+
+// Hand a job off to a dispatcher contact (Warrior Auto Transport, Team Auto
+// Transport/Dispatch, etc.) -- commits the moment you pick one, same
+// immediate-save shape as BillingField, since choosing a name IS the
+// action here (no separate "save" step to forget). `bare` drops the
+// card-specific spacing/stop-propagation wrapper for use inside JobEditor,
+// which already provides its own label + spacing.
+function DispatcherAssignField({ value, dispatchers, onAssign, onInteractStart, onInteractEnd, bare }) {
+  const [saving, setSaving] = useState(false)
+  const stop = (e) => e.stopPropagation()
+
+  const handleChange = async (e) => {
+    const next = e.target.value || null
+    if (next === (value || null)) return
+    setSaving(true)
+    try {
+      await onAssign(next)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const select = (
+    <select
+      value={value || ''}
+      onChange={handleChange}
+      disabled={saving}
+      draggable={false}
+      aria-label="Assign to dispatcher"
+      className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent disabled:opacity-50"
+    >
+      <option value="">— Unassigned —</option>
+      {dispatchers?.map((d) => (
+        <option key={d.id} value={d.id}>{d.full_name || d.company}</option>
+      ))}
+    </select>
+  )
+
+  if (bare) return select
+
+  return (
+    <div
+      className="mt-2"
+      draggable={false}
+      onMouseDown={stop}
+      onPointerDown={(e) => { stop(e); onInteractStart?.() }}
+      onClick={stop}
+      onDragStart={stop}
+      onFocus={onInteractStart}
+      onBlur={onInteractEnd}
+    >
+      {select}
     </div>
   )
 }

@@ -313,7 +313,7 @@ export async function fetchDefaultPipeline() {
 
   const { data: opps, error: oErr } = await supabase
     .from('opportunities')
-    .select('id, title, service_code, port, vehicle, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, source_board, board_order_number, contacts(full_name, company, email, phone), invoices(id, status, invoice_number, total, amount_due, created_at)')
+    .select('id, title, service_code, port, vehicle, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, source_board, board_order_number, assigned_dispatcher_id, contacts!opportunities_contact_id_fkey(full_name, company, email, phone), assigned_dispatcher:contacts!opportunities_assigned_dispatcher_id_fkey(id, full_name, company), invoices(id, status, invoice_number, total, amount_due, created_at)')
     .eq('pipeline_id', pipeline.id)
     .order('created_at', { ascending: false, foreignTable: 'invoices' })
   if (oErr) throw oErr
@@ -476,6 +476,36 @@ export async function updateOpportunity(id, patch) {
   const { data, error } = await supabase
     .from('opportunities').update(allowed).eq('id', id).select('*').single()
   if (error) throw error
+  return data
+}
+
+// Contacts tagged as dispatchers (e.g. Warrior Auto Transport, Team Auto
+// Transport/Dispatch) -- the pool a Pipeline job can be handed off to. RLS
+// already scopes contacts to the caller's org, same as every other contacts
+// query in this file.
+export async function fetchDispatcherContacts() {
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('id, full_name, company, email')
+    .eq('segment', 'dispatcher')
+    .order('full_name', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+// Hands a job off to a dispatcher contact (or clears the assignment when
+// dispatcherContactId is null) and emails that dispatcher the lead details --
+// routed through a Netlify function since sending the notification needs the
+// org's Gmail token, which never reaches the client.
+export async function assignDispatcher(opportunityId, dispatcherContactId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/assign-dispatcher', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ opportunityId, dispatcherContactId: dispatcherContactId || null }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Failed to assign dispatcher')
   return data
 }
 
