@@ -267,9 +267,9 @@ async function processAttachments(
 // board -- same caveat this project has hit before with FMCSA/Firecrawl
 // (see fmcsa-search.js, lead-discover.js for the same pattern). Central
 // Dispatch is a Cox Automotive product, so its sender domains/addresses
-// below are a more specific guess than a bare "centraldispatch.com"; Super
-// Dispatch has no such lead yet. If real confirmation emails never trigger
-// this, forward one and check its actual From address against these.
+// below are a more specific guess than a bare "centraldispatch.com". If
+// real confirmation emails never trigger this, forward one and check its
+// actual From address against these.
 const CD_SENDER_DOMAINS = ["centraldispatch.com", "coxautoinc.com"];
 const CD_SPECIFIC_EMAILS = [
   "do-not-reply@centraldispatch.com",
@@ -277,6 +277,11 @@ const CD_SPECIFIC_EMAILS = [
   "centraldispatchfraudclaims@coxautoinc.com",
 ];
 const SD_SENDER_DOMAINS = ["superdispatch.com"];
+const SD_SPECIFIC_EMAILS = [
+  "support@superdispatch.com",
+  "notifications@superdispatch.com",
+  "billing@superdispatch.com",
+];
 
 // Brokers often forward or paste a dispatch sheet from their OWN address
 // rather than the board itself emailing directly -- a sender-domain check
@@ -288,10 +293,13 @@ const SD_SENDER_DOMAINS = ["superdispatch.com"];
 // Claude call, not a phantom job on the Pipeline. Requiring 2+ matches
 // keeps single-keyword noise (a bare "Load ID" mention) from tripping it.
 const LOAD_KEYWORDS = [
+  /super\s*dispatch/i,
   /central\s*dispatch/i,
   /load\s*id/i,
   /dispatch\s*sheet/i,
   /rate\s*confirmation/i,
+  /bill\s*of\s*lading/i,
+  /order\s*accepted/i,
   /\b[A-HJ-NPR-Z0-9]{17}\b/, // VIN shape
 ];
 
@@ -301,33 +309,51 @@ function looksLikeLoadEmail(subject: string, bodyText: string): boolean {
   return matches.length >= 2;
 }
 
-function detectBoardEmail(fromEmail: string, subject: string, bodyText: string): string | null {
+// `confident` means the sender itself told us which board -- a known
+// address/domain match. When it's false (only the keyword fallback fired),
+// `board` is just a placeholder guess and extractDispatchInfo()'s own
+// platform_source read is what actually decides the final tag.
+function detectBoardEmail(fromEmail: string, subject: string, bodyText: string): { board: string; confident: boolean } | null {
   const sender = fromEmail.toLowerCase().trim();
   const domain = sender.split("@")[1] || "";
 
-  if (CD_SPECIFIC_EMAILS.includes(sender)) return "central_dispatch";
-  if (CD_SENDER_DOMAINS.some((d) => domain === d || domain.endsWith(`.${d}`))) return "central_dispatch";
-  if (SD_SENDER_DOMAINS.some((d) => domain === d || domain.endsWith(`.${d}`))) return "super_dispatch";
+  if (CD_SPECIFIC_EMAILS.includes(sender)) return { board: "central_dispatch", confident: true };
+  if (CD_SENDER_DOMAINS.some((d) => domain === d || domain.endsWith(`.${d}`))) return { board: "central_dispatch", confident: true };
+  if (SD_SPECIFIC_EMAILS.includes(sender)) return { board: "super_dispatch", confident: true };
+  if (SD_SENDER_DOMAINS.some((d) => domain === d || domain.endsWith(`.${d}`))) return { board: "super_dispatch", confident: true };
 
-  // No Super Dispatch keyword set yet -- only Central Dispatch's fallback
-  // is calibrated, so an unrecognized sender only ever falls back to that.
-  if (looksLikeLoadEmail(subject, bodyText)) return "central_dispatch";
+  if (looksLikeLoadEmail(subject, bodyText)) {
+    // A cheap first guess so a job still gets a source_board even if
+    // extraction below fails to return a usable platform_source.
+    const guess = /super\s*dispatch/i.test(`${subject} ${bodyText}`) ? "super_dispatch" : "central_dispatch";
+    return { board: guess, confident: false };
+  }
 
   return null;
 }
+
+const PLATFORM_TO_BOARD: Record<string, string> = {
+  "Super Dispatch": "super_dispatch",
+  "Central Dispatch": "central_dispatch",
+  "Direct Broker": "direct",
+};
 
 const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
 const CLAUDE_MODEL = "claude-sonnet-5";
 
 const DISPATCH_EXTRACT_SYSTEM = `You read auto-transport load-board confirmation emails (Central Dispatch,
-Super Dispatch) and extract structured data. If this email is NOT actually a load/dispatch confirmation
-(e.g. it's a marketing email, password reset, or account notice from the board), return
+Super Dispatch, or a direct broker) and extract structured data. If this email is NOT actually a load/dispatch
+confirmation (e.g. it's a marketing email, password reset, or account notice from the board), return
 {"is_dispatch_confirmation": false} and nothing else.
 
 Otherwise extract every field you can find. Do not invent anything not present in the text -- use null for
-anything missing. Respond with ONLY valid JSON, no other text, in this exact shape:
-{"is_dispatch_confirmation": true, "order_number": "string or null", "broker_name": "string or null",
-"broker_email": "string or null", "broker_phone": "string or null", "pay_amount": number or null,
+anything missing. "platform_source" is which platform this load actually came through, judged from the
+email's own content (branding, footer, terminology) -- NOT from who forwarded it: "Super Dispatch",
+"Central Dispatch", "Direct Broker" (no load board involved), or "Unknown". Respond with ONLY valid JSON,
+no other text, in this exact shape:
+{"is_dispatch_confirmation": true, "platform_source": "string", "order_number": "string or null",
+"broker_name": "string or null", "broker_email": "string or null", "broker_phone": "string or null",
+"pay_amount": number or null,
 "vehicles": [{"year": "string", "make": "string", "model": "string", "vin": "string"}],
 "pickup": {"city": "string or null", "state": "string or null"},
 "delivery": {"city": "string or null", "state": "string or null"}}`;
@@ -427,6 +453,7 @@ async function handleBoardConfirmation(
   supabase: any,
   orgId: string,
   board: string,
+  boardConfident: boolean,
   subject: string,
   body: string,
   msgId: string,
@@ -436,6 +463,14 @@ async function handleBoardConfirmation(
 ) {
   const info = await extractDispatchInfo(subject, body);
   if (!info || !info.order_number) return { opportunitiesCreated: 0, skipped: true };
+
+  // The sender's own address only tells us for certain when it's the
+  // board's own system mail. Anything reached via the keyword fallback is
+  // just a placeholder guess -- let Claude's read of the email's own
+  // content (branding, footer, terminology) settle it instead.
+  const resolvedBoard = boardConfident
+    ? board
+    : PLATFORM_TO_BOARD[info.platform_source] || board;
 
   const contactId = await findOrCreateBrokerContact(supabase, orgId, info);
   const pipelineStage = await getIntakePipelineStage(supabase, orgId);
@@ -484,7 +519,7 @@ async function handleBoardConfirmation(
       vehicle_vin: v.vin || null,
       pickup_address: addressLine(info.pickup),
       dropoff_address: addressLine(info.delivery),
-      source_board: board,
+      source_board: resolvedBoard,
       board_order_number: info.order_number,
     });
     if (!error) created++;
@@ -556,16 +591,16 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
     // (and before) the normal "is this from someone I know" flow below,
     // since the board itself is never going to be a contact worth saving.
     if (direction === "inbound") {
-      const board = detectBoardEmail(fromEmail, subjectHeader, body);
-      if (board) {
+      const detected = detectBoardEmail(fromEmail, subjectHeader, body);
+      if (detected) {
         dispatches.detected++;
         try {
           const result = await handleBoardConfirmation(
-            supabase, orgId, board, subjectHeader, body, msg.id, fromEmail, toEmail, sentAt,
+            supabase, orgId, detected.board, detected.confident, subjectHeader, body, msg.id, fromEmail, toEmail, sentAt,
           );
           dispatches.opportunitiesCreated += result.opportunitiesCreated;
         } catch (e) {
-          errors.push({ board, msgId: msg.id, detail: String(e) });
+          errors.push({ board: detected.board, msgId: msg.id, detail: String(e) });
         }
         continue;
       }
