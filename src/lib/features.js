@@ -31,6 +31,7 @@ export const FEATURES = [
   { key: 'payments', label: 'Payments', path: '/payment-settings' },
   { key: 'appearance', label: 'Appearance', path: '/settings/appearance' },
   { key: 'custom_links', label: 'Custom Links', path: '/settings/custom-links' },
+  { key: 'document_requests', label: 'Document Requests', path: '/settings/document-requests' },
   { key: 'scheduling', label: 'Scheduling', path: '/settings/scheduling' },
   { key: 'landing_pages', label: 'Landing Pages', path: '/landing-pages' },
   { key: 'funnels', label: 'Funnels', path: '/funnels' },

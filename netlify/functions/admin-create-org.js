@@ -61,5 +61,17 @@ export const handler = async (event) => {
     ])
   }
 
+  // A generic starter for the Contact page's "Request a Document" picker --
+  // freight-specific presets (Delivery Order, Gate Pass) only make sense
+  // for Ship2Shore, so a brand-new org gets one plain option instead,
+  // editable/expandable from Settings > Document Requests.
+  await admin.from('document_request_presets').insert({
+    org_id: data.id,
+    label: 'Supporting Documents',
+    subject: 'Supporting Documents Needed',
+    body_template: 'Hi {{first_name}},\n\nCould you send over any supporting documents for this? Whatever you have is a help.',
+    position: 0,
+  })
+
   return json(200, { organization: data })
 }

@@ -33,6 +33,7 @@ const nav = [
   { to: '/payment-settings', label: 'Payments', key: 'payments', group: 'Money' },
   { to: '/settings/appearance', label: 'Appearance', key: 'appearance', group: 'Settings' },
   { to: '/settings/custom-links', label: 'Custom Links', key: 'custom_links', group: 'Settings' },
+  { to: '/settings/document-requests', label: 'Document Requests', key: 'document_requests', group: 'Settings' },
   { to: '/settings/scheduling', label: 'Scheduling', key: 'scheduling', group: 'Clients & Bookings' },
   { to: '/landing-pages', label: 'Landing Pages', key: 'landing_pages', group: 'Marketing' },
   { to: '/funnels', label: 'Funnels', key: 'funnels', group: 'Marketing' },

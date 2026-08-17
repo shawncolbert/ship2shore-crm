@@ -340,6 +340,18 @@ const SECTIONS = [
       URL, and it shows up right in the sidebar next to Help, opening in a new tab. Add as many as you want,
       edit or remove them any time — applies to your whole organization, same as Appearance.`,
   },
+  {
+    id: 'document-requests',
+    title: 'Document Requests',
+    nav: '/settings/document-requests',
+    body: `Sets up the options that show up when you click "Request a Document" on a contact's Files & Photos
+      section — each one is a starting name, subject, and message, all still editable before you actually
+      send it. Every organization starts with one generic "Supporting Documents" preset — add your own
+      (a signed contract, a deposit receipt, a model release, whatever your business actually needs from
+      customers) or edit/remove the default. "Custom" is always available too, for a one-off request that
+      doesn't fit any saved preset. Use {{first_name}} in your message and it's swapped for the contact's
+      first name automatically.`,
+  },
 ]
 
 export default function Help() {

@@ -8,6 +8,7 @@ import {
   deleteContact,
 } from '../lib/supabase'
 import { fetchConnections, addConnection, deleteConnection } from '../lib/prospecting'
+import { fetchDocumentPresets, renderPresetBody } from '../lib/documentPresets'
 import { calendlyPrefillUrl, mailtoUrl } from '../lib/config'
 import Badge from '../components/Badge'
 import EmailComposer from '../components/EmailComposer'
@@ -345,35 +346,10 @@ function Connections({ contactId }) {
   )
 }
 
-// Presets for the "which document am I asking for" picker -- subject/body
-// are just a starting point, both stay fully editable before sending.
-const DOC_REQUEST_PRESETS = {
-  delivery_order: {
-    label: 'Delivery Order',
-    subject: 'Delivery Order Needed',
-    body: (firstName) => `Hi ${firstName},\n\nWe're ready to move forward and need your delivery order (POA and delivery details) to proceed.`,
-  },
-  doc_receipt: {
-    label: 'Doc Receipt',
-    subject: 'Documentation Receipt Needed',
-    body: (firstName) => `Hi ${firstName},\n\nWe need the documentation receipt to pick up the container/cargo. Please send it over so we can proceed.`,
-  },
-  gate_pass: {
-    label: 'Gate Pass',
-    subject: 'Gate Pass Needed',
-    body: (firstName) => `Hi ${firstName},\n\nWe need your gate pass to proceed with pickup. Please send it over when you get a chance.`,
-  },
-  supporting_docs: {
-    label: 'Supporting Documents',
-    subject: 'Supporting Documents Needed',
-    body: (firstName) => `Hi ${firstName},\n\nCould you send over any supporting documents for this job (delivery order, gate pass, doc receipt, or similar)? Whatever you have is a help.`,
-  },
-  custom: {
-    label: 'Custom',
-    subject: '',
-    body: () => '',
-  },
-}
+// "Custom" is always available regardless of what an org has set up, as an
+// escape hatch to type a one-off subject/message -- it isn't a real preset
+// and isn't stored in document_request_presets.
+const CUSTOM_PRESET = { id: 'custom', label: 'Custom', subject: '', body_template: '' }
 
 // Compact by default -- one row per job, tap to expand for the fields that
 // don't fit on a line (status, service, port, scheduled date) instead of
@@ -441,11 +417,14 @@ function DeliveryOrders({ contact, jobs }) {
   const [err, setErr] = useState('')
   const [info, setInfo] = useState('')
   const [showRequestForm, setShowRequestForm] = useState(false)
-  const [docType, setDocType] = useState('delivery_order')
+  const [docType, setDocType] = useState('custom')
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
 
   const firstName = (contact.full_name || '').split(/\s+/)[0] || 'there'
+
+  const { data: orgPresets } = useQuery({ queryKey: ['documentPresets'], queryFn: fetchDocumentPresets })
+  const presets = [...(orgPresets || []), CUSTOM_PRESET]
 
   function openRequestForm() {
     if (!contact.email) {
@@ -453,15 +432,15 @@ function DeliveryOrders({ contact, jobs }) {
       return
     }
     setErr(''); setInfo('')
-    applyPreset('delivery_order')
+    applyPreset(orgPresets?.[0]?.id || 'custom')
     setShowRequestForm(true)
   }
 
-  function applyPreset(key) {
-    setDocType(key)
-    const preset = DOC_REQUEST_PRESETS[key]
+  function applyPreset(id) {
+    setDocType(id)
+    const preset = presets.find((p) => p.id === id) || CUSTOM_PRESET
     setSubject(preset.subject)
-    setBody(preset.body(firstName))
+    setBody(renderPresetBody(preset.body_template, firstName))
   }
 
   const { data: orgId } = useQuery({ queryKey: ['myOrgId'], queryFn: fetchMyOrgId })
@@ -517,7 +496,8 @@ function DeliveryOrders({ contact, jobs }) {
       const url = await createUploadLink({ orgId, contactId: contact.id, opportunityId: jobId || null, label: contact.full_name })
       const fullBody = `${body}\n\nPlease upload it using this secure link — no account needed:\n${url}\n\nThis link is valid for 30 days.\n\nThanks,\nDispatch`
       await sendEmail({ contactId: contact.id, to: contact.email, subject, body: fullBody })
-      setInfo(`✓ ${DOC_REQUEST_PRESETS[docType].label} request emailed to ${contact.email}.`)
+      const sentLabel = presets.find((p) => p.id === docType)?.label || 'Document'
+      setInfo(`✓ ${sentLabel} request emailed to ${contact.email}.`)
       setShowRequestForm(false)
     } catch (e) {
       setErr('Could not send document request: ' + (e.message || e))
@@ -553,14 +533,17 @@ function DeliveryOrders({ contact, jobs }) {
       {showRequestForm && (
         <div className="mb-4 space-y-3 rounded-lg border border-line bg-canvas/50 p-3">
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">What are you asking for?</label>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted">What are you asking for?</label>
+              <Link to="/settings/document-requests" className="text-xs text-accent hover:underline">Manage these</Link>
+            </div>
             <select
               value={docType}
               onChange={(e) => applyPreset(e.target.value)}
               className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm outline-none focus:border-accent"
             >
-              {Object.entries(DOC_REQUEST_PRESETS).map(([key, p]) => (
-                <option key={key} value={key}>{p.label}</option>
+              {presets.map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
               ))}
             </select>
           </div>
