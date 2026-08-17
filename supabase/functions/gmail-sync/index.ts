@@ -263,22 +263,56 @@ async function processAttachments(
 // no scraping, nothing that needs their permission, since it's just mail
 // the org already owns.
 //
-// NOTE: the sender-domain match below is a best guess from training
-// knowledge, not confirmed against a real confirmation email from either
+// NOTE: still not confirmed against a real confirmation email from either
 // board -- same caveat this project has hit before with FMCSA/Firecrawl
-// (see fmcsa-search.js, lead-discover.js for the same pattern). If real
-// confirmation emails never trigger this, forward one and check its actual
-// From address against BOARD_DOMAINS below.
-const BOARD_DOMAINS: Record<string, string> = {
-  "centraldispatch.com": "central_dispatch",
-  "superdispatch.com": "super_dispatch",
-};
+// (see fmcsa-search.js, lead-discover.js for the same pattern). Central
+// Dispatch is a Cox Automotive product, so its sender domains/addresses
+// below are a more specific guess than a bare "centraldispatch.com"; Super
+// Dispatch has no such lead yet. If real confirmation emails never trigger
+// this, forward one and check its actual From address against these.
+const CD_SENDER_DOMAINS = ["centraldispatch.com", "coxautoinc.com"];
+const CD_SPECIFIC_EMAILS = [
+  "do-not-reply@centraldispatch.com",
+  "reply@messages.centraldispatch.com",
+  "centraldispatchfraudclaims@coxautoinc.com",
+];
+const SD_SENDER_DOMAINS = ["superdispatch.com"];
 
-function detectBoardEmail(fromEmail: string): string | null {
-  const domain = fromEmail.split("@")[1] || "";
-  for (const [suffix, board] of Object.entries(BOARD_DOMAINS)) {
-    if (domain === suffix || domain.endsWith(`.${suffix}`)) return board;
-  }
+// Brokers often forward or paste a dispatch sheet from their OWN address
+// rather than the board itself emailing directly -- a sender-domain check
+// alone misses those. This is a secondary signal only: it decides whether
+// to attempt extraction, never whether to create a Contact/Opportunity.
+// That decision is still gated entirely by extractDispatchInfo()'s own
+// is_dispatch_confirmation check below, so a false-positive keyword match
+// (e.g. someone just discussing a rate confirmation) costs one wasted
+// Claude call, not a phantom job on the Pipeline. Requiring 2+ matches
+// keeps single-keyword noise (a bare "Load ID" mention) from tripping it.
+const LOAD_KEYWORDS = [
+  /central\s*dispatch/i,
+  /load\s*id/i,
+  /dispatch\s*sheet/i,
+  /rate\s*confirmation/i,
+  /\b[A-HJ-NPR-Z0-9]{17}\b/, // VIN shape
+];
+
+function looksLikeLoadEmail(subject: string, bodyText: string): boolean {
+  const text = `${subject} ${bodyText}`;
+  const matches = LOAD_KEYWORDS.filter((re) => re.test(text));
+  return matches.length >= 2;
+}
+
+function detectBoardEmail(fromEmail: string, subject: string, bodyText: string): string | null {
+  const sender = fromEmail.toLowerCase().trim();
+  const domain = sender.split("@")[1] || "";
+
+  if (CD_SPECIFIC_EMAILS.includes(sender)) return "central_dispatch";
+  if (CD_SENDER_DOMAINS.some((d) => domain === d || domain.endsWith(`.${d}`))) return "central_dispatch";
+  if (SD_SENDER_DOMAINS.some((d) => domain === d || domain.endsWith(`.${d}`))) return "super_dispatch";
+
+  // No Super Dispatch keyword set yet -- only Central Dispatch's fallback
+  // is calibrated, so an unrecognized sender only ever falls back to that.
+  if (looksLikeLoadEmail(subject, bodyText)) return "central_dispatch";
+
   return null;
 }
 
@@ -522,7 +556,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
     // (and before) the normal "is this from someone I know" flow below,
     // since the board itself is never going to be a contact worth saving.
     if (direction === "inbound") {
-      const board = detectBoardEmail(fromEmail);
+      const board = detectBoardEmail(fromEmail, subjectHeader, body);
       if (board) {
         dispatches.detected++;
         try {
