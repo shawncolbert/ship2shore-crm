@@ -9,6 +9,7 @@ import {
 } from '../lib/supabase'
 import { buildBookingSummary, shareBooking } from '../lib/shareBooking'
 import NewContactModal from '../components/NewContactModal'
+import Tooltip from '../components/Tooltip'
 
 // Shared by the JobCard quick action and the JobEditor's full Share button --
 // only the latter has `notes`/`photoUrl` available (fetched while the editor
@@ -398,33 +399,39 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, 
             onInteractStart={() => setDraggable(false)}
             onInteractEnd={() => setDraggable(true)}
           />
-          <button
-            onClick={handleOpenInvoice}
-            title={invoice ? `Open invoice ${invoice.invoice_number}` : 'Create an invoice for this job'}
-            className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-canvas hover:text-accent"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
-              <path d="M8 1.5a1 1 0 0 1 1 1v.55a3 3 0 0 1 2.45 2.45 1 1 0 1 1-1.97.35A1 1 0 0 0 8.5 5H7.2a1.2 1.2 0 0 0-.35 2.35l1.9.63A3.2 3.2 0 0 1 7.65 14.5v.5a1 1 0 1 1-2 0v-.55a3 3 0 0 1-2.45-2.45 1 1 0 1 1 1.97-.35A1 1 0 0 0 6.15 12H7.4a1.2 1.2 0 0 0 .35-2.35l-1.9-.63A3.2 3.2 0 0 1 6.85 2.5V2a1 1 0 0 1 1-1Z" />
-            </svg>
-          </button>
-          <button
-            onClick={handleShareBooking}
-            title="Text driver / share booking details"
-            className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-canvas hover:text-accent"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
-              <path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v6A1.5 1.5 0 0 1 12.5 11H8.06l-2.5 2.3a.5.5 0 0 1-.84-.37V11H3.5A1.5 1.5 0 0 1 2 9.5v-6Z" />
-            </svg>
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); setEditing(true) }}
-            title="Edit job details"
-            className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-canvas hover:text-accent"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
-              <path d="M12.146 2.146a.5.5 0 0 1 .708 0l1 1a.5.5 0 0 1 0 .708l-8 8a.5.5 0 0 1-.223.128l-3 .857a.5.5 0 0 1-.618-.618l.857-3a.5.5 0 0 1 .128-.223l8-8Zm.354 1.061L11.707 4 12 4.293l.793-.793-.293-.293ZM11 5 4.5 11.5l-.5 1.5 1.5-.5L12 6l-1-1Z" />
-            </svg>
-          </button>
+          <Tooltip label={invoice ? `Open invoice ${invoice.invoice_number}` : 'Create an invoice for this job'}>
+            <button
+              onClick={handleOpenInvoice}
+              aria-label={invoice ? `Open invoice ${invoice.invoice_number}` : 'Create an invoice for this job'}
+              className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-canvas hover:text-accent"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+                <path d="M8 1.5a1 1 0 0 1 1 1v.55a3 3 0 0 1 2.45 2.45 1 1 0 1 1-1.97.35A1 1 0 0 0 8.5 5H7.2a1.2 1.2 0 0 0-.35 2.35l1.9.63A3.2 3.2 0 0 1 7.65 14.5v.5a1 1 0 1 1-2 0v-.55a3 3 0 0 1-2.45-2.45 1 1 0 1 1 1.97-.35A1 1 0 0 0 6.15 12H7.4a1.2 1.2 0 0 0 .35-2.35l-1.9-.63A3.2 3.2 0 0 1 6.85 2.5V2a1 1 0 0 1 1-1Z" />
+              </svg>
+            </button>
+          </Tooltip>
+          <Tooltip label="Text driver / share booking details">
+            <button
+              onClick={handleShareBooking}
+              aria-label="Text driver / share booking details"
+              className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-canvas hover:text-accent"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+                <path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v6A1.5 1.5 0 0 1 12.5 11H8.06l-2.5 2.3a.5.5 0 0 1-.84-.37V11H3.5A1.5 1.5 0 0 1 2 9.5v-6Z" />
+              </svg>
+            </button>
+          </Tooltip>
+          <Tooltip label="Edit job details">
+            <button
+              onClick={(e) => { e.stopPropagation(); setEditing(true) }}
+              aria-label="Edit job details"
+              className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-canvas hover:text-accent"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+                <path d="M12.146 2.146a.5.5 0 0 1 .708 0l1 1a.5.5 0 0 1 0 .708l-8 8a.5.5 0 0 1-.223.128l-3 .857a.5.5 0 0 1-.618-.618l.857-3a.5.5 0 0 1 .128-.223l8-8Zm.354 1.061L11.707 4 12 4.293l.793-.793-.293-.293ZM11 5 4.5 11.5l-.5 1.5 1.5-.5L12 6l-1-1Z" />
+              </svg>
+            </button>
+          </Tooltip>
         </div>
       </div>
       {c.scheduled_at && (
@@ -465,13 +472,15 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, 
         {invoice && <InvoiceStatusBadge status={invoice.status} />}
       </div>
 
-      <DispatcherAssignField
-        value={c.assigned_dispatcher_id}
-        dispatchers={dispatchers}
-        onAssign={(id) => onAssignDispatcher(c.id, id)}
-        onInteractStart={() => setDraggable(false)}
-        onInteractEnd={() => setDraggable(true)}
-      />
+      <Tooltip label="Hand this job off to a dispatcher — they'll be emailed the lead details" side="bottom" block>
+        <DispatcherAssignField
+          value={c.assigned_dispatcher_id}
+          dispatchers={dispatchers}
+          onAssign={(id) => onAssignDispatcher(c.id, id)}
+          onInteractStart={() => setDraggable(false)}
+          onInteractEnd={() => setDraggable(true)}
+        />
+      </Tooltip>
 
       <BillingField
         value={c.billing_number}
