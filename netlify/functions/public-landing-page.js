@@ -1,4 +1,5 @@
 import { admin } from './_shared/supabaseAdmin.js'
+import { autoAssignDispatcher } from './_shared/dispatchAssignment.js'
 
 // Public, unauthenticated -- serves a published landing page by slug, and
 // handles its lead-capture CTA form (creates a contact + opportunity, same
@@ -28,7 +29,18 @@ async function getPage(slug) {
 }
 
 async function submitLead(payload) {
-  const { slug, full_name, email, phone, notes } = payload
+  // A pasted custom_html block's own <form> may use different field names
+  // than the generic LeadForm ("name" instead of "full_name") -- accept
+  // either. Standard honeypot convention: a hidden "bot-field" a real
+  // visitor never sees or fills in; if it's non-empty, this is a bot --
+  // report success without creating anything, same as most spam filters do
+  // (an error response just teaches the bot to adapt).
+  const {
+    slug, email, phone, notes,
+    pickup_location, delivery_location, vehicle, ship_date, condition, trailer_type,
+  } = payload
+  const full_name = payload.full_name || payload.name
+  if (payload['bot-field']) return { status: 200, body: { ok: true } }
   if (!slug || !full_name || !email) {
     return { status: 400, body: { error: 'Missing required fields.' } }
   }
@@ -79,14 +91,36 @@ async function submitLead(payload) {
     .insert({
       org_id: page.org_id, contact_id: contactId, pipeline_id: pipeline.id, stage_id: stage.id,
       title: `Website lead — ${page.title}`, status: 'open',
+      pickup_address: pickup_location ? String(pickup_location).trim() : null,
+      dropoff_address: delivery_location ? String(delivery_location).trim() : null,
+      vehicle: vehicle ? String(vehicle).trim() : null,
     })
     .select('id').single()
   if (oppErr || !opp) return { status: 500, body: { error: 'Could not create lead.', detail: oppErr?.message } }
 
-  if (notes) {
+  // Fields a custom form asks for that don't have their own opportunities
+  // column (ship date, running/non-running, trailer type) -- kept as a note
+  // on the contact rather than dropped, alongside any free-text message.
+  const extraLines = [
+    ship_date ? `Target ship date: ${ship_date}` : null,
+    condition ? `Vehicle condition: ${condition}` : null,
+    trailer_type ? `Trailer type: ${trailer_type}` : null,
+    notes ? `Message: ${notes}` : null,
+  ].filter(Boolean)
+  if (extraLines.length) {
     await admin.from('activities').insert({
-      org_id: page.org_id, contact_id: contactId, type: 'note', body: `Landing page note: ${String(notes).slice(0, 1000)}`,
+      org_id: page.org_id, contact_id: contactId, type: 'note',
+      body: `Landing page submission (${page.title}):\n${extraLines.join('\n')}`.slice(0, 1000),
     })
+  }
+
+  // Same auto-assignment the booking funnel uses -- round-robins to
+  // whoever's next in the org's dispatcher rotation, when the org has it
+  // turned on. No-op (leaves the lead unassigned) otherwise.
+  try {
+    await autoAssignDispatcher({ orgId: page.org_id, opportunityId: opp.id })
+  } catch (e) {
+    console.error('❌ autoAssignDispatcher failed:', e)
   }
 
   return { status: 200, body: { ok: true, contact_id: contactId, opportunity_id: opp.id } }

@@ -335,6 +335,28 @@ function BlockCanvasItem({ block, index, count, dragging, dropTarget, theme, onC
         </Gutter>
       )}
 
+      {block.type === 'custom_html' && (
+        <div className="bg-gray-50 p-4">
+          {block.html ? (
+            <LandingBlockView block={block} theme={theme} />
+          ) : (
+            <p className="rounded-lg border-2 border-dashed border-gray-300 bg-white py-10 text-center text-sm text-gray-400">
+              Paste a full page's HTML/CSS below to preview it here
+            </p>
+          )}
+          <div className="mt-3">
+            <label className={label}>Raw HTML/CSS (a &lt;form&gt; inside gets wired to the lead-capture flow automatically)</label>
+            <textarea
+              rows={10}
+              value={block.html || ''}
+              onChange={(e) => onChange({ html: e.target.value })}
+              placeholder="<style>...</style>&#10;<section>...&#10;  <form>...&#10;</section>"
+              className="w-full rounded-lg border border-line bg-canvas px-3 py-2 font-mono text-xs text-ink outline-none focus:border-accent"
+            />
+          </div>
+        </div>
+      )}
+
       {block.type === 'image' && <Gutter><ImageBlockEditor block={block} onChange={onChange} /></Gutter>}
       {block.type === 'video' && <Gutter><VideoBlockEditor block={block} onChange={onChange} /></Gutter>}
       {block.type === 'cta' && <Gutter><CtaBlockEditor block={block} onChange={onChange} theme={theme} /></Gutter>}

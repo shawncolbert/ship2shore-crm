@@ -16,12 +16,13 @@ export const BLOCK_TYPES = [
   { value: 'contact', label: 'Contact bar', icon: '☎' },
   { value: 'divider', label: 'Divider', icon: '—' },
   { value: 'spacer', label: 'Spacer', icon: '↕' },
+  { value: 'custom_html', label: 'Custom HTML', icon: '</>' },
 ]
 
 // Blocks that span the full width of the page rather than sitting in the
 // centred prose column. The renderer keys off this, so adding a full-bleed
 // block type in future is a one-line change here.
-export const FULL_BLEED = new Set(['hero', 'stats', 'contact', 'testimonial'])
+export const FULL_BLEED = new Set(['hero', 'stats', 'contact', 'testimonial', 'custom_html'])
 
 export function newBlock(type) {
   const id = crypto.randomUUID()
@@ -49,6 +50,13 @@ export function newBlock(type) {
     case 'contact': return { id, type, business: '', phone: '', email: '', area: '' }
     case 'divider': return { id, type }
     case 'spacer': return { id, type, size: 'md' }
+    // A full page section (or a whole page) pasted in as raw HTML/CSS --
+    // for a fully custom design that doesn't fit the block system. Its
+    // <style> block applies normally; a <form> inside it is auto-wired to
+    // the same lead-capture flow every other block's CTA uses (see
+    // CustomHtml in LandingBlockView.jsx), it just reads its own field
+    // names off the form instead of the generic name/email/phone/notes set.
+    case 'custom_html': return { id, type, html: '' }
     default: return { id, type: 'paragraph', text: '' }
   }
 }

@@ -5,6 +5,7 @@
  * passes interactive={false} to keep buttons inert while you're arranging the
  * page.
  */
+import { useEffect, useRef } from 'react'
 import { toEmbedUrl, SPACER_SIZES } from '../lib/landingBlocks'
 import { getPublicTheme, PUBLIC_INK } from '../lib/publicThemes'
 
@@ -147,7 +148,59 @@ function Contact({ block }) {
   )
 }
 
-export default function LandingBlockView({ block, onCta, theme }) {
+// A full page section pasted in as raw HTML/CSS -- for a fully custom
+// design (like a hand-built quote-request landing page) that doesn't fit
+// the block system. Rendered via dangerouslySetInnerHTML -- safe here since
+// this is trusted, org-authored content edited through the same auth-gated
+// editor as every other block, not third-party or visitor-supplied input.
+// <style> tags in injected HTML apply normally; <script> tags don't run
+// (standard innerHTML behavior), so any <form> inside gets its submit
+// wired up here instead, reading whatever field names the pasted markup
+// uses and posting them straight into the same lead-capture endpoint every
+// other block's CTA already uses. Only wires up when `slug` is provided
+// (the public page) -- the editor canvas passes no slug, so its preview
+// stays inert instead of actually creating leads while you're editing.
+function CustomHtml({ block, slug }) {
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const container = ref.current
+    const form = container?.querySelector('form')
+    if (!container || !slug || !form) return
+
+    const onSubmit = async (e) => {
+      e.preventDefault()
+      const data = Object.fromEntries(new FormData(form).entries())
+      // Standard honeypot convention -- a real visitor never fills this in.
+      if (data['bot-field']) return
+
+      const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]')
+      const originalLabel = submitBtn?.textContent
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Sending…' }
+
+      try {
+        const res = await fetch('/.netlify/functions/public-landing-page', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'submit_lead', slug, ...data }),
+        })
+        const result = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(result.error || 'Submission failed')
+        form.innerHTML = '<p style="padding:24px 8px;text-align:center;font-weight:600">Thanks — we\'ll be in touch shortly.</p>'
+      } catch (err) {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = originalLabel }
+        alert(err.message || 'Something went wrong. Please try again.')
+      }
+    }
+
+    form.addEventListener('submit', onSubmit)
+    return () => form.removeEventListener('submit', onSubmit)
+  }, [slug, block.html])
+
+  return <div ref={ref} dangerouslySetInnerHTML={{ __html: block.html || '' }} />
+}
+
+export default function LandingBlockView({ block, onCta, theme, slug }) {
   const { accent, accentText } = getPublicTheme(theme)
   switch (block.type) {
     case 'hero':
@@ -160,6 +213,8 @@ export default function LandingBlockView({ block, onCta, theme }) {
       return <Testimonial block={block} accent={accent} />
     case 'contact':
       return <Contact block={block} />
+    case 'custom_html':
+      return <CustomHtml block={block} slug={slug} />
 
     case 'heading':
       return (

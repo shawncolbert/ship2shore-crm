@@ -68,8 +68,8 @@ export default function LandingPagePublic() {
           {block.type === 'cta'
             ? (i === leadIndex
                 ? <LeadAnchor block={block} slug={slug} bookingHref={bookingHref} formRef={formRef} open={leadOpen} onOpen={openLead} accent={accent} accentText={accentText} />
-                : <LandingBlockView block={block} onCta={handleCta} theme={data.theme} />)
-            : <LandingBlockView block={block} onCta={handleCta} theme={data.theme} />}
+                : <LandingBlockView block={block} onCta={handleCta} theme={data.theme} slug={slug} />)
+            : <LandingBlockView block={block} onCta={handleCta} theme={data.theme} slug={slug} />}
         </div>
       ))}
     </div>
