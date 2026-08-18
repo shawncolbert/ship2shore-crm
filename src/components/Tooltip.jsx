@@ -22,7 +22,7 @@ export default function Tooltip({ label, side = 'top', block = false, children }
       {children}
       <span
         role="tooltip"
-        className={`pointer-events-none absolute z-50 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 delay-150 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 ${SIDE_CLASSES[side] || SIDE_CLASSES.top}`}
+        className={`pointer-events-none absolute z-50 whitespace-nowrap rounded-md bg-brand px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 delay-150 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 ${SIDE_CLASSES[side] || SIDE_CLASSES.top}`}
       >
         {label}
       </span>
