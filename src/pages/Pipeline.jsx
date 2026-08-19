@@ -6,6 +6,7 @@ import {
   updateOpportunity,
   uploadCompletionVideo, fetchCompletionVideo, fetchMyOrgId, fetchLatestJobNote, fetchVehiclePhotoUrl,
   fetchDispatcherContacts, assignDispatcher,
+  fetchPricingZones, fetchPricingSurcharges,
 } from '../lib/supabase'
 import { buildBookingSummary, shareBooking } from '../lib/shareBooking'
 import NewContactModal from '../components/NewContactModal'
@@ -587,6 +588,98 @@ function CompletionVideoField({ opportunityId, contactId, onInteractStart, onInt
   )
 }
 
+// Staff-only quote helper: the landing page/funnel form only ever collects
+// a plain pickup/dropoff address (see LandingPagePublic.jsx) -- nobody
+// outside the org ever sees a rate. Staff read that address above, pick
+// the matching zone here by hand, and get back the range whaleyinc.net's
+// own public calculator would have quoted, so the number given over the
+// phone matches what's on the books. Zones/surcharges come from
+// pricing_zones/pricing_surcharges (Settings' rate catalog, same pattern
+// as `services`) so the list can grow without a code change.
+function PriceEstimator({ onUseAmount }) {
+  const { data: zones } = useQuery({ queryKey: ['pricingZones'], queryFn: fetchPricingZones })
+  const { data: surcharges } = useQuery({ queryKey: ['pricingSurcharges'], queryFn: fetchPricingSurcharges })
+  const [zoneId, setZoneId] = useState('')
+  const [vehicleCount, setVehicleCount] = useState(1)
+  const [checkedSurcharges, setCheckedSurcharges] = useState(() => new Set())
+  const stop = (e) => e.stopPropagation()
+
+  const zone = (zones || []).find((z) => z.id === zoneId)
+  const count = Math.max(1, Number(vehicleCount) || 1)
+
+  const toggleSurcharge = (id) => {
+    setCheckedSurcharges((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  let estimateMin = null, estimateMax = null
+  if (zone) {
+    const applied = (surcharges || []).filter((s) => checkedSurcharges.has(s.id))
+    const sMin = applied.reduce((sum, s) => sum + Number(s.amount_min), 0)
+    const sMax = applied.reduce((sum, s) => sum + Number(s.amount_max), 0)
+    estimateMin = (Number(zone.rate_min) + sMin) * count
+    estimateMax = (Number(zone.rate_max) + sMax) * count
+  }
+
+  return (
+    <div onClick={stop} className="space-y-1.5 rounded border border-line bg-canvas/50 p-2">
+      <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted">Price estimator (staff only)</h4>
+      <select
+        value={zoneId}
+        onChange={(e) => setZoneId(e.target.value)}
+        className="w-full rounded border border-line bg-white px-2 py-1 text-xs outline-none focus:border-accent"
+      >
+        <option value="">Match to a zone…</option>
+        {(zones || []).map((z) => (
+          <option key={z.id} value={z.id}>
+            {z.name}{z.note ? ` (${z.note})` : ''} — ${Number(z.rate_min)}–${Number(z.rate_max)}
+          </option>
+        ))}
+      </select>
+      {zone && (
+        <>
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-muted">Vehicles</label>
+            <input
+              type="number" min="1" max="20" value={vehicleCount}
+              onChange={(e) => setVehicleCount(e.target.value)}
+              className="w-14 rounded border border-line bg-white px-1.5 py-0.5 text-xs outline-none focus:border-accent"
+            />
+          </div>
+          {(surcharges || []).length > 0 && (
+            <div className="space-y-0.5">
+              {surcharges.map((s) => (
+                <label key={s.id} className="flex items-center gap-1.5 text-[11px] text-ink">
+                  <input type="checkbox" checked={checkedSurcharges.has(s.id)} onChange={() => toggleSurcharge(s.id)} />
+                  {s.name}
+                  <span className="text-muted">
+                    (+${Number(s.amount_min)}{Number(s.amount_min) !== Number(s.amount_max) ? `–$${Number(s.amount_max)}` : ''}/car)
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center justify-between rounded bg-accent/10 px-2 py-1.5">
+            <span className="text-xs font-semibold text-ink">
+              ${estimateMin.toLocaleString()}{estimateMin !== estimateMax ? `–$${estimateMax.toLocaleString()}` : ''}
+            </span>
+            <button
+              type="button"
+              onClick={() => onUseAmount(Math.round((estimateMin + estimateMax) / 2))}
+              className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-ink hover:bg-accent-600"
+            >
+              Use as Amount
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // Inline editor for a job card's title, port and scheduled time. Replaces the
 // card while open so the compact card stays uncluttered. Not draggable.
 function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, dispatchers, onAssignDispatcher }) {
@@ -661,6 +754,9 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, 
               </div>
             )}
           </div>
+        )}
+        {(c.pickup_address || c.dropoff_address) && (
+          <PriceEstimator onUseAmount={(v) => setAmount(v)} />
         )}
         <button
           type="button"

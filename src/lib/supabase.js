@@ -147,6 +147,33 @@ export async function deleteService(id) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Pricing zones / surcharges — the staff-only rate catalog behind the  */
+/* pipeline card's price estimator (Pipeline.jsx). Never fetched by any */
+/* public page; the landing page/funnel forms only ever collect a plain */
+/* pickup/dropoff address, and staff pick the matching zone by hand.    */
+/* ------------------------------------------------------------------ */
+
+export async function fetchPricingZones() {
+  const { data, error } = await supabase
+    .from('pricing_zones')
+    .select('id, name, rate_min, rate_max, note')
+    .eq('active', true)
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function fetchPricingSurcharges() {
+  const { data, error } = await supabase
+    .from('pricing_surcharges')
+    .select('id, name, amount_min, amount_max')
+    .eq('active', true)
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+/* ------------------------------------------------------------------ */
 /* Org branding — used by Layout and the public booking widget so each */
 /* white-label org shows its own name/logo instead of "Ship2Shore".    */
 /* ------------------------------------------------------------------ */

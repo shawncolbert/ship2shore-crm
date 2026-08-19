@@ -87,6 +87,38 @@ create table if not exists public.services (
 );
 
 -- ===========================================================================
+-- 4b. PRICING ZONES + SURCHARGES  (staff-only quoting catalog, same
+--     data-driven-per-org pattern as services -- never fetched by any
+--     public page; used by the pipeline card's price estimator to turn a
+--     lead's pickup/dropoff address into a rate range once staff pick the
+--     matching zone by hand)
+-- ===========================================================================
+create table if not exists public.pricing_zones (
+  id          uuid primary key default gen_random_uuid(),
+  org_id      uuid not null references public.organizations(id) on delete cascade,
+  name        text not null,
+  rate_min    numeric(10,2) not null,
+  rate_max    numeric(10,2) not null,
+  note        text,                 -- e.g. drive time, shown next to the zone name
+  sort_order  int not null default 0,
+  active      boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+create index if not exists ix_pricing_zones_org on public.pricing_zones(org_id, sort_order);
+
+create table if not exists public.pricing_surcharges (
+  id          uuid primary key default gen_random_uuid(),
+  org_id      uuid not null references public.organizations(id) on delete cascade,
+  name        text not null,
+  amount_min  numeric(10,2) not null,
+  amount_max  numeric(10,2) not null,
+  sort_order  int not null default 0,
+  active      boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+create index if not exists ix_pricing_surcharges_org on public.pricing_surcharges(org_id, sort_order);
+
+-- ===========================================================================
 -- 5. CONTACTS
 -- ===========================================================================
 create table if not exists public.contacts (
@@ -241,6 +273,8 @@ alter table public.organizations enable row level security;
 alter table public.memberships   enable row level security;
 alter table public.profiles      enable row level security;
 alter table public.services      enable row level security;
+alter table public.pricing_zones      enable row level security;
+alter table public.pricing_surcharges enable row level security;
 alter table public.contacts      enable row level security;
 alter table public.pipelines     enable row level security;
 alter table public.stages        enable row level security;
@@ -272,7 +306,7 @@ do $$
 declare t text;
 begin
   foreach t in array array[
-    'services','contacts','pipelines','stages','opportunities',
+    'services','pricing_zones','pricing_surcharges','contacts','pipelines','stages','opportunities',
     'appointments','conversations','messages','activities'
   ] loop
     execute format('drop policy if exists p_%1$s_org on public.%1$s;', t);
@@ -298,6 +332,23 @@ insert into public.services (org_id, code, name, default_rate) values
   ('11111111-1111-1111-1111-111111111111','hotshot','Hotshot',200.00),
   ('11111111-1111-1111-1111-111111111111','semi_container','Semi Load-Unload & Container',325.00)
 on conflict (org_id, code) do nothing;
+
+-- Vehicle-transport quoting catalog (from the whaleyinc.net public
+-- calculator -- kept here for staff quoting only; see pricing_zones above)
+insert into public.pricing_zones (org_id, name, rate_min, rate_max, note, sort_order) values
+  ('11111111-1111-1111-1111-111111111111','Los Angeles (Local)',275,325,null,10),
+  ('11111111-1111-1111-1111-111111111111','Orange County',300,350,null,20),
+  ('11111111-1111-1111-1111-111111111111','Ventura County',325,375,null,30),
+  ('11111111-1111-1111-1111-111111111111','Valencia / Santa Clarita',350,400,'~45 min – 1.5 hrs',40),
+  ('11111111-1111-1111-1111-111111111111','Riverside / San Bernardino',400,475,'~1 – 2 hrs',50),
+  ('11111111-1111-1111-1111-111111111111','San Diego',600,675,'~1.5 – 2.5 hrs',60),
+  ('11111111-1111-1111-1111-111111111111','Northern California',625,725,null,70);
+
+insert into public.pricing_surcharges (org_id, name, amount_min, amount_max, sort_order) values
+  ('11111111-1111-1111-1111-111111111111','Non-Operating Vehicle',200,200,10),
+  ('11111111-1111-1111-1111-111111111111','Requires Winching',125,125,20),
+  ('11111111-1111-1111-1111-111111111111','Oversized Vehicle',125,125,30),
+  ('11111111-1111-1111-1111-111111111111','Lifted / Modified Vehicle',125,175,40);
 
 -- Default pipeline + stages
 insert into public.pipelines (id, org_id, name, is_default)
