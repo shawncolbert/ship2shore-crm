@@ -588,15 +588,180 @@ function CompletionVideoField({ opportunityId, contactId, onInteractStart, onInt
   )
 }
 
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
+
+// Same Mapbox geocoding endpoint PublicBooking.jsx uses for its address
+// autocomplete, but here we already have a plain saved address string (no
+// pick-a-suggestion UI on the pipeline card) so this just takes the top
+// match's coordinates directly.
+async function mapboxGeocodeOne(address) {
+  if (!MAPBOX_TOKEN || !address?.trim()) return null
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${MAPBOX_TOKEN}&autocomplete=false&country=us&types=address,place&limit=1`
+  const res = await fetch(url)
+  if (!res.ok) return null
+  const data = await res.json()
+  return data.features?.[0]?.center || null // [lng, lat]
+}
+
+async function mapboxDrivingMiles(from, to) {
+  if (!MAPBOX_TOKEN || !from || !to) return null
+  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${from[0]},${from[1]};${to[0]},${to[1]}?access_token=${MAPBOX_TOKEN}&overview=false`
+  const res = await fetch(url)
+  if (!res.ok) return null
+  const data = await res.json()
+  const meters = data.routes?.[0]?.distance
+  return typeof meters === 'number' ? meters / 1609.344 : null
+}
+
+async function fetchDieselPrice() {
+  const res = await fetch('/.netlify/functions/diesel-price')
+  if (!res.ok) return { price: 4.0, source: 'baseline-fallback' }
+  return res.json()
+}
+
+const VEHICLE_TYPES = [
+  { value: 'sedan', label: 'Sedan / car' },
+  { value: 'suv', label: 'SUV (+$175)' },
+  { value: 'truck', label: 'Truck (+$250)' },
+  { value: 'enclosed', label: 'Enclosed trailer (×1.5)' },
+]
+const INTERSTATE_MIN_MI = 250
+const INTERSTATE_RATE_LOW = 1.5
+const INTERSTATE_RATE_HIGH = 2.5
+const FUEL_BASELINE = 4.0
+
+// Real driver quotes you gave me: Long Beach→Vegas (~300 mi) ran $450-$750,
+// and a 670 mi run cost $1,600 -- both land in this same $1.50-$2.50/mi
+// band despite the mileage gap, so this is a flat rate rather than
+// Gemini's original multi-tier taper (no long-haul reference point yet to
+// justify tapering further out -- revisit once a real 2,000+ mi quote
+// comes in). Fuel % applies to the line-haul only, before the flat
+// SUV/truck surcharge, since accessorial fees don't move with diesel price.
+function interstateFloor({ miles, vehicleType, dieselPrice }) {
+  let lineHaulMin = miles * INTERSTATE_RATE_LOW
+  let lineHaulMax = miles * INTERSTATE_RATE_HIGH
+  if (vehicleType === 'enclosed') { lineHaulMin *= 1.5; lineHaulMax *= 1.5 }
+
+  const fuelPct = Math.max(0, ((dieselPrice - FUEL_BASELINE) / 0.5) * 2.5)
+  lineHaulMin *= 1 + fuelPct / 100
+  lineHaulMax *= 1 + fuelPct / 100
+
+  const flatSurcharge = vehicleType === 'suv' ? 175 : vehicleType === 'truck' ? 250 : 0
+  return { floorMin: lineHaulMin + flatSurcharge, floorMax: lineHaulMax + flatSurcharge, fuelPct }
+}
+
+// Your locked formula: at least 20% margin, or a flat $150, whichever's bigger.
+function applyMargin(floor) {
+  return Math.max(floor * 1.2, floor + 150)
+}
+
+function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
+  const [vehicleType, setVehicleType] = useState('sedan')
+  const [miles, setMiles] = useState(null)
+  const [milesLoading, setMilesLoading] = useState(false)
+  const [milesErr, setMilesErr] = useState('')
+  const { data: diesel } = useQuery({ queryKey: ['dieselPrice'], queryFn: fetchDieselPrice, staleTime: 1000 * 60 * 60 })
+
+  const calcMileage = async () => {
+    setMilesLoading(true); setMilesErr(''); setMiles(null)
+    try {
+      const [from, to] = await Promise.all([mapboxGeocodeOne(pickup), mapboxGeocodeOne(dropoff)])
+      if (!from || !to) { setMilesErr('Could not locate one of those addresses.'); return }
+      const m = await mapboxDrivingMiles(from, to)
+      if (m == null) { setMilesErr('Could not calculate driving distance.'); return }
+      setMiles(m)
+    } catch {
+      setMilesErr('Mileage lookup failed.')
+    } finally {
+      setMilesLoading(false)
+    }
+  }
+
+  let floorMin = null, floorMax = null, targetMin = null, targetMax = null
+  if (miles != null) {
+    const f = interstateFloor({ miles, vehicleType, dieselPrice: diesel?.price ?? FUEL_BASELINE })
+    floorMin = f.floorMin; floorMax = f.floorMax
+    targetMin = applyMargin(floorMin); targetMax = applyMargin(floorMax)
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <select
+        value={vehicleType}
+        onChange={(e) => setVehicleType(e.target.value)}
+        className="w-full rounded border border-line bg-white px-2 py-1 text-xs outline-none focus:border-accent"
+      >
+        {VEHICLE_TYPES.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+      </select>
+      <button
+        type="button"
+        onClick={calcMileage}
+        disabled={milesLoading || !pickup || !dropoff}
+        className="w-full rounded border border-line bg-white px-2 py-1 text-[11px] font-semibold text-ink hover:bg-canvas disabled:opacity-50"
+      >
+        {milesLoading ? 'Calculating…' : miles != null ? `${Math.round(miles)} mi — recalculate` : 'Calculate driving distance'}
+      </button>
+      {milesErr && <p className="text-[10px] text-port">{milesErr}</p>}
+      {miles != null && miles <= INTERSTATE_MIN_MI && (
+        <p className="text-[10px] text-muted">Under {INTERSTATE_MIN_MI} mi — the Zone tab may fit this better.</p>
+      )}
+      {floorMin != null && (
+        <>
+          <p className="text-[10px] text-muted">
+            Floor ${Math.round(floorMin).toLocaleString()}–${Math.round(floorMax).toLocaleString()}
+            {diesel?.source === 'eia' ? ` · diesel $${diesel.price.toFixed(2)}` : ' · fuel adj. unavailable, using baseline'}
+          </p>
+          <div className="flex items-center justify-between rounded bg-accent/10 px-2 py-1.5">
+            <span className="text-xs font-semibold text-ink">
+              ${Math.round(targetMin).toLocaleString()}–${Math.round(targetMax).toLocaleString()}
+            </span>
+            <button
+              type="button"
+              onClick={() => onUseAmount(Math.round((targetMin + targetMax) / 2))}
+              className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-ink hover:bg-accent-600"
+            >
+              Use as Amount
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // Staff-only quote helper: the landing page/funnel form only ever collects
 // a plain pickup/dropoff address (see LandingPagePublic.jsx) -- nobody
-// outside the org ever sees a rate. Staff read that address above, pick
-// the matching zone here by hand, and get back the range whaleyinc.net's
-// own public calculator would have quoted, so the number given over the
-// phone matches what's on the books. Zones/surcharges come from
-// pricing_zones/pricing_surcharges (Settings' rate catalog, same pattern
-// as `services`) so the list can grow without a code change.
-function PriceEstimator({ onUseAmount }) {
+// outside the org ever sees a rate. Staff read that address above, then
+// either pick a matching zone (local CA runs) or switch to Interstate
+// (250+ mi) for a mileage-based range, and get back a number to fill into
+// Amount so what's quoted over the phone matches what's on the books.
+function PriceEstimator({ pickup, dropoff, onUseAmount }) {
+  const [mode, setMode] = useState('zone')
+  const stop = (e) => e.stopPropagation()
+
+  return (
+    <div onClick={stop} className="space-y-1.5 rounded border border-line bg-canvas/50 p-2">
+      <div className="flex items-center justify-between">
+        <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted">Price estimator (staff only)</h4>
+        <div className="flex overflow-hidden rounded border border-line text-[10px] font-semibold">
+          <button type="button" onClick={() => setMode('zone')}
+            className={`px-2 py-0.5 ${mode === 'zone' ? 'bg-accent text-ink' : 'bg-white text-muted'}`}>Zone</button>
+          <button type="button" onClick={() => setMode('interstate')}
+            className={`px-2 py-0.5 ${mode === 'interstate' ? 'bg-accent text-ink' : 'bg-white text-muted'}`}>Interstate</button>
+        </div>
+      </div>
+      {mode === 'zone'
+        ? <ZoneEstimator onUseAmount={onUseAmount} />
+        : <InterstateEstimator pickup={pickup} dropoff={dropoff} onUseAmount={onUseAmount} />}
+    </div>
+  )
+}
+
+// Zones/surcharges come from pricing_zones/pricing_surcharges (Settings'
+// rate catalog, same pattern as `services`) so the list can grow without a
+// code change. Matches the range whaleyinc.net's own public calculator
+// would quote for a local CA run.
+function ZoneEstimator({ onUseAmount }) {
   const { data: zones } = useQuery({ queryKey: ['pricingZones'], queryFn: fetchPricingZones })
   const { data: surcharges } = useQuery({ queryKey: ['pricingSurcharges'], queryFn: fetchPricingSurcharges })
   const [zoneId, setZoneId] = useState('')
@@ -756,7 +921,7 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, 
           </div>
         )}
         {(c.pickup_address || c.dropoff_address) && (
-          <PriceEstimator onUseAmount={(v) => setAmount(v)} />
+          <PriceEstimator pickup={c.pickup_address} dropoff={c.dropoff_address} onUseAmount={(v) => setAmount(v)} />
         )}
         <button
           type="button"
