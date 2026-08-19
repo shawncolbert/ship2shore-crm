@@ -58,6 +58,10 @@ export default function InvoiceDetail() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [searchParams] = useSearchParams()
+  // New invoices get this from the URL (the pipeline card's Invoice button
+  // passes it); existing ones carry it on the row itself once linked, since
+  // a card whose invoice already exists just reopens that same invoice --
+  // its own prefill effect below only fires once, on creation.
   const opportunityId = isNew ? searchParams.get('opportunity_id') : null
 
   const { data: businessInfo } = useQuery({ queryKey: ['invoiceBusinessInfo'], queryFn: fetchInvoiceBusinessInfo })
@@ -68,13 +72,16 @@ export default function InvoiceDetail() {
   const { data: existing, isLoading } = useQuery({
     queryKey: ['invoice', id], queryFn: () => fetchInvoice(id), enabled: !isNew,
   })
-  // Started from a pipeline card's Invoice button -- prefills Bill To and a
-  // line item from the job, so the dispatcher isn't retyping the customer
-  // and amount that are already sitting right there on the card.
+  const linkedOpportunityId = opportunityId || existing?.invoice?.opportunity_id || null
+  // Started from a pipeline card's Invoice button -- prefills Bill To,
+  // Ship From/To and a line item from the job, so the dispatcher isn't
+  // retyping the customer, addresses and amount that are already sitting
+  // right there on the card. Kept loaded even for an already-saved invoice
+  // so the "Pull from job" button below has something to pull.
   const { data: sourceOpportunity } = useQuery({
-    queryKey: ['opportunityForInvoice', opportunityId],
-    queryFn: () => fetchOpportunityForInvoice(opportunityId),
-    enabled: !!opportunityId,
+    queryKey: ['opportunityForInvoice', linkedOpportunityId],
+    queryFn: () => fetchOpportunityForInvoice(linkedOpportunityId),
+    enabled: !!linkedOpportunityId,
   })
 
   const [fields, setFields] = useState(EMPTY_FIELDS)
@@ -118,28 +125,37 @@ export default function InvoiceDetail() {
     }
   }, [existing])
 
+  // Shared by the auto-prefill (brand-new invoice) and the manual "Pull
+  // from job" button (an already-saved one) below -- same fields either way.
+  const applyOpportunity = (opp) => {
+    const contact = opp.contacts
+    const detail = vehicleDetail(opp)
+    setFields((f) => ({
+      ...f,
+      contact_id: opp.contact_id || '',
+      po_number: opp.billing_number || '',
+      ...(contact ? fillBillToFromContact(contact) : {}),
+      // Pickup is where we're shipping it from, drop-off is where it's
+      // going -- Ship To already existed for the destination, Ship From
+      // is the new half of that pair for the origin.
+      ship_from_address: opp.pickup_address || '',
+      ship_to_address: opp.dropoff_address || '',
+    }))
+    setLineItems([{
+      service_id: '', quantity: 1, unit_price: Number(opp.value) || 0,
+      description: [opp.title, detail].filter(Boolean).join(' — '),
+    }])
+    setPrefilledFrom(opp.id)
+  }
+
   useEffect(() => {
-    if (sourceOpportunity && prefilledFrom !== sourceOpportunity.id) {
-      const contact = sourceOpportunity.contacts
-      const detail = vehicleDetail(sourceOpportunity)
-      setFields((f) => ({
-        ...f,
-        contact_id: sourceOpportunity.contact_id || '',
-        po_number: sourceOpportunity.billing_number || '',
-        ...(contact ? fillBillToFromContact(contact) : {}),
-        // Pickup is where we're shipping it from, drop-off is where it's
-        // going -- Ship To already existed for the destination, Ship From
-        // is the new half of that pair for the origin.
-        ship_from_address: sourceOpportunity.pickup_address || '',
-        ship_to_address: sourceOpportunity.dropoff_address || '',
-      }))
-      setLineItems([{
-        service_id: '', quantity: 1, unit_price: Number(sourceOpportunity.value) || 0,
-        description: [sourceOpportunity.title, detail].filter(Boolean).join(' — '),
-      }])
-      setPrefilledFrom(sourceOpportunity.id)
+    // Only auto-fires for a brand-new invoice -- an already-saved one only
+    // updates when someone explicitly hits "Pull from job", so this never
+    // silently overwrites edits made after the invoice was first created.
+    if (isNew && sourceOpportunity && prefilledFrom !== sourceOpportunity.id) {
+      applyOpportunity(sourceOpportunity)
     }
-  }, [sourceOpportunity, prefilledFrom])
+  }, [isNew, sourceOpportunity, prefilledFrom])
 
   const togglePaymentOption = (key) => setPaymentOptions((o) => ({ ...o, [key]: !o[key] }))
 
@@ -326,6 +342,16 @@ export default function InvoiceDetail() {
         </div>
         {!isNew && (
           <div className="flex flex-wrap gap-2">
+            {linkedOpportunityId && sourceOpportunity && (
+              <button
+                onClick={() => { applyOpportunity(sourceOpportunity); setNotice({ type: 'success', text: 'Pulled the latest from the job.' }) }}
+                disabled={locked}
+                className={btn}
+                title="Re-fill Bill To, Ship From/To and the line item from this invoice's linked job"
+              >
+                ⟳ Pull from job
+              </button>
+            )}
             {invoice?.status !== 'paid' && <button onClick={handleMarkPaid} className={btn}>Mark as Paid</button>}
             <button onClick={invoice?.completed_at ? handleUnmarkDone : handleMarkDone} disabled={marking} className={btn}>
               {invoice?.completed_at ? 'Undo job done' : 'Mark job done'}
