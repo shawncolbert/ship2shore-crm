@@ -78,7 +78,7 @@ export default function InvoiceDetail() {
   // retyping the customer, addresses and amount that are already sitting
   // right there on the card. Kept loaded even for an already-saved invoice
   // so the "Pull from job" button below has something to pull.
-  const { data: sourceOpportunity } = useQuery({
+  const { data: sourceOpportunity, error: sourceOpportunityError } = useQuery({
     queryKey: ['opportunityForInvoice', linkedOpportunityId],
     queryFn: () => fetchOpportunityForInvoice(linkedOpportunityId),
     enabled: !!linkedOpportunityId,
@@ -154,6 +154,7 @@ export default function InvoiceDetail() {
     // silently overwrites edits made after the invoice was first created.
     if (isNew && sourceOpportunity && prefilledFrom !== sourceOpportunity.id) {
       applyOpportunity(sourceOpportunity)
+      setNotice({ type: 'success', text: 'Pulled Bill To, Ship From/To and the price from the linked job.' })
     }
   }, [isNew, sourceOpportunity, prefilledFrom])
 
@@ -367,6 +368,11 @@ export default function InvoiceDetail() {
       </header>
 
       {err && <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
+      {sourceOpportunityError && (
+        <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-port">
+          ⚠️ Couldn't pull data from the linked job: {sourceOpportunityError.message}
+        </p>
+      )}
       {notice && (
         <p className={`mb-4 rounded-md px-3 py-2 text-sm ${notice.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>
           {notice.type === 'success' ? '✓ ' : '⚠️ '}{notice.text}
