@@ -52,6 +52,7 @@ export default function Calendar() {
     )
 
   const opportunities = (data?.opportunities || []).filter((o) => o.scheduled_at)
+  const wonStageIds = new Set((data?.stages || []).filter((s) => s.is_won).map((s) => s.id))
 
   // Group opportunities by date
   const oppsByDate = {}
@@ -77,12 +78,12 @@ export default function Calendar() {
         <p className="text-sm text-muted">View scheduled opportunities by date.</p>
       </header>
 
-      <CalendarGrid month={month} onMonthChange={setMonth} oppsByDate={oppsByDate} />
+      <CalendarGrid month={month} onMonthChange={setMonth} oppsByDate={oppsByDate} wonStageIds={wonStageIds} />
     </div>
   )
 }
 
-function CalendarGrid({ month, onMonthChange, oppsByDate }) {
+function CalendarGrid({ month, onMonthChange, oppsByDate, wonStageIds }) {
   const navigate = useNavigate()
   const year = month.getFullYear()
   const monthIdx = month.getMonth()
@@ -173,7 +174,12 @@ function CalendarGrid({ month, onMonthChange, oppsByDate }) {
               </div>
               <div className="space-y-1">
                 {dayOpps.map((opp) => (
-                  <CalendarEntry key={opp.id} opp={opp} onOpen={() => navigate(`/contacts/${opp.contact_id}`)} />
+                  <CalendarEntry
+                    key={opp.id}
+                    opp={opp}
+                    isWon={wonStageIds.has(opp.stage_id)}
+                    onOpen={() => navigate(`/contacts/${opp.contact_id}`)}
+                  />
                 ))}
               </div>
             </div>
@@ -191,16 +197,22 @@ function CalendarGrid({ month, onMonthChange, oppsByDate }) {
   )
 }
 
-function CalendarEntry({ opp, onOpen }) {
+// Red until the job reaches a "won" stage -- an upcoming or in-progress job
+// should stand out on the calendar; once it's done there's nothing left to
+// watch for, so it fades back to the normal accent color.
+function CalendarEntry({ opp, isWon, onOpen }) {
+  const colorClass = isWon
+    ? 'bg-accent/20 text-accent hover:bg-accent/30'
+    : 'bg-port/15 text-port hover:bg-port/25'
   return (
     <button
       onClick={onOpen}
-      className="block w-full truncate rounded bg-accent/20 px-1.5 py-0.5 text-left text-[10px] font-medium text-accent hover:bg-accent/30 transition-colors"
-      title={`${opp.contacts?.full_name || 'Contact'} · ${opp.title || 'Job'} · ${fmtTime(opp.scheduled_at)}`}
+      className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] font-medium transition-colors ${colorClass}`}
+      title={`${opp.contacts?.full_name || 'Contact'} · ${opp.title || 'Job'} · ${fmtTime(opp.scheduled_at)}${isWon ? ' · complete' : ''}`}
     >
       <div className="font-semibold truncate">{fmtTime(opp.scheduled_at)}</div>
-      <div className="truncate text-accent/80">{opp.contacts?.full_name || 'Contact'}</div>
-      <div className="truncate text-accent/70">{opp.title || 'Job'}</div>
+      <div className="truncate opacity-80">{opp.contacts?.full_name || 'Contact'}</div>
+      <div className="truncate opacity-70">{opp.title || 'Job'}</div>
     </button>
   )
 }

@@ -438,8 +438,10 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, 
       {c.scheduled_at && (
         <div className="mt-1.5">
           <span
-            title="Scheduled pickup / service time (Pacific)"
-            className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-semibold text-ink ring-1 ring-inset ring-accent/40"
+            title={isWon ? 'Scheduled pickup / service time (Pacific) — job complete' : 'Scheduled pickup / service time (Pacific) — still open'}
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
+              isWon ? 'bg-accent/15 text-ink ring-accent/40' : 'bg-port/15 text-port ring-port/40'
+            }`}
           >
             <span aria-hidden="true">🗓️</span>
             {fmtSched(c.scheduled_at)}
