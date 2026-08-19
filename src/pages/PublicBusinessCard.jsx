@@ -48,7 +48,7 @@ export default function PublicBusinessCard() {
 
   return (
     <div className="min-h-screen bg-[#0c1a24] p-4">
-      <title>{data.card.full_name || data.card.brand_name || 'Digital Business Card'}</title>
+      <title>{data.card.brand_name || data.card.full_name || 'Digital Business Card'}</title>
       <BusinessCardView
         card={data.card}
         mode="public"

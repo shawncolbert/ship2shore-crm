@@ -40,8 +40,8 @@ export const handler = async (event) => {
     return { statusCode: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' }, body: shell }
   }
 
-  const pageTitle = card.full_name || card.brand_name || 'Digital Business Card'
-  const description = [card.title, card.company_line].filter(Boolean).join(' · ') || 'View my digital business card'
+  const pageTitle = card.brand_name || card.full_name || 'Digital Business Card'
+  const description = [card.full_name, card.title].filter(Boolean).join(' — ') || card.company_line || 'View my digital business card'
   const url = `${origin}/card/${slug}`
 
   const metaTags = [

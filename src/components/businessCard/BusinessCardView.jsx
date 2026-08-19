@@ -77,7 +77,7 @@ export default function BusinessCardView({ card, mode = 'public', onSubmitLead }
   }
 
   const share = async () => {
-    const shareData = { title: card.full_name || card.brand_name || 'Digital card', url: publicUrl }
+    const shareData = { title: card.brand_name || card.full_name || 'Digital card', url: publicUrl }
     if (navigator.share) {
       try {
         await navigator.share(shareData)
