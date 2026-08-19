@@ -9,6 +9,22 @@ import { useEffect, useRef } from 'react'
 import { toEmbedUrl, SPACER_SIZES } from '../lib/landingBlocks'
 import { getPublicTheme, PUBLIC_INK } from '../lib/publicThemes'
 
+// Same Mapbox geocoding endpoint PublicBooking.jsx's address autocomplete
+// uses -- CustomHtml below wires this onto any input a pasted block marks
+// with data-mapbox-address, so a custom page's pickup/dropoff fields get
+// the same suggest-as-you-type behavior without needing their own copy of
+// this logic baked into the page's raw HTML.
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
+
+async function mapboxSuggest(query, signal) {
+  if (!MAPBOX_TOKEN || query.trim().length < 3) return []
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&autocomplete=true&country=us&types=address,place&limit=5`
+  const res = await fetch(url, { signal })
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.features || []
+}
+
 // Prose blocks sit in a readable column; full-bleed ones handle their own width.
 export const Prose = ({ children }) => (
   <div className="mx-auto max-w-3xl px-6 sm:px-8">{children}</div>
@@ -197,7 +213,63 @@ function CustomHtml({ block, slug }) {
     }
 
     form.addEventListener('submit', onSubmit)
-    return () => form.removeEventListener('submit', onSubmit)
+
+    // Address autocomplete on any input the pasted markup marks with
+    // data-mapbox-address -- e.g. a pickup/drop-off field. Built imperatively
+    // against the plain DOM node (not React state) since this content isn't
+    // React-owned; a tiny suggestion list is inserted right after each input
+    // and torn down again in the cleanup below.
+    const addressCleanups = Array.from(container.querySelectorAll('input[data-mapbox-address]')).map((input) => {
+      let debounceTimer = null
+      let controller = null
+      const list = document.createElement('ul')
+      list.className = 'mapbox-suggest-list'
+      input.insertAdjacentElement('afterend', list)
+      if (input.parentElement) input.parentElement.style.position = 'relative'
+
+      const close = () => { list.style.display = 'none'; list.innerHTML = '' }
+
+      const onInput = () => {
+        clearTimeout(debounceTimer)
+        controller?.abort()
+        const value = input.value
+        if (value.trim().length < 3) { close(); return }
+        debounceTimer = setTimeout(async () => {
+          controller = new AbortController()
+          let features
+          try { features = await mapboxSuggest(value, controller.signal) } catch { return }
+          if (!features?.length) { close(); return }
+          list.innerHTML = ''
+          features.forEach((f) => {
+            const li = document.createElement('li')
+            li.textContent = f.place_name
+            // mousedown (not click) fires before the input's blur, so the
+            // suggestion is still in the DOM when the pick is registered.
+            li.addEventListener('mousedown', (e) => {
+              e.preventDefault()
+              input.value = f.place_name
+              close()
+            })
+            list.appendChild(li)
+          })
+          list.style.display = 'block'
+        }, 250)
+      }
+      const onBlur = () => setTimeout(close, 150)
+
+      input.addEventListener('input', onInput)
+      input.addEventListener('blur', onBlur)
+      return () => {
+        input.removeEventListener('input', onInput)
+        input.removeEventListener('blur', onBlur)
+        list.remove()
+      }
+    })
+
+    return () => {
+      form.removeEventListener('submit', onSubmit)
+      addressCleanups.forEach((cleanup) => cleanup())
+    }
   }, [slug, block.html])
 
   return <div ref={ref} dangerouslySetInnerHTML={{ __html: block.html || '' }} />
