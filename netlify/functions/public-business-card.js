@@ -1,4 +1,5 @@
 import { admin } from './_shared/supabaseAdmin.js'
+import { findOrCreateContact, createLeadOpportunity } from './_shared/leadOpportunity.js'
 
 // Public, unauthenticated -- serves a published business card by slug, and
 // logs the reciprocal "send your info" contact exchange as a new lead tied
@@ -36,23 +37,35 @@ async function logEvent(payload) {
 }
 
 async function submitLead(payload) {
-  const { slug, name, phone, email } = payload
+  const { slug, name, phone, email, pickup_address, dropoff_address, vehicle } = payload
   if (!slug || !name || !(phone || email)) return { status: 400, body: { error: 'Missing required fields.' } }
 
   const { data: card } = await admin
-    .from('business_cards').select('org_id, full_name').eq('slug', String(slug).trim()).maybeSingle()
+    .from('business_cards').select('org_id, full_name, collect_transport_details').eq('slug', String(slug).trim()).maybeSingle()
   if (!card) return { status: 404, body: { error: 'Card not found.' } }
 
-  const { error } = await admin.from('contacts').insert({
-    org_id: card.org_id,
-    full_name: String(name).trim(),
-    phone: phone ? String(phone).trim() : null,
-    email: email ? String(email).trim().toLowerCase() : null,
-    source: 'business_card',
-    tags: ['business-card'],
+  const contactId = await findOrCreateContact({
+    orgId: card.org_id, fullName: name, email, phone,
+    source: 'business_card', tags: ['business-card'],
     notes: card.full_name ? `Sent their info from ${card.full_name}'s digital business card.` : 'Sent their info from a digital business card.',
   })
-  if (error) return { status: 500, body: { error: error.message } }
+
+  // Only cards with this turned on (Settings > this card > "Send-info lead
+  // form") ask for these fields in the first place, so there's nothing to
+  // act on for every other card -- they stay a plain contact exchange.
+  if (card.collect_transport_details && (pickup_address || dropoff_address || vehicle)) {
+    try {
+      await createLeadOpportunity({
+        orgId: card.org_id, contactId,
+        title: `Business card lead — ${card.full_name || 'Untitled'}`,
+        pickupAddress: pickup_address, dropoffAddress: dropoff_address, vehicle,
+      })
+    } catch (e) {
+      // The contact is already saved either way -- don't fail the whole
+      // submission just because the pipeline card couldn't be created.
+      console.error('❌ createLeadOpportunity failed:', e)
+    }
+  }
 
   return { status: 200, body: { ok: true } }
 }

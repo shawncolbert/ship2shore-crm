@@ -267,6 +267,7 @@ export default function BusinessCardView({ card, mode = 'public', onSubmitLead }
             </button>
           ) : (
             <LeadForm
+              collectTransportDetails={card.collect_transport_details}
               onCancel={() => setLeadOpen(false)}
               onSubmit={async (form) => {
                 if (mode !== 'public' || !onSubmitLead) { flash('Preview only — publish the card to enable this.'); setLeadOpen(false); return }
@@ -325,10 +326,17 @@ function Section({ label, children }) {
   )
 }
 
-function LeadForm({ onSubmit, onCancel }) {
-  const [form, setForm] = useState({ name: '', phone: '', email: '' })
+// collectTransportDetails is per-card (business_cards.collect_transport_details)
+// -- off by default, so every existing card keeps its plain "send your info"
+// exchange. Ship2Shore's card is the first to turn it on: with it on, a
+// pickup/dropoff/vehicle filled in here makes public-business-card.js also
+// drop a pipeline card, same as a landing-page lead does, instead of just
+// logging a contact with nowhere for staff to work it from.
+function LeadForm({ onSubmit, onCancel, collectTransportDetails }) {
+  const [form, setForm] = useState({ name: '', phone: '', email: '', pickup_address: '', dropoff_address: '', vehicle: '' })
   const [busy, setBusy] = useState(false)
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+  const fieldClass = 'w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-white/30'
 
   const submit = async (e) => {
     e.preventDefault()
@@ -340,12 +348,16 @@ function LeadForm({ onSubmit, onCancel }) {
 
   return (
     <form onSubmit={submit} className="space-y-2 rounded-xl p-3" style={{ background: 'var(--cb-panel)' }}>
-      <input required placeholder="Your name" value={form.name} onChange={set('name')}
-        className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-white/30" />
-      <input placeholder="Phone" value={form.phone} onChange={set('phone')}
-        className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-white/30" />
-      <input placeholder="Email" type="email" value={form.email} onChange={set('email')}
-        className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-white/30" />
+      <input required placeholder="Your name" value={form.name} onChange={set('name')} className={fieldClass} />
+      <input placeholder="Phone" value={form.phone} onChange={set('phone')} className={fieldClass} />
+      <input placeholder="Email" type="email" value={form.email} onChange={set('email')} className={fieldClass} />
+      {collectTransportDetails && (
+        <>
+          <input placeholder="Pickup location" value={form.pickup_address} onChange={set('pickup_address')} className={fieldClass} />
+          <input placeholder="Drop-off location" value={form.dropoff_address} onChange={set('dropoff_address')} className={fieldClass} />
+          <input placeholder="Vehicle (year / make / model)" value={form.vehicle} onChange={set('vehicle')} className={fieldClass} />
+        </>
+      )}
       <div className="flex gap-2 pt-1">
         <button type="button" onClick={onCancel} className="flex-1 rounded-lg py-2 text-xs font-semibold text-white/50">Cancel</button>
         <button type="submit" disabled={busy} className="flex-1 rounded-lg py-2 text-xs font-bold" style={{ background: 'var(--cb-cta)', color: '#1a1a1a' }}>

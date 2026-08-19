@@ -350,6 +350,22 @@ function BusinessCardEditor({ initialCard, onSaved }) {
 
           <section className={card}>
             <div className="flex items-center justify-between">
+              <h2 className={sectionTitle}>Send-info lead form</h2>
+              <label className="flex items-center gap-2 text-xs font-medium text-muted">
+                <input type="checkbox" checked={!!form.collect_transport_details} onChange={setBool('collect_transport_details')} />
+                Enabled
+              </label>
+            </div>
+            <p className="text-xs text-muted">
+              When on, the "{form.share_prompt_text || 'Send your info'}" form also asks for a pickup location,
+              drop-off location, and vehicle -- and submitting it drops a real card onto the pipeline (same as a
+              landing-page lead), not just a saved contact. Off leaves it a plain contact exchange with nowhere
+              for staff to work it from.
+            </p>
+          </section>
+
+          <section className={card}>
+            <div className="flex items-center justify-between">
               <h2 className={sectionTitle}>Tools & documents</h2>
               <input value={form.tools_section_label || ''} onChange={set('tools_section_label')} className={`${input} w-40`} placeholder="Section title" />
             </div>
