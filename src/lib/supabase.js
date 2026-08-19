@@ -490,6 +490,9 @@ export async function updateOpportunity(id, patch) {
   const allowed = {}
   if ('title' in patch) allowed.title = patch.title?.trim() || null
   if ('port' in patch) allowed.port = patch.port?.trim() || null
+  if ('vehicle' in patch) allowed.vehicle = patch.vehicle?.trim() || null
+  if ('pickup_address' in patch) allowed.pickup_address = patch.pickup_address?.trim() || null
+  if ('dropoff_address' in patch) allowed.dropoff_address = patch.dropoff_address?.trim() || null
   if ('scheduled_at' in patch) allowed.scheduled_at = patch.scheduled_at || null
   if ('billing_number' in patch)
     allowed.billing_number = patch.billing_number?.trim() ? patch.billing_number.trim().slice(0, 16) : null

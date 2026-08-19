@@ -840,6 +840,8 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, 
   const [title, setTitle] = useState(c.title || '')
   const [port, setPort] = useState(c.port || '')
   const [vehicle, setVehicle] = useState(c.vehicle || '')
+  const [pickupAddress, setPickupAddress] = useState(c.pickup_address || '')
+  const [dropoffAddress, setDropoffAddress] = useState(c.dropoff_address || '')
   const [when, setWhen] = useState(toLocalInput(c.scheduled_at))
   const [amount, setAmount] = useState(c.value ?? '')
   const [sourceBoard, setSourceBoard] = useState(c.source_board || '')
@@ -853,7 +855,7 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, 
   // user-activation on some browsers.
   const { data: latestNote } = useQuery({ queryKey: ['jobNote', c.id], queryFn: () => fetchLatestJobNote(c.id) })
   const { data: photoUrl } = useQuery({ queryKey: ['jobPhoto', c.id], queryFn: () => fetchVehiclePhotoUrl(c.id) })
-  const hasDetails = c.pickup_address || c.dropoff_address || c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin || c.service_code || photoUrl
+  const hasDetails = c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin || c.service_code || photoUrl
 
   function handleShare(e) {
     stop(e)
@@ -868,6 +870,8 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, 
         title: title.trim() || null,
         port: port || null,
         vehicle: vehicle.trim() || null,
+        pickup_address: pickupAddress.trim() || null,
+        dropoff_address: dropoffAddress.trim() || null,
         scheduled_at: fromLocalInput(when),
         value: amount === '' ? null : amount,
         source_board: sourceBoard || null,
@@ -888,11 +892,32 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, 
       className="rounded-lg border border-accent bg-surface p-3 shadow-sm ring-2 ring-accent/30"
     >
       <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-1.5">
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Pickup</label>
+            <input
+              value={pickupAddress}
+              onChange={(e) => setPickupAddress(e.target.value)}
+              placeholder="Pickup address"
+              className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Drop-off</label>
+            <input
+              value={dropoffAddress}
+              onChange={(e) => setDropoffAddress(e.target.value)}
+              placeholder="Drop-off address"
+              className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+            />
+          </div>
+        </div>
+        {(pickupAddress.trim() !== (c.pickup_address || '') || dropoffAddress.trim() !== (c.dropoff_address || '')) && (
+          <p className="text-[10px] text-amber-600">Address changed — hit Save below, then Text driver / share booking sends the corrected one.</p>
+        )}
         {hasDetails && (
           <div className="space-y-0.5 rounded border border-line bg-canvas/50 p-2 text-[11px] text-muted">
             {c.service_code && <div>Service: <span className="capitalize text-ink">{c.service_code.replace(/_/g, ' ')}</span></div>}
-            {c.pickup_address && <div>Pickup: <span className="text-ink">{c.pickup_address}</span></div>}
-            {c.dropoff_address && <div>Drop-off: <span className="text-ink">{c.dropoff_address}</span></div>}
             {(c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin) && (
               <div>
                 Vehicle: <span className="text-ink">
