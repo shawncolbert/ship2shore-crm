@@ -162,3 +162,17 @@ body {
     radial-gradient(900px 500px at -10% 110%, rgba(212, 175, 106, 0.07), transparent 60%),
     var(--color-canvas);
 }
+
+/* Native <input type="date"/"time"/"datetime-local"> picker icons (the
+   calendar/clock glyph, e.g. the pipeline card's "Scheduled" field) render
+   as a dark glyph by default and nearly disappear against a dark
+   background -- invert it in both places that render dark regardless of
+   the light/dark toggle: the dark mode itself, and Dispatch Suite, which
+   is unconditionally dark. Clicking that invisible icon is how the picker
+   opens at all, so this isn't cosmetic -- without it the field looks
+   broken, not just hard to read. */
+:root[data-mode="dark"] input::-webkit-calendar-picker-indicator,
+:root[data-preset="dispatch_suite"] input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+}
