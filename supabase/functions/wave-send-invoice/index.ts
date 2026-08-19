@@ -137,7 +137,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: opp, error: oppErr } = await supabase
     .from("opportunities")
-    .select("id, org_id, title, service_code, value, contact_id, contacts(id, full_name, email, wave_customer_id)")
+    .select("id, org_id, title, service_code, value, contact_id, contacts!contact_id(id, full_name, email, wave_customer_id)")
     .eq("id", opportunityId)
     .maybeSingle();
   if (oppErr || !opp) return json({ error: "Opportunity not found." }, 404);

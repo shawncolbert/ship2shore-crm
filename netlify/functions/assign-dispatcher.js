@@ -34,7 +34,7 @@ export const handler = async (event) => {
 
     const { data: opp, error: oppErr } = await admin
       .from('opportunities')
-      .select('id, title, value, vehicle, vehicle_year, vehicle_make, vehicle_model, vehicle_vin, pickup_address, dropoff_address, contact_id, contacts(full_name, phone, email)')
+      .select('id, title, value, vehicle, vehicle_year, vehicle_make, vehicle_model, vehicle_vin, pickup_address, dropoff_address, contact_id, contacts!contact_id(full_name, phone, email)')
       .eq('id', opportunityId)
       .eq('org_id', orgId)
       .maybeSingle()

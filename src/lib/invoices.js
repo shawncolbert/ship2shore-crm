@@ -315,7 +315,7 @@ export async function fetchOpportunityForInvoice(opportunityId) {
     .select(`
       id, title, value, billing_number, contact_id,
       pickup_address, dropoff_address, vehicle, vehicle_year, vehicle_make, vehicle_model, vehicle_vin,
-      contacts(id, full_name, company, phone, email, custom_fields)
+      contacts!contact_id(id, full_name, company, phone, email, custom_fields)
     `)
     .eq('id', opportunityId)
     .maybeSingle()

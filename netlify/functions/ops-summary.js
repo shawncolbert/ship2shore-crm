@@ -71,7 +71,7 @@ export const handler = async (event) => {
     // Active jobs (everything not cancelled).
     const { data: opps, error } = await admin
       .from('opportunities')
-      .select('value, stage_id, cleared, paid, port, billing_number, status, updated_at, contacts(full_name, company), title')
+      .select('value, stage_id, cleared, paid, port, billing_number, status, updated_at, contacts!contact_id(full_name, company), title')
       .eq('org_id', org)
       .neq('status', 'cancelled')
     if (error) throw error

@@ -682,7 +682,7 @@ export async function fetchOpenPipelineJobs() {
 
   const { data, error } = await supabase
     .from('opportunities')
-    .select('id, title, value, stage_id, status, scheduled_at, contact_id, contacts(full_name)')
+    .select('id, title, value, stage_id, status, scheduled_at, contact_id, contacts!contact_id(full_name)')
     .neq('status', 'cancelled')
     .order('scheduled_at', { ascending: true, nullsFirst: false })
   if (error) throw error
@@ -701,7 +701,7 @@ export async function fetchClosedJobs(days) {
   const since = new Date(Date.now() - days * 864e5).toISOString()
   const { data, error } = await supabase
     .from('opportunity_stage_changes')
-    .select('opportunity_id, to_stage, changed_at, opportunities(id, title, value, contact_id, contacts(full_name))')
+    .select('opportunity_id, to_stage, changed_at, opportunities(id, title, value, contact_id, contacts!contact_id(full_name))')
     .in('to_stage', ['Completed', 'Paid'])
     .gte('changed_at', since)
     .order('changed_at', { ascending: false })
@@ -740,7 +740,7 @@ export async function fetchNewLeadsList(days) {
 export async function fetchJobsByStage(stageId, stageName) {
   const { data, error } = await supabase
     .from('opportunities')
-    .select('id, title, value, scheduled_at, contact_id, contacts(full_name)')
+    .select('id, title, value, scheduled_at, contact_id, contacts!contact_id(full_name)')
     .eq('stage_id', stageId)
     .neq('status', 'cancelled')
     .order('scheduled_at', { ascending: true, nullsFirst: false })
@@ -847,7 +847,7 @@ export async function fetchSignedUrls(filePaths, expiresIn = 3600) {
 export async function fetchNewCustomerFiles() {
   const { data, error } = await supabase
     .from('attachments')
-    .select('id, file_name, created_at, contact_id, contacts(full_name)')
+    .select('id, file_name, created_at, contact_id, contacts!contact_id(full_name)')
     .is('uploaded_by', null)
     .is('viewed_at', null)
     .order('created_at', { ascending: false })
@@ -941,7 +941,7 @@ export async function fetchCompletionVideo(opportunityId) {
 export async function fetchReviewDocuments() {
   const { data, error } = await supabase
     .from('attachments')
-    .select('id, file_name, file_path, kind, bl_number, size_bytes, created_at, contact_id, contacts(full_name)')
+    .select('id, file_name, file_path, kind, bl_number, size_bytes, created_at, contact_id, contacts!contact_id(full_name)')
     .eq('source', 'gmail_auto')
     .eq('needs_review', true)
     .order('created_at', { ascending: false })
@@ -953,7 +953,7 @@ export async function fetchReviewDocuments() {
 export async function fetchLinkableJobs() {
   const { data, error } = await supabase
     .from('opportunities')
-    .select('id, title, billing_number, bl_number, contact_id, contacts(full_name)')
+    .select('id, title, billing_number, bl_number, contact_id, contacts!contact_id(full_name)')
     .neq('status', 'cancelled')
     .order('created_at', { ascending: false })
   if (error) throw error
