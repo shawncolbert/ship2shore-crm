@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -9,6 +9,7 @@ import {
   fetchPricingZones, fetchPricingSurcharges,
 } from '../lib/supabase'
 import { buildBookingSummary, shareBooking } from '../lib/shareBooking'
+import { MAPBOX_TOKEN, mapboxSuggest } from '../lib/mapbox'
 import NewContactModal from '../components/NewContactModal'
 import Tooltip from '../components/Tooltip'
 
@@ -590,12 +591,59 @@ function CompletionVideoField({ opportunityId, contactId, onInteractStart, onInt
   )
 }
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
+// Same suggest-as-you-type behavior as PublicBooking.jsx's pickup/dropoff
+// fields, sized down to fit the compact pipeline card. Picking a suggestion
+// fills the field with Mapbox's full formatted address; typing freely and
+// never picking one still just saves whatever text is there, same as
+// before this existed.
+function AddressAutocompleteField({ label, value, onChange }) {
+  const [suggestions, setSuggestions] = useState([])
+  const [open, setOpen] = useState(false)
 
-// Same Mapbox geocoding endpoint PublicBooking.jsx uses for its address
-// autocomplete, but here we already have a plain saved address string (no
-// pick-a-suggestion UI on the pipeline card) so this just takes the top
-// match's coordinates directly.
+  useEffect(() => {
+    if (value.trim().length < 3) { setSuggestions([]); return }
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      mapboxSuggest(value, controller.signal).then(setSuggestions).catch(() => {})
+    }, 250)
+    return () => { clearTimeout(timer); controller.abort() }
+  }, [value])
+
+  return (
+    <div className="relative">
+      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</label>
+      <input
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder={`${label} address`}
+        autoComplete="off"
+        className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+      />
+      {open && suggestions.length > 0 && (
+        <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded border border-line bg-surface text-xs shadow-lg">
+          {suggestions.map((s) => (
+            <li key={s.id}>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { onChange(s.place_name); setSuggestions([]); setOpen(false) }}
+                className="block w-full px-2 py-1.5 text-left text-ink hover:bg-canvas"
+              >
+                {s.place_name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// For the interstate estimator's mileage lookup -- takes a saved address
+// string straight to coordinates, no suggestion picking involved (that's
+// what AddressAutocompleteField below is for, on the actual input fields).
 async function mapboxGeocodeOne(address) {
   if (!MAPBOX_TOKEN || !address?.trim()) return null
   const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${MAPBOX_TOKEN}&autocomplete=false&country=us&types=address,place&limit=1`
@@ -893,24 +941,8 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, 
     >
       <div className="space-y-2">
         <div className="grid grid-cols-2 gap-1.5">
-          <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Pickup</label>
-            <input
-              value={pickupAddress}
-              onChange={(e) => setPickupAddress(e.target.value)}
-              placeholder="Pickup address"
-              className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Drop-off</label>
-            <input
-              value={dropoffAddress}
-              onChange={(e) => setDropoffAddress(e.target.value)}
-              placeholder="Drop-off address"
-              className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-            />
-          </div>
+          <AddressAutocompleteField label="Pickup" value={pickupAddress} onChange={setPickupAddress} />
+          <AddressAutocompleteField label="Drop-off" value={dropoffAddress} onChange={setDropoffAddress} />
         </div>
         {(pickupAddress.trim() !== (c.pickup_address || '') || dropoffAddress.trim() !== (c.dropoff_address || '')) && (
           <p className="text-[10px] text-amber-600">Address changed — hit Save below, then Text driver / share booking sends the corrected one.</p>

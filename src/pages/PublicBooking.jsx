@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
+import { MAPBOX_TOKEN, mapboxSuggest } from '../lib/mapbox'
 
 async function callBooking(action, orgSlug, ref, payload = {}) {
   const res = await fetch('/.netlify/functions/public-booking', {
@@ -85,17 +86,6 @@ function compressImage(file, maxDim = 1600, quality = 0.8) {
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that photo.')) }
     img.src = url
   })
-}
-
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
-
-async function mapboxSuggest(query, signal) {
-  if (!MAPBOX_TOKEN || query.trim().length < 3) return []
-  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&autocomplete=true&country=us&types=address,place&limit=5`
-  const res = await fetch(url, { signal })
-  if (!res.ok) return []
-  const data = await res.json()
-  return data.features || []
 }
 
 // Straight-line distance is useless for a driving quote -- calls Mapbox
