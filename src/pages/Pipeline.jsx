@@ -568,7 +568,7 @@ function CompletionVideoField({ opportunityId, contactId, onInteractStart, onInt
           <select
             value={gateStatus}
             onChange={(e) => setGateStatus(e.target.value)}
-            className="w-full rounded border border-line bg-white px-2 py-1 text-xs outline-none focus:border-accent"
+            className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent"
           >
             <option value="">Gate location — required</option>
             <option value="outside_gate">Outside gate (safe to auto-post)</option>
@@ -678,7 +678,7 @@ function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
       <select
         value={vehicleType}
         onChange={(e) => setVehicleType(e.target.value)}
-        className="w-full rounded border border-line bg-white px-2 py-1 text-xs outline-none focus:border-accent"
+        className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent"
       >
         {VEHICLE_TYPES.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
       </select>
@@ -686,7 +686,7 @@ function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
         type="button"
         onClick={calcMileage}
         disabled={milesLoading || !pickup || !dropoff}
-        className="w-full rounded border border-line bg-white px-2 py-1 text-[11px] font-semibold text-ink hover:bg-canvas disabled:opacity-50"
+        className="w-full rounded border border-line bg-canvas px-2 py-1 text-[11px] font-semibold text-ink hover:bg-canvas/50 disabled:opacity-50"
       >
         {milesLoading ? 'Calculating…' : miles != null ? `${Math.round(miles)} mi — recalculate` : 'Calculate driving distance'}
       </button>
@@ -733,9 +733,9 @@ function PriceEstimator({ pickup, dropoff, onUseAmount }) {
         <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted">Price estimator (staff only)</h4>
         <div className="flex overflow-hidden rounded border border-line text-[10px] font-semibold">
           <button type="button" onClick={() => setMode('zone')}
-            className={`px-2 py-0.5 ${mode === 'zone' ? 'bg-accent text-ink' : 'bg-white text-muted'}`}>Zone</button>
+            className={`px-2 py-0.5 ${mode === 'zone' ? 'bg-accent text-ink' : 'bg-canvas text-muted'}`}>Zone</button>
           <button type="button" onClick={() => setMode('interstate')}
-            className={`px-2 py-0.5 ${mode === 'interstate' ? 'bg-accent text-ink' : 'bg-white text-muted'}`}>Interstate</button>
+            className={`px-2 py-0.5 ${mode === 'interstate' ? 'bg-accent text-ink' : 'bg-canvas text-muted'}`}>Interstate</button>
         </div>
       </div>
       {mode === 'zone'
@@ -778,12 +778,11 @@ function ZoneEstimator({ onUseAmount }) {
   }
 
   return (
-    <div onClick={stop} className="space-y-1.5 rounded border border-line bg-canvas/50 p-2">
-      <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted">Price estimator (staff only)</h4>
+    <div onClick={stop} className="space-y-1.5">
       <select
         value={zoneId}
         onChange={(e) => setZoneId(e.target.value)}
-        className="w-full rounded border border-line bg-white px-2 py-1 text-xs outline-none focus:border-accent"
+        className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent"
       >
         <option value="">Match to a zone…</option>
         {(zones || []).map((z) => (
@@ -799,7 +798,7 @@ function ZoneEstimator({ onUseAmount }) {
             <input
               type="number" min="1" max="20" value={vehicleCount}
               onChange={(e) => setVehicleCount(e.target.value)}
-              className="w-14 rounded border border-line bg-white px-1.5 py-0.5 text-xs outline-none focus:border-accent"
+              className="w-14 rounded border border-line bg-canvas px-1.5 py-0.5 text-xs text-ink outline-none focus:border-accent"
             />
           </div>
           {(surcharges || []).length > 0 && (
