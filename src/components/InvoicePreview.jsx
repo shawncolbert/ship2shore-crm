@@ -70,14 +70,22 @@ export default function InvoicePreview({ businessInfo, invoice, lineItems, payme
           {invoice?.bill_to_phone && <p className="mt-1 text-slate-600">{invoice.bill_to_phone}</p>}
           {invoice?.bill_to_email && <p className="text-slate-600">{invoice.bill_to_email}</p>}
         </div>
-        <div>
+        <div className="space-y-3">
+          {(invoice?.ship_from_name || invoice?.ship_from_address) && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ship from</p>
+              {invoice?.ship_from_name && <p className="font-semibold text-slate-800">{invoice.ship_from_name}</p>}
+              {invoice?.ship_from_address && <p className="whitespace-pre-line text-slate-600">{invoice.ship_from_address}</p>}
+              {invoice?.ship_from_phone && <p className="mt-1 text-slate-600">{invoice.ship_from_phone}</p>}
+            </div>
+          )}
           {(invoice?.ship_to_name || invoice?.ship_to_address) && (
-            <>
+            <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ship to</p>
               {invoice?.ship_to_name && <p className="font-semibold text-slate-800">{invoice.ship_to_name}</p>}
               {invoice?.ship_to_address && <p className="whitespace-pre-line text-slate-600">{invoice.ship_to_address}</p>}
               {invoice?.ship_to_phone && <p className="mt-1 text-slate-600">{invoice.ship_to_phone}</p>}
-            </>
+            </div>
           )}
         </div>
         <div className="space-y-1">

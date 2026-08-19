@@ -27,8 +27,18 @@ const money = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currenc
 const EMPTY_FIELDS = {
   contact_id: '', po_number: '',
   bill_to_name: '', bill_to_address: '', bill_to_phone: '', bill_to_email: '',
+  ship_from_name: '', ship_from_address: '', ship_from_phone: '',
   ship_to_name: '', ship_to_address: '', ship_to_phone: '',
   invoice_date: new Date().toISOString().slice(0, 10), due_date: '', notes: '',
+}
+
+// Whichever vehicle detail the job actually has -- structured year/make/
+// model from PublicBooking's form, or just the flat text a landing-page
+// lead came in with -- appended onto the line item so the invoice says
+// what's being shipped, not just a generic job title.
+function vehicleDetail(opp) {
+  const structured = [opp.vehicle_year, opp.vehicle_make, opp.vehicle_model].filter(Boolean).join(' ')
+  return structured || opp.vehicle || ''
 }
 const blankLineItem = () => ({ service_id: '', description: '', quantity: 1, unit_price: 0 })
 
@@ -89,6 +99,8 @@ export default function InvoiceDetail() {
         po_number: inv.po_number || '',
         bill_to_name: inv.bill_to_name || '', bill_to_address: inv.bill_to_address || '',
         bill_to_phone: inv.bill_to_phone || '', bill_to_email: inv.bill_to_email || '',
+        ship_from_name: inv.ship_from_name || '', ship_from_address: inv.ship_from_address || '',
+        ship_from_phone: inv.ship_from_phone || '',
         ship_to_name: inv.ship_to_name || '', ship_to_address: inv.ship_to_address || '',
         ship_to_phone: inv.ship_to_phone || '',
         invoice_date: inv.invoice_date || EMPTY_FIELDS.invoice_date,
@@ -109,13 +121,22 @@ export default function InvoiceDetail() {
   useEffect(() => {
     if (sourceOpportunity && prefilledFrom !== sourceOpportunity.id) {
       const contact = sourceOpportunity.contacts
+      const detail = vehicleDetail(sourceOpportunity)
       setFields((f) => ({
         ...f,
         contact_id: sourceOpportunity.contact_id || '',
         po_number: sourceOpportunity.billing_number || '',
         ...(contact ? fillBillToFromContact(contact) : {}),
+        // Pickup is where we're shipping it from, drop-off is where it's
+        // going -- Ship To already existed for the destination, Ship From
+        // is the new half of that pair for the origin.
+        ship_from_address: sourceOpportunity.pickup_address || '',
+        ship_to_address: sourceOpportunity.dropoff_address || '',
       }))
-      setLineItems([{ service_id: '', description: sourceOpportunity.title || '', quantity: 1, unit_price: Number(sourceOpportunity.value) || 0 }])
+      setLineItems([{
+        service_id: '', quantity: 1, unit_price: Number(sourceOpportunity.value) || 0,
+        description: [sourceOpportunity.title, detail].filter(Boolean).join(' — '),
+      }])
       setPrefilledFrom(sourceOpportunity.id)
     }
   }, [sourceOpportunity, prefilledFrom])
@@ -345,6 +366,13 @@ export default function InvoiceDetail() {
                 <Field label="Phone"><input value={fields.bill_to_phone} onChange={set('bill_to_phone')} className={input} /></Field>
                 <Field label="Email"><input type="email" value={fields.bill_to_email} onChange={set('bill_to_email')} className={input} /></Field>
               </div>
+            </section>
+
+            <section className={card}>
+              <h2 className="text-sm font-semibold text-ink">Ship from (optional)</h2>
+              <Field label="Name"><input value={fields.ship_from_name} onChange={set('ship_from_name')} className={input} /></Field>
+              <Field label="Address"><textarea value={fields.ship_from_address} onChange={set('ship_from_address')} rows={2} className={input} /></Field>
+              <Field label="Phone"><input value={fields.ship_from_phone} onChange={set('ship_from_phone')} className={input} /></Field>
             </section>
 
             <section className={card}>

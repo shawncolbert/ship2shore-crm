@@ -98,6 +98,9 @@ export async function createInvoice({ fields, lineItems }) {
       ship_to_name: fields.ship_to_name?.trim() || null,
       ship_to_address: fields.ship_to_address?.trim() || null,
       ship_to_phone: fields.ship_to_phone?.trim() || null,
+      ship_from_name: fields.ship_from_name?.trim() || null,
+      ship_from_address: fields.ship_from_address?.trim() || null,
+      ship_from_phone: fields.ship_from_phone?.trim() || null,
       invoice_date: fields.invoice_date || new Date().toISOString().slice(0, 10),
       due_date: fields.due_date || null,
       notes: fields.notes?.trim() || null,
@@ -134,6 +137,9 @@ export async function updateInvoice(id, { fields, lineItems }) {
       ship_to_name: fields.ship_to_name?.trim() || null,
       ship_to_address: fields.ship_to_address?.trim() || null,
       ship_to_phone: fields.ship_to_phone?.trim() || null,
+      ship_from_name: fields.ship_from_name?.trim() || null,
+      ship_from_address: fields.ship_from_address?.trim() || null,
+      ship_from_phone: fields.ship_from_phone?.trim() || null,
       invoice_date: fields.invoice_date || new Date().toISOString().slice(0, 10),
       due_date: fields.due_date || null,
       notes: fields.notes?.trim() || null,
@@ -306,7 +312,11 @@ export async function fetchServicesForInvoice() {
 export async function fetchOpportunityForInvoice(opportunityId) {
   const { data, error } = await supabase
     .from('opportunities')
-    .select('id, title, value, billing_number, contact_id, contacts(id, full_name, company, phone, email, custom_fields)')
+    .select(`
+      id, title, value, billing_number, contact_id,
+      pickup_address, dropoff_address, vehicle, vehicle_year, vehicle_make, vehicle_model, vehicle_vin,
+      contacts(id, full_name, company, phone, email, custom_fields)
+    `)
     .eq('id', opportunityId)
     .maybeSingle()
   if (error) throw error
