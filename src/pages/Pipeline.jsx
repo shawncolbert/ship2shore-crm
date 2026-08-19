@@ -613,12 +613,6 @@ async function mapboxDrivingMiles(from, to) {
   return typeof meters === 'number' ? meters / 1609.344 : null
 }
 
-async function fetchDieselPrice() {
-  const res = await fetch('/.netlify/functions/diesel-price')
-  if (!res.ok) return { price: 4.0, source: 'baseline-fallback' }
-  return res.json()
-}
-
 const VEHICLE_TYPES = [
   { value: 'sedan', label: 'Sedan / car' },
   { value: 'suv', label: 'SUV (+$175)' },
@@ -628,26 +622,22 @@ const VEHICLE_TYPES = [
 const INTERSTATE_MIN_MI = 250
 const INTERSTATE_RATE_LOW = 1.5
 const INTERSTATE_RATE_HIGH = 2.5
-const FUEL_BASELINE = 4.0
 
 // Real driver quotes you gave me: Long Beach→Vegas (~300 mi) ran $450-$750,
 // and a 670 mi run cost $1,600 -- both land in this same $1.50-$2.50/mi
 // band despite the mileage gap, so this is a flat rate rather than
 // Gemini's original multi-tier taper (no long-haul reference point yet to
 // justify tapering further out -- revisit once a real 2,000+ mi quote
-// comes in). Fuel % applies to the line-haul only, before the flat
-// SUV/truck surcharge, since accessorial fees don't move with diesel price.
-function interstateFloor({ miles, vehicleType, dieselPrice }) {
+// comes in). No fuel adjustment -- not worth the EIA dependency for the
+// accuracy it'd add on top of a driver-sourced rate that already has fuel
+// baked in.
+function interstateFloor({ miles, vehicleType }) {
   let lineHaulMin = miles * INTERSTATE_RATE_LOW
   let lineHaulMax = miles * INTERSTATE_RATE_HIGH
   if (vehicleType === 'enclosed') { lineHaulMin *= 1.5; lineHaulMax *= 1.5 }
 
-  const fuelPct = Math.max(0, ((dieselPrice - FUEL_BASELINE) / 0.5) * 2.5)
-  lineHaulMin *= 1 + fuelPct / 100
-  lineHaulMax *= 1 + fuelPct / 100
-
   const flatSurcharge = vehicleType === 'suv' ? 175 : vehicleType === 'truck' ? 250 : 0
-  return { floorMin: lineHaulMin + flatSurcharge, floorMax: lineHaulMax + flatSurcharge, fuelPct }
+  return { floorMin: lineHaulMin + flatSurcharge, floorMax: lineHaulMax + flatSurcharge }
 }
 
 // Your locked formula: at least 20% margin, or a flat $150, whichever's bigger.
@@ -660,7 +650,6 @@ function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
   const [miles, setMiles] = useState(null)
   const [milesLoading, setMilesLoading] = useState(false)
   const [milesErr, setMilesErr] = useState('')
-  const { data: diesel } = useQuery({ queryKey: ['dieselPrice'], queryFn: fetchDieselPrice, staleTime: 1000 * 60 * 60 })
 
   const calcMileage = async () => {
     setMilesLoading(true); setMilesErr(''); setMiles(null)
@@ -679,7 +668,7 @@ function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
 
   let floorMin = null, floorMax = null, targetMin = null, targetMax = null
   if (miles != null) {
-    const f = interstateFloor({ miles, vehicleType, dieselPrice: diesel?.price ?? FUEL_BASELINE })
+    const f = interstateFloor({ miles, vehicleType })
     floorMin = f.floorMin; floorMax = f.floorMax
     targetMin = applyMargin(floorMin); targetMax = applyMargin(floorMax)
   }
@@ -709,7 +698,6 @@ function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
         <>
           <p className="text-[10px] text-muted">
             Floor ${Math.round(floorMin).toLocaleString()}–${Math.round(floorMax).toLocaleString()}
-            {diesel?.source === 'eia' ? ` · diesel $${diesel.price.toFixed(2)}` : ' · fuel adj. unavailable, using baseline'}
           </p>
           <div className="flex items-center justify-between rounded bg-accent/10 px-2 py-1.5">
             <span className="text-xs font-semibold text-ink">
