@@ -15,6 +15,14 @@ export function buildBookingSummary({
   if (customerPhone) lines.push(`Phone: ${customerPhone}`)
   if (pickupAddress) lines.push(`Pickup: ${pickupAddress}`)
   if (dropoffAddress) lines.push(`Drop-off: ${dropoffAddress}`)
+  // Same Google/Apple Maps directions links public-booking.js sends in its
+  // first automatic notification -- built fresh from whatever pickup/
+  // dropoff is passed in here, so re-sharing after correcting an address
+  // on the pipeline card links to the corrected route, not the original one.
+  if (pickupAddress && dropoffAddress) {
+    lines.push(`Directions (Google Maps): https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(pickupAddress)}&destination=${encodeURIComponent(dropoffAddress)}`)
+    lines.push(`Directions (Apple Maps): https://maps.apple.com/?saddr=${encodeURIComponent(pickupAddress)}&daddr=${encodeURIComponent(dropoffAddress)}&dirflg=d`)
+  }
 
   const vehicleWords = [vehicleYear, vehicleMake, vehicleModel].filter(Boolean).join(' ')
   const vehicleLine = [vehicleWords, vehicleVin ? `VIN ${vehicleVin}` : ''].filter(Boolean).join(', ')
