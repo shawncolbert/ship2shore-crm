@@ -180,6 +180,10 @@ function FunnelEditor({ funnelId, onClose, onSaved }) {
     if (!name.trim()) { setErr('Funnel name is required'); return }
     if (steps.length < 2) { setErr('At least 2 steps required'); return }
 
+    // Drop any field row left blank (clicked "+ Add field" but never typed
+    // a name) -- otherwise it ships as a real, unlabeled input on the public form.
+    const cleanSteps = steps.map((s) => ({ ...s, fields: (s.fields || []).filter((f) => f.trim()) }))
+
     setLoading(true)
     setErr('')
     try {
@@ -190,7 +194,7 @@ function FunnelEditor({ funnelId, onClose, onSaved }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token || ''}`,
         },
-        body: JSON.stringify({ funnelId, name, description, steps, theme }),
+        body: JSON.stringify({ funnelId, name, description, steps: cleanSteps, theme }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to save funnel')
@@ -204,6 +208,24 @@ function FunnelEditor({ funnelId, onClose, onSaved }) {
 
   const addStep = () => setSteps([...steps, { title: `Step ${steps.length + 1}`, description: '', fields: [] }])
   const removeStep = (i) => setSteps(steps.filter((_, idx) => idx !== i))
+
+  // A field is just its own key (e.g. "vehicle_year") -- the public form
+  // derives its label straight from that ("vehicle year"), so typing here
+  // IS the whole edit. Slugified live, same pattern as the funnel/page slug
+  // inputs elsewhere in the app, so spaces/caps don't produce a key that
+  // silently fails to match what the public renderer expects.
+  const fieldSlug = (s) =>
+    String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  const addField = (stepIndex) =>
+    setSteps((prev) => prev.map((s, i) => (i !== stepIndex ? s : { ...s, fields: [...(s.fields || []), ''] })))
+  const updateField = (stepIndex, fieldIndex, value) =>
+    setSteps((prev) => prev.map((s, i) => (
+      i !== stepIndex ? s : { ...s, fields: s.fields.map((f, fi) => (fi === fieldIndex ? value : f)) }
+    )))
+  const removeField = (stepIndex, fieldIndex) =>
+    setSteps((prev) => prev.map((s, i) => (
+      i !== stepIndex ? s : { ...s, fields: s.fields.filter((_, fi) => fi !== fieldIndex) }
+    )))
 
   if (prefilling) {
     return (
@@ -283,6 +305,34 @@ function FunnelEditor({ funnelId, onClose, onSaved }) {
                 className="rounded px-2 py-1 text-xs text-port hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Remove
+              </button>
+            </div>
+
+            <div className="mt-2 space-y-1.5 border-t border-line pt-2">
+              <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted">Fields on this step</h4>
+              {(!step.fields || step.fields.length === 0) && (
+                <p className="text-[11px] text-muted">No fields yet — visitors will see the title/description above with nothing to fill in.</p>
+              )}
+              {(step.fields || []).map((f, fi) => (
+                <div key={fi} className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={f}
+                    onChange={(e) => updateField(i, fi, fieldSlug(e.target.value))}
+                    placeholder="e.g. vehicle_year"
+                    className="flex-1 rounded border border-line bg-white px-2 py-1 font-[family-name:var(--font-mono)] text-xs outline-none focus:border-accent"
+                  />
+                  <button
+                    onClick={() => removeField(i, fi)}
+                    title="Remove field"
+                    className="rounded px-1.5 py-1 text-xs text-port hover:bg-red-50"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button onClick={() => addField(i)} className="text-[11px] font-medium text-accent hover:underline">
+                + Add field
               </button>
             </div>
           </div>
