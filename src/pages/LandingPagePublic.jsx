@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import LandingBlockView, { Prose } from '../components/LandingBlockView'
-import { getPublicTheme, accentTint } from '../lib/publicThemes'
+import { getPublicTheme, accentTint, PUBLIC_INK } from '../lib/publicThemes'
 
 async function callLandingPageApi(payload) {
   const res = await fetch('/.netlify/functions/public-landing-page', {
@@ -32,6 +32,7 @@ export default function LandingPagePublic() {
     // old position and the visitor lands above the fields.
     requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
   }, [])
+  const closeLead = useCallback(() => setLeadOpen(false), [])
 
   const bookingHref = data?.bookingOrgSlug ? `/book/${data.bookingOrgSlug}` : '/book'
 
@@ -67,7 +68,7 @@ export default function LandingPagePublic() {
         <div key={block.id || i}>
           {block.type === 'cta'
             ? (i === leadIndex
-                ? <LeadAnchor block={block} slug={slug} bookingHref={bookingHref} formRef={formRef} open={leadOpen} onOpen={openLead} accent={accent} accentText={accentText} />
+                ? <LeadAnchor block={block} slug={slug} bookingHref={bookingHref} formRef={formRef} open={leadOpen} onOpen={openLead} onClose={closeLead} accent={accent} accentText={accentText} />
                 : <LandingBlockView block={block} onCta={handleCta} theme={data.theme} slug={slug} />)
             : <LandingBlockView block={block} onCta={handleCta} theme={data.theme} slug={slug} />}
         </div>
@@ -77,7 +78,7 @@ export default function LandingPagePublic() {
 }
 
 // The one CTA that actually hosts the form. Others just scroll here.
-function LeadAnchor({ block, slug, bookingHref, formRef, open, onOpen, accent, accentText }) {
+function LeadAnchor({ block, slug, bookingHref, formRef, open, onOpen, onClose, accent, accentText }) {
   if (block.target === 'booking') {
     return (
       <Prose>
@@ -99,14 +100,20 @@ function LeadAnchor({ block, slug, bookingHref, formRef, open, onOpen, accent, a
             {block.label || 'Contact us'}
           </button>
         ) : (
-          <LeadForm slug={slug} accent={accent} accentText={accentText} />
+          <LeadForm slug={slug} accent={accent} accentText={accentText} onCancel={onClose} />
         )}
       </div>
     </Prose>
   )
 }
 
-function LeadForm({ slug, accent, accentText }) {
+// Same dark-panel language as the digital business card's lead form
+// (transparent, white-bordered inputs on a navy panel) so a visitor who's
+// seen both feels the same product -- themed with this page's own accent
+// color instead of the card's fixed teal, and with a cancel affordance
+// since this form pops open over page content rather than living in a
+// scrollable card body.
+function LeadForm({ slug, accent, accentText, onCancel }) {
   const [form, setForm] = useState({ full_name: '', email: '', phone: '', notes: '' })
   const [sending, setSending] = useState(false)
   const [err, setErr] = useState('')
@@ -130,43 +137,50 @@ function LeadForm({ slug, accent, accentText }) {
 
   if (done) {
     return (
-      <div className="rounded-xl border-2 p-6 text-center" style={{ borderColor: accent, background: accentTint(accent) }}>
+      <div className="rounded-2xl border-2 p-6 text-center" style={{ borderColor: accent, background: accentTint(accent) }}>
         <p className="font-semibold text-gray-900">Thanks — we'll be in touch shortly.</p>
       </div>
     )
   }
 
   const focusStyle = { '--tw-ring-color': accent }
-  const inputClass = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2'
+  const inputClass = 'w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-white/30 focus:ring-2'
 
   return (
-    <form onSubmit={submit} className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-5">
-      {err && <p className="text-sm text-red-600">{err}</p>}
+    <form onSubmit={submit} className="space-y-3 rounded-2xl p-5" style={{ background: PUBLIC_INK }}>
+      {err && <p className="text-sm font-medium text-red-400">{err}</p>}
       <div>
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Name</label>
-        <input className={inputClass} style={focusStyle}
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-white/40">Name</label>
+        <input className={inputClass} style={focusStyle} placeholder="Your name"
           value={form.full_name} onChange={(e) => set('full_name', e.target.value)} required />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Email</label>
-        <input type="email" className={inputClass} style={focusStyle}
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-white/40">Email</label>
+        <input type="email" className={inputClass} style={focusStyle} placeholder="you@example.com"
           value={form.email} onChange={(e) => set('email', e.target.value)} required />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Phone (optional)</label>
-        <input className={inputClass} style={focusStyle}
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-white/40">Phone (optional)</label>
+        <input className={inputClass} style={focusStyle} placeholder="Phone"
           value={form.phone} onChange={(e) => set('phone', e.target.value)} />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Message (optional)</label>
-        <textarea rows={3} className={inputClass} style={focusStyle}
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-white/40">Message (optional)</label>
+        <textarea rows={3} className={inputClass} style={focusStyle} placeholder="Anything we should know?"
           value={form.notes} onChange={(e) => set('notes', e.target.value)} />
       </div>
-      <button type="submit" disabled={sending}
-        style={{ background: accent, color: accentText }}
-        className="w-full rounded-lg px-4 py-3 text-sm font-bold hover:brightness-95 disabled:opacity-50">
-        {sending ? 'Sending…' : 'Send'}
-      </button>
+      <div className="flex gap-2 pt-1">
+        {onCancel && (
+          <button type="button" onClick={onCancel} className="flex-1 rounded-lg py-2.5 text-xs font-semibold text-white/50 hover:text-white/70">
+            Cancel
+          </button>
+        )}
+        <button type="submit" disabled={sending}
+          style={{ background: accent, color: accentText }}
+          className="flex-1 rounded-lg px-4 py-2.5 text-sm font-bold hover:brightness-95 disabled:opacity-50">
+          {sending ? 'Sending…' : 'Send'}
+        </button>
+      </div>
     </form>
   )
 }

@@ -32,15 +32,18 @@ async function submitLead(payload) {
   // A pasted custom_html block's own <form> may use different field names
   // than the generic LeadForm ("name" instead of "full_name") -- accept
   // either. Standard honeypot convention: a hidden "bot-field" a real
-  // visitor never sees or fills in; if it's non-empty, this is a bot --
-  // report success without creating anything, same as most spam filters do
-  // (an error response just teaches the bot to adapt).
+  // visitor never sees or fills in. We used to drop the submission outright
+  // when it was non-empty, but mobile autofill / password-manager
+  // extensions can populate any empty text input on a form -- including
+  // ones hidden via display:none on a parent -- so that false-positived
+  // real leads into the void with zero trace. Flag it instead: still create
+  // the lead, just marked for a human to sanity-check.
   const {
     slug, email, phone, notes,
     pickup_location, delivery_location, vehicle, ship_date, condition, trailer_type,
   } = payload
   const full_name = payload.full_name || payload.name
-  if (payload['bot-field']) return { status: 200, body: { ok: true } }
+  const suspectedBot = Boolean(payload['bot-field'])
   if (!slug || !full_name || !email) {
     return { status: 400, body: { error: 'Missing required fields.' } }
   }
@@ -102,6 +105,7 @@ async function submitLead(payload) {
   // column (ship date, running/non-running, trailer type) -- kept as a note
   // on the contact rather than dropped, alongside any free-text message.
   const extraLines = [
+    suspectedBot ? '⚠️ Honeypot field was filled — please verify this is a real lead before contacting.' : null,
     ship_date ? `Target ship date: ${ship_date}` : null,
     condition ? `Vehicle condition: ${condition}` : null,
     trailer_type ? `Trailer type: ${trailer_type}` : null,

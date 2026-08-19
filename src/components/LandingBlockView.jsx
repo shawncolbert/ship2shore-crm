@@ -170,15 +170,18 @@ function CustomHtml({ block, slug }) {
 
     const onSubmit = async (e) => {
       e.preventDefault()
-      const data = Object.fromEntries(new FormData(form).entries())
-      // Standard honeypot convention -- a real visitor never fills this in.
-      if (data['bot-field']) return
-
-      const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]')
-      const originalLabel = submitBtn?.textContent
-      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Sending…' }
-
+      let submitBtn, originalLabel
       try {
+        const data = Object.fromEntries(new FormData(form).entries())
+
+        submitBtn = form.querySelector('button[type="submit"], input[type="submit"]')
+        originalLabel = submitBtn?.textContent
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Sending…' }
+
+        // Honeypot is server-enforced (flagged for review, not dropped) --
+        // mobile autofill / password managers can populate a hidden field
+        // on a real visitor's form, so a client-side silent return here
+        // would lose a genuine lead with zero trace. Always send it through.
         const res = await fetch('/.netlify/functions/public-landing-page', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
