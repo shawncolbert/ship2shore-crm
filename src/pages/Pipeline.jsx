@@ -692,19 +692,20 @@ const VEHICLE_TYPES = [
 ]
 const INTERSTATE_MIN_MI = 250
 
-// Locked pricing structure (2026-08-20) -- distance-tiered per-mile rate,
-// a flat $150 dispatch fee on every load, and a $200 SUV/crossover
-// adjustment. Returns one number, not a range -- this replaced the old
-// flat $1.50-$2.50/mi + 20%-margin formula.
+// Locked pricing structure (2026-08-20, retiered same day) -- distance-
+// tiered per-mile rate, a flat $150 dispatch fee on every load, and a $200
+// SUV/crossover adjustment. Returns one number, not a range. The rate
+// table's separate $0.90/mi "absolute floor" is for a high-volume backhaul
+// deal type that doesn't exist in the pipeline yet -- deliberately not
+// applied here until there's an actual backhaul flow to apply it to.
 function interstateQuote({ miles, vehicleType }) {
   const dispatchFee = 150
   const weightAdjustment = vehicleType === 'suv' ? 200 : 0
 
   let rate
-  if (miles < 500) rate = 2.12
-  else if (miles < 1000) rate = 1.0
-  else if (miles < 2000) rate = 0.65 * 0.9
-  else rate = 0.75
+  if (miles <= 500) rate = 3.25       // Short/Regional
+  else if (miles <= 1200) rate = 2.0  // Mid-Haul
+  else rate = 1.25                    // Long-Haul
 
   const transportCost = miles * rate
   return Math.round((transportCost + weightAdjustment + dispatchFee) * 100) / 100
