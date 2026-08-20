@@ -54,7 +54,10 @@ const labeledLine = (text, keys) => {
   return ''
 }
 
-function parsePastedText(text) {
+// Also used directly by the standalone Quick Quote page (see
+// src/pages/QuickQuote.jsx) -- same paste-a-text-and-fill-in-the-blanks
+// behavior, just on its own full page instead of inside this modal.
+export function parsePastedText(text) {
   const email = (text.match(EMAIL_RE) || [])[0] || ''
   const phone = (text.match(PHONE_RE) || [])[0] || ''
 

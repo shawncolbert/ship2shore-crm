@@ -14,6 +14,7 @@ import ContactDetail from './pages/ContactDetail'
 import Prospecting from './pages/Prospecting'
 import LeadFinder from './pages/LeadFinder'
 import Pipeline from './pages/Pipeline'
+import QuickQuote from './pages/QuickQuote'
 import Dashboard from './pages/Dashboard'
 import Inbox from './pages/Inbox'
 import Documents from './pages/Documents'
@@ -86,6 +87,11 @@ function App() {
           right after signing in (see Login.jsx's post-auth redirect).
           Deliberately outside Layout -- no sidebar on this one screen. */}
       <Route path="/" element={<ProtectedRoute><Welcome /></ProtectedRoute>} />
+      {/* One-tap Home Screen shortcut target -- a dedicated full-screen quote
+          form, not a modal on top of another page. Signing in from here
+          (see ProtectedRoute/Login's redirect-preservation) lands back on
+          this exact URL, not the dashboard. */}
+      <Route path="/quick-quote" element={<ProtectedRoute><QuickQuote /></ProtectedRoute>} />
       <Route
         path="/*"
         element={
