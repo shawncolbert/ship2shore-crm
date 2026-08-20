@@ -43,6 +43,18 @@ function b64url(str: string): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+// Email headers (unlike the body) don't get a charset declaration -- a raw
+// UTF-8 character like an em dash sitting directly in "Subject: ..." comes
+// through as mojibake in the inbox. RFC 2047 encoded-word is the fix: wrap
+// any non-ASCII subject as base64 inside =?UTF-8?B?...?=.
+function encodeHeader(text: string): string {
+  if (/^[\x00-\x7F]*$/.test(text)) return text;
+  const bytes = new TextEncoder().encode(text);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return `=?UTF-8?B?${btoa(bin)}?=`;
+}
+
 async function gmailAccessToken(supabase: any, org_id: string): Promise<{ token: string; from: string } | null> {
   const { data: row } = await supabase
     .from("gmail_oauth_tokens").select("*").eq("org_id", org_id).limit(1).maybeSingle();
@@ -76,7 +88,7 @@ async function sendGmail(token: string, from: string, to: string, subject: strin
   if (html) {
     const boundary = `s2s_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     raw = [
-      `From: ${from}`, `To: ${to}`, `Subject: ${subject}`, "MIME-Version: 1.0",
+      `From: ${from}`, `To: ${to}`, `Subject: ${encodeHeader(subject)}`, "MIME-Version: 1.0",
       `Content-Type: multipart/alternative; boundary="${boundary}"`, "",
       `--${boundary}`, 'Content-Type: text/plain; charset="UTF-8"', "", body,
       `--${boundary}`, 'Content-Type: text/html; charset="UTF-8"', "", html,
@@ -84,7 +96,7 @@ async function sendGmail(token: string, from: string, to: string, subject: strin
     ].join("\r\n");
   } else {
     raw = [
-      `From: ${from}`, `To: ${to}`, `Subject: ${subject}`,
+      `From: ${from}`, `To: ${to}`, `Subject: ${encodeHeader(subject)}`,
       "MIME-Version: 1.0", 'Content-Type: text/plain; charset="UTF-8"', "", body,
     ].join("\r\n");
   }
@@ -237,7 +249,7 @@ Deno.serve(async (req: Request) => {
     // address.
     const { data: opp } = await supabase
       .from("opportunities")
-      .select("id, title, value, scheduled_at, service_code, port, billing_number, payment_method_requested")
+      .select("id, title, value, deposit_amount, scheduled_at, service_code, port, billing_number, payment_method_requested")
       .eq("id", opportunity_id).eq("org_id", org_id).maybeSingle();
     const { data: contact } = await supabase
       .from("contacts").select("id, full_name, email, phone").eq("id", contact_id).eq("org_id", org_id).maybeSingle();
@@ -300,7 +312,7 @@ Deno.serve(async (req: Request) => {
           gmail = gmail || await gmailAccessToken(supabase, org_id);
           if (!gmail) { results.push({ action: rule.action, ok: false, reason: "no Gmail connected" }); continue; }
           const { subject, body, html } = buildPaymentRequestEmail({
-            method, handle, amount: opp?.value,
+            method, handle, amount: Math.max(0, (Number(opp?.value) || 0) - (Number(opp?.deposit_amount) || 0)),
             contactFirstName: vars.first_name, jobTitle: opp?.title || "",
             jobRef: opp?.billing_number || opp?.title || "", orgName: orgName || "",
           });
