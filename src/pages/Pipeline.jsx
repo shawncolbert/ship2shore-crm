@@ -692,20 +692,22 @@ const VEHICLE_TYPES = [
 ]
 const INTERSTATE_MIN_MI = 250
 
-// Locked pricing structure (2026-08-20, retiered same day) -- distance-
-// tiered per-mile rate, a flat $150 dispatch fee on every load, and a $200
-// SUV/crossover adjustment. Returns one number, not a range. The rate
-// table's separate $0.90/mi "absolute floor" is for a high-volume backhaul
-// deal type that doesn't exist in the pipeline yet -- deliberately not
-// applied here until there's an actual backhaul flow to apply it to.
-function interstateQuote({ miles, vehicleType }) {
+// Locked pricing structure (2026-08-20, retiered twice same day) --
+// distance-tiered per-mile rate with a June-August peak-summer bump, a flat
+// $150 dispatch fee on every load, and a $200 SUV/crossover adjustment.
+// Returns one number, not a range. An earlier version of this table's
+// separate $0.90/mi "absolute floor" was for a high-volume backhaul deal
+// type that doesn't exist in the pipeline yet -- still not applied here.
+function interstateQuote({ miles, vehicleType, when = new Date() }) {
   const dispatchFee = 150
   const weightAdjustment = vehicleType === 'suv' ? 200 : 0
+  const isPeakSummer = when.getMonth() >= 5 && when.getMonth() <= 7 // Jun-Aug
 
-  let rate
-  if (miles <= 500) rate = 3.25       // Short/Regional
-  else if (miles <= 1200) rate = 2.0  // Mid-Haul
-  else rate = 1.25                    // Long-Haul
+  let base, peak
+  if (miles <= 500) { base = 1.75; peak = 2.25 }        // Short Haul
+  else if (miles <= 1200) { base = 0.95; peak = 1.25 }  // Mid Haul
+  else { base = 0.55; peak = 0.75 }                     // Long Haul
+  const rate = isPeakSummer ? peak : base
 
   const transportCost = miles * rate
   return Math.round((transportCost + weightAdjustment + dispatchFee) * 100) / 100
@@ -732,6 +734,7 @@ function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
     }
   }
 
+  const isPeakSummer = new Date().getMonth() >= 5 && new Date().getMonth() <= 7
   const quote = miles != null ? interstateQuote({ miles, vehicleType }) : null
 
   return (
@@ -754,6 +757,9 @@ function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
       {milesErr && <p className="text-[10px] text-port">{milesErr}</p>}
       {miles != null && miles <= INTERSTATE_MIN_MI && (
         <p className="text-[10px] text-muted">Under {INTERSTATE_MIN_MI} mi — the Zone tab may fit this better.</p>
+      )}
+      {quote != null && isPeakSummer && (
+        <p className="text-[10px] text-muted">Peak summer rate applied (Jun–Aug).</p>
       )}
       {quote != null && (
         <div className="flex items-center justify-between rounded bg-accent/10 px-2 py-1.5">
