@@ -63,6 +63,10 @@ export default function InvoiceDetail() {
   // a card whose invoice already exists just reopens that same invoice --
   // its own prefill effect below only fires once, on creation.
   const opportunityId = isNew ? searchParams.get('opportunity_id') : null
+  // 'deposit' for the deposit-only invoice created at booking; 'invoice'
+  // (the default) for the balance invoice created at delivery -- two
+  // separate documents per job rather than one that nets the deposit off.
+  const invoiceKind = isNew ? (searchParams.get('kind') === 'deposit' ? 'deposit' : 'invoice') : null
 
   const { data: businessInfo } = useQuery({ queryKey: ['invoiceBusinessInfo'], queryFn: fetchInvoiceBusinessInfo })
   const { data: contacts } = useQuery({ queryKey: ['contactsForInvoice'], queryFn: fetchContactsForInvoice })
@@ -142,18 +146,15 @@ export default function InvoiceDetail() {
       ship_to_address: opp.dropoff_address || '',
     }))
     const deposit = Number(opp.deposit_amount) || 0
-    setLineItems([
-      {
-        service_id: '', quantity: 1, unit_price: Number(opp.value) || 0,
-        description: [opp.title, detail].filter(Boolean).join(' — '),
-      },
-      // Deposit was already collected at booking -- credit it back so the
-      // invoice reflects what's actually still owed, not the full price.
-      ...(deposit > 0 ? [{
-        service_id: '', quantity: 1, unit_price: -deposit,
-        description: 'Deposit received at booking',
-      }] : []),
-    ])
+    const jobLabel = [opp.title, detail].filter(Boolean).join(' — ')
+    setLineItems(
+      invoiceKind === 'deposit'
+        ? [{ service_id: '', quantity: 1, unit_price: deposit, description: `Deposit — ${jobLabel || 'booking'}` }]
+        : [{
+            service_id: '', quantity: 1, unit_price: (Number(opp.value) || 0) - deposit,
+            description: deposit > 0 ? `Balance due — ${jobLabel}` : jobLabel,
+          }]
+    )
     setPrefilledFrom(opp.id)
   }
 
@@ -220,7 +221,7 @@ export default function InvoiceDetail() {
     setErr(''); setSaving(true)
     try {
       const fieldsToSave = {
-        ...fields, payment_options: paymentOptions, opportunity_id: opportunityId,
+        ...fields, payment_options: paymentOptions, opportunity_id: opportunityId, kind: invoiceKind,
         wave_checkout_link_id: paymentOptions.wave ? waveCheckoutLinkId || null : null,
         wave_checkout_url: paymentOptions.wave ? selectedWaveLink?.url || null : null,
         reminder_enabled: reminderEnabled, reminder_interval_days: reminderIntervalDays,
@@ -339,6 +340,11 @@ export default function InvoiceDetail() {
             {isNew ? 'New invoice' : `Invoice ${invoice?.invoice_number || ''}`}
           </h1>
           <div className="mt-1 flex flex-wrap items-center gap-2">
+            {(isNew ? invoiceKind : invoice?.kind) === 'deposit' && (
+              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-semibold text-ink ring-1 ring-inset ring-accent/40">
+                Deposit invoice
+              </span>
+            )}
             {invoice?.status && <StatusBadge status={invoice.status} />}
             {invoice?.completed_at && (
               <span

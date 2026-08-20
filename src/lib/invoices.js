@@ -110,6 +110,7 @@ export async function createInvoice({ fields, lineItems }) {
       wave_checkout_link_id: fields.wave_checkout_link_id || null,
       payment_options: fields.payment_options || { stripe: true },
       opportunity_id: fields.opportunity_id || null,
+      kind: fields.kind === 'deposit' ? 'deposit' : 'invoice',
       reminder_enabled: !!fields.reminder_enabled,
       reminder_interval_days: fields.reminder_enabled ? Number(fields.reminder_interval_days) || 7 : null,
     })

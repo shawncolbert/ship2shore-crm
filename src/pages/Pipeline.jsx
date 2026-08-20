@@ -326,13 +326,20 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, 
   // field is touched (before focus), and back on when we leave it.
   const setDraggable = (on) => { if (ref.current) ref.current.draggable = on }
 
-  // The card's own invoice, if one's been started -- fetchDefaultPipeline
-  // embeds each opportunity's invoices ordered newest-first, so [0] is it.
-  const invoice = c.invoices?.[0]
+  // Up to two invoices per job now -- a deposit invoice at booking and a
+  // balance invoice at delivery. fetchDefaultPipeline embeds them
+  // newest-first, so .find grabs the latest of each kind.
+  const invoice = c.invoices?.find((i) => i.kind !== 'deposit')
+  const depositInvoice = c.invoices?.find((i) => i.kind === 'deposit')
 
   function handleOpenInvoice(e) {
     e.stopPropagation()
     navigate(invoice ? `/invoices/${invoice.id}` : `/invoices/new?opportunity_id=${c.id}`)
+  }
+
+  function handleOpenDepositInvoice(e) {
+    e.stopPropagation()
+    navigate(depositInvoice ? `/invoices/${depositInvoice.id}` : `/invoices/new?opportunity_id=${c.id}&kind=deposit`)
   }
 
   // No await before shareBooking() -- navigator.share() needs to fire within
@@ -401,6 +408,19 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, 
             onInteractStart={() => setDraggable(false)}
             onInteractEnd={() => setDraggable(true)}
           />
+          {Number(c.deposit_amount) > 0 && (
+            <Tooltip label={depositInvoice ? `Open deposit invoice ${depositInvoice.invoice_number}` : 'Create a deposit invoice for this job'}>
+              <button
+                onClick={handleOpenDepositInvoice}
+                aria-label={depositInvoice ? `Open deposit invoice ${depositInvoice.invoice_number}` : 'Create a deposit invoice for this job'}
+                className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-canvas hover:text-accent"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+                  <path d="M4 2a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6.414a1 1 0 0 0-.293-.707l-3.414-3.414A1 1 0 0 0 8.586 2H4Zm4.5 1.5L11.5 6.5H9a1 1 0 0 1-1-1V3.5ZM5 9.5h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1 0-1Zm0 2.5h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1 0-1Z" />
+                </svg>
+              </button>
+            </Tooltip>
+          )}
           <Tooltip label={invoice ? `Open invoice ${invoice.invoice_number}` : 'Create an invoice for this job'}>
             <button
               onClick={handleOpenInvoice}
@@ -473,6 +493,7 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, 
           paid={c.paid}
           onToggle={() => onPatch(c.id, { paid: !c.paid })}
         />
+        {depositInvoice && <InvoiceStatusBadge status={depositInvoice.status} prefix="Deposit: " />}
         {invoice && <InvoiceStatusBadge status={invoice.status} />}
       </div>
 
@@ -1217,11 +1238,11 @@ const INVOICE_STATUS_STYLE = {
   draft: 'bg-canvas text-muted ring-line',
 }
 const INVOICE_STATUS_LABEL = { paid: 'Invoice paid', sent: 'Invoice sent', overdue: 'Invoice overdue', draft: 'Invoice draft' }
-function InvoiceStatusBadge({ status }) {
+function InvoiceStatusBadge({ status, prefix = '' }) {
   const key = status && INVOICE_STATUS_STYLE[status] ? status : 'draft'
   return (
     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${INVOICE_STATUS_STYLE[key]}`}>
-      {INVOICE_STATUS_LABEL[key]}
+      {prefix}{INVOICE_STATUS_LABEL[key]}
     </span>
   )
 }
