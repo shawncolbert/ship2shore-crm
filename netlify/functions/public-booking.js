@@ -223,9 +223,13 @@ async function notifyReferrer(referrer, orgName, { fullName, email, phone, servi
       `${pickupAddress ? `Pickup: ${pickupAddress}\n` : ''}` +
       `${dropoffAddress ? `Drop-off: ${dropoffAddress}\n` : ''}` +
       `${distanceMiles != null ? `Distance: ${distanceMiles} mi\n` : ''}` +
+      `${pickupAddress
+        ? `Step 1 — Get to pickup (Google Maps): https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickupAddress)}\n` +
+          `Step 1 — Get to pickup (Apple Maps): https://maps.apple.com/?daddr=${encodeURIComponent(pickupAddress)}&dirflg=d\n`
+        : ''}` +
       `${pickupAddress && dropoffAddress
-        ? `Directions (Google Maps): https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(pickupAddress)}&destination=${encodeURIComponent(dropoffAddress)}\n` +
-          `Directions (Apple Maps): https://maps.apple.com/?saddr=${encodeURIComponent(pickupAddress)}&daddr=${encodeURIComponent(dropoffAddress)}&dirflg=d\n`
+        ? `Step 2 — Pickup to delivery (Google Maps): https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(pickupAddress)}&destination=${encodeURIComponent(dropoffAddress)}\n` +
+          `Step 2 — Pickup to delivery (Apple Maps): https://maps.apple.com/?saddr=${encodeURIComponent(pickupAddress)}&daddr=${encodeURIComponent(dropoffAddress)}&dirflg=d\n`
         : ''}` +
       `${vehicleLine ? `Vehicle: ${vehicleLine}\n` : ''}` +
       `${vehicleVin ? `VIN: ${vehicleVin}\n` : ''}` +

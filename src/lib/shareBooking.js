@@ -15,13 +15,20 @@ export function buildBookingSummary({
   if (customerPhone) lines.push(`Phone: ${customerPhone}`)
   if (pickupAddress) lines.push(`Pickup: ${pickupAddress}`)
   if (dropoffAddress) lines.push(`Drop-off: ${dropoffAddress}`)
-  // Same Google/Apple Maps directions links public-booking.js sends in its
-  // first automatic notification -- built fresh from whatever pickup/
-  // dropoff is passed in here, so re-sharing after correcting an address
-  // on the pipeline card links to the corrected route, not the original one.
+  // Two legs, not one -- a driver starting from wherever they are needs
+  // directions TO the pickup first, then a separate route from pickup to
+  // drop-off once the vehicle's loaded. A single pickup->dropoff link (the
+  // old behavior) silently skipped the "go get the load" leg entirely.
+  // Built fresh from whatever pickup/dropoff is passed in here, so
+  // re-sharing after correcting an address on the pipeline card links to
+  // the corrected route, not the original one.
+  if (pickupAddress) {
+    lines.push(`Step 1 — Get to pickup (Google Maps): https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickupAddress)}`)
+    lines.push(`Step 1 — Get to pickup (Apple Maps): https://maps.apple.com/?daddr=${encodeURIComponent(pickupAddress)}&dirflg=d`)
+  }
   if (pickupAddress && dropoffAddress) {
-    lines.push(`Directions (Google Maps): https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(pickupAddress)}&destination=${encodeURIComponent(dropoffAddress)}`)
-    lines.push(`Directions (Apple Maps): https://maps.apple.com/?saddr=${encodeURIComponent(pickupAddress)}&daddr=${encodeURIComponent(dropoffAddress)}&dirflg=d`)
+    lines.push(`Step 2 — Pickup to delivery (Google Maps): https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(pickupAddress)}&destination=${encodeURIComponent(dropoffAddress)}`)
+    lines.push(`Step 2 — Pickup to delivery (Apple Maps): https://maps.apple.com/?saddr=${encodeURIComponent(pickupAddress)}&daddr=${encodeURIComponent(dropoffAddress)}&dirflg=d`)
   }
 
   const vehicleWords = [vehicleYear, vehicleMake, vehicleModel].filter(Boolean).join(' ')

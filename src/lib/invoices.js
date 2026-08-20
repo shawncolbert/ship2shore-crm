@@ -259,6 +259,12 @@ export async function fetchCompletedJobs() {
 // dispatcher record that manually rather than the invoice being stuck
 // showing a balance forever. Automatic Stripe payments go through the
 // webhook instead, which sets the same fields.
+//
+// Moving the linked job to the Paid stage and emailing the customer a
+// receipt both happen server-side now (trg_notify_invoice_paid ->
+// invoice-paid-webhook), triggered by the status flip itself -- so they
+// fire the same way no matter how an invoice ends up paid, not just this
+// one manual path.
 export async function markInvoicePaidManually(id, { paymentMethod }) {
   const { error } = await supabase
     .from('invoices')
@@ -271,28 +277,6 @@ export async function markInvoicePaidManually(id, { paymentMethod }) {
     })
     .eq('id', id)
   if (error) throw error
-  await moveLinkedOpportunityToPaid(id)
-}
-
-// Once an invoice is paid, the job behind it is fully closed -- drag the
-// pipeline card to Paid automatically instead of leaving it sitting in
-// Delivered/Invoiced until someone remembers to move it by hand. Best-effort:
-// an invoice with no linked job, or an org with no stage literally named
-// "Paid", just skips this rather than blocking the payment from recording.
-async function moveLinkedOpportunityToPaid(invoiceId) {
-  try {
-    const { data: invoice } = await supabase
-      .from('invoices').select('opportunity_id, org_id').eq('id', invoiceId).maybeSingle()
-    if (!invoice?.opportunity_id) return
-
-    const { data: paidStage } = await supabase
-      .from('stages').select('id').eq('org_id', invoice.org_id).ilike('name', 'paid').maybeSingle()
-    if (!paidStage) return
-
-    await supabase.from('opportunities').update({ stage_id: paidStage.id }).eq('id', invoice.opportunity_id)
-  } catch {
-    // Non-fatal -- the invoice is already recorded as paid either way.
-  }
 }
 
 /* ------------------------------------------------------------------ */
