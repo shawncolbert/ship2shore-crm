@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { supabase, isConfigured } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
   const { session, loading } = useAuth()
+  const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -12,9 +13,13 @@ export default function Login() {
   const [forgotMode, setForgotMode] = useState(false)
   const [forgotSent, setForgotSent] = useState(false)
 
-  // Already signed in (or just signed in successfully) — go to the dashboard.
-  // Without this, a successful sign-in leaves you sitting on /login.
-  if (!loading && session) return <Navigate to="/" replace />
+  // Already signed in (or just signed in successfully) -- go back to
+  // wherever ProtectedRoute originally sent them here from (a Home Screen
+  // shortcut's own path+query, e.g. /pipeline?new=1) rather than always the
+  // dashboard. Falls back to "/" for a direct visit to /login with no
+  // redirect state at all.
+  const from = location.state?.from ? `${location.state.from.pathname}${location.state.from.search}` : '/'
+  if (!loading && session) return <Navigate to={from} replace />
 
   const signIn = async (e) => {
     e?.preventDefault()
