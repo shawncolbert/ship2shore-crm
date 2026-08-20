@@ -241,12 +241,52 @@ export async function createContactWithBooking({ contact, booking = null }) {
     source: 'manual',
   }
 
-  const { data: newContact, error: cErr } = await supabase
-    .from('contacts')
-    .insert(payload)
-    .select('id, full_name, company, phone, email, segment')
-    .single()
-  if (cErr) throw cErr
+  // A repeat customer -- or a dispatcher re-testing Quick Quote with the
+  // same phone/email -- would otherwise hit uq_contacts_org_phone /
+  // uq_contacts_org_email_lower and blow up with a raw Postgres "duplicate
+  // key value violates unique constraint" error. Look up a match first and
+  // reuse/update it instead of blind-inserting.
+  let existing = null
+  if (payload.phone) {
+    const { data, error } = await supabase
+      .from('contacts').select('id, full_name, company, phone, email, segment')
+      .eq('org_id', orgId).eq('phone', payload.phone).maybeSingle()
+    if (error) throw error
+    existing = data
+  }
+  if (!existing && payload.email) {
+    const { data, error } = await supabase
+      .from('contacts').select('id, full_name, company, phone, email, segment')
+      .eq('org_id', orgId).ilike('email', payload.email).maybeSingle()
+    if (error) throw error
+    existing = data
+  }
+
+  let newContact
+  if (existing) {
+    const { data, error: uErr } = await supabase
+      .from('contacts')
+      .update({
+        full_name: payload.full_name || existing.full_name,
+        company: payload.company || existing.company,
+        phone: payload.phone || existing.phone,
+        email: payload.email || existing.email,
+        segment: payload.segment || existing.segment,
+      })
+      .eq('id', existing.id)
+      .select('id, full_name, company, phone, email, segment')
+      .single()
+    if (uErr) throw uErr
+    newContact = data
+  } else {
+    const { data, error: cErr } = await supabase
+      .from('contacts')
+      .insert(payload)
+      .select('id, full_name, company, phone, email, segment')
+      .single()
+    if (cErr) throw cErr
+    newContact = data
+  }
 
   let opportunity = null
   if (booking) {
