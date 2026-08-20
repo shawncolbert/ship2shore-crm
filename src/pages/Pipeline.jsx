@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchDefaultPipeline, moveOpportunity, cancelOpportunity, deleteOpportunity, setOpportunityBilling, patchOpportunity,
@@ -82,7 +82,11 @@ export default function Pipeline() {
   const [dragId, setDragId] = useState(null)
   const [overStage, setOverStage] = useState(null)
   const [cancelling, setCancelling] = useState(null)
-  const [showNew, setShowNew] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  // ?new=1 auto-opens the New Booking modal on load -- lets a Home Screen
+  // shortcut (dispatch.ship2shorebooking.com/pipeline?new=1) drop a
+  // dispatcher straight into the paste box, no taps once the page loads.
+  const [showNew, setShowNew] = useState(() => searchParams.get('new') === '1')
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['pipeline'],
