@@ -23,3 +23,10 @@
 # unpaid. Day-granularity logic, so once a day is plenty.
 [functions."invoice-reminders"]
   schedule = "0 15 * * *"
+
+# For every job scheduled to deliver tomorrow (Pacific), checks whether its
+# balance invoice is paid -- nudges the customer and alerts the org's inbox
+# if not, so payment gets chased down before the vehicle comes off the
+# truck instead of being discovered at the tailgate.
+[functions."delivery-payment-reminder"]
+  schedule = "0 15 * * *"
