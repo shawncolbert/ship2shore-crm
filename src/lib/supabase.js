@@ -631,10 +631,13 @@ export async function fetchDashboardStats() {
     supabase.from('stages').select('id, name, position, is_won, is_lost').order('position'),
     supabase.from('opportunities').select('id, value, stage_id, status, updated_at'),
     supabase.from('contacts').select('id', { count: 'exact', head: true }).gte('created_at', weekAgo),
-    // Exact "moved into Completed/Paid" events from the stage-change history.
+    // Exact "moved into a closed/won stage" events from the stage-change
+    // history. 'Completed' stays in this list even after the rename to
+    // Delivered/Invoiced -- it's a snapshot of the stage name *at the time
+    // of the change*, so old history rows still say 'Completed'.
     supabase.from('opportunity_stage_changes')
       .select('opportunity_id, to_stage, changed_at')
-      .in('to_stage', ['Completed', 'Paid'])
+      .in('to_stage', ['Delivered', 'Invoiced', 'Paid', 'Completed'])
       .gte('changed_at', monthAgo),
   ])
   const stages = stagesRes.data || []
@@ -644,9 +647,9 @@ export async function fetchDashboardStats() {
 
   const stageById = Object.fromEntries(stages.map((s) => [s.id, s]))
   const nameOf = (o) => stageById[o.stage_id]?.name || ''
-  const isClosed = (n) => ['Completed', 'Paid', 'Canceled', 'Cancelled'].includes(n)
+  const isClosed = (n) => ['Delivered', 'Invoiced', 'Paid', 'Canceled', 'Cancelled', 'Completed'].includes(n)
 
-  // Only the main workflow stages (position >= 0: New Booking … Paid, Canceled).
+  // Only the main workflow stages (position >= 0: New Lead … Paid, Canceled).
   // id is kept so the dashboard can drill into "jobs in this stage" precisely.
   const byStage = stages
     .filter((s) => s.position >= 0)
@@ -675,7 +678,7 @@ export async function fetchDashboardStats() {
 /* them: { id, contactId, contactName, jobTitle, stageName, date, value }. */
 /* ------------------------------------------------------------------ */
 
-const CLOSED_STAGE_NAMES = ['Completed', 'Paid', 'Canceled', 'Cancelled']
+const CLOSED_STAGE_NAMES = ['Delivered', 'Invoiced', 'Paid', 'Canceled', 'Cancelled', 'Completed']
 
 export async function fetchOpenPipelineJobs() {
   const { data: stages, error: sErr } = await supabase.from('stages').select('id, name')
@@ -698,14 +701,14 @@ export async function fetchOpenPipelineJobs() {
     }))
 }
 
-// Jobs that moved into Completed/Paid within the last `days` days, from the
-// exact stage-change history (matches fetchDashboardStats' closedThisWeek/Month).
+// Jobs that moved into a closed/won stage within the last `days` days, from
+// the exact stage-change history (matches fetchDashboardStats' closedThisWeek/Month).
 export async function fetchClosedJobs(days) {
   const since = new Date(Date.now() - days * 864e5).toISOString()
   const { data, error } = await supabase
     .from('opportunity_stage_changes')
     .select('opportunity_id, to_stage, changed_at, opportunities(id, title, value, contact_id, contacts!contact_id(full_name))')
-    .in('to_stage', ['Completed', 'Paid'])
+    .in('to_stage', ['Delivered', 'Invoiced', 'Paid', 'Completed'])
     .gte('changed_at', since)
     .order('changed_at', { ascending: false })
   if (error) throw error
