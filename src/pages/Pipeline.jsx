@@ -22,6 +22,7 @@ function bookingSummaryFor(c, notes, photoUrl) {
   return buildBookingSummary({
     customerName: c.contacts?.full_name,
     customerPhone: c.contacts?.phone,
+    bookingNumber: c.booking_number,
     pickupAddress: c.pickup_address,
     dropoffAddress: c.dropoff_address,
     vehicleYear: c.vehicle_year, vehicleMake: c.vehicle_make, vehicleModel: c.vehicle_model, vehicleVin: c.vehicle_vin,
@@ -456,6 +457,9 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, 
           </Tooltip>
         </div>
       </div>
+      {c.booking_number && (
+        <div className="mt-0.5 font-[family-name:var(--font-mono)] text-[10px] text-muted">{c.booking_number}</div>
+      )}
       {c.scheduled_at && (
         <div className="mt-1.5">
           <span

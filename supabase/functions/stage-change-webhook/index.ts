@@ -249,7 +249,7 @@ Deno.serve(async (req: Request) => {
     // address.
     const { data: opp } = await supabase
       .from("opportunities")
-      .select("id, title, value, deposit_amount, scheduled_at, service_code, port, billing_number, payment_method_requested")
+      .select("id, title, value, deposit_amount, scheduled_at, service_code, port, billing_number, booking_number, payment_method_requested")
       .eq("id", opportunity_id).eq("org_id", org_id).maybeSingle();
     const { data: contact } = await supabase
       .from("contacts").select("id, full_name, email, phone").eq("id", contact_id).eq("org_id", org_id).maybeSingle();
@@ -264,6 +264,7 @@ Deno.serve(async (req: Request) => {
       title: opp?.title || "",
       title_suffix: opp?.title ? ` — ${opp.title}` : "",
       port: opp?.port || "",
+      booking_number: opp?.booking_number || "",
       value: opp?.value != null ? String(opp.value) : "",
       service_code: opp?.service_code || "",
       old_stage, new_stage,
@@ -314,7 +315,7 @@ Deno.serve(async (req: Request) => {
           const { subject, body, html } = buildPaymentRequestEmail({
             method, handle, amount: Math.max(0, (Number(opp?.value) || 0) - (Number(opp?.deposit_amount) || 0)),
             contactFirstName: vars.first_name, jobTitle: opp?.title || "",
-            jobRef: opp?.billing_number || opp?.title || "", orgName: orgName || "",
+            jobRef: opp?.billing_number || opp?.booking_number || opp?.title || "", orgName: orgName || "",
           });
           await sendGmail(gmail.token, gmail.from, contact.email, subject, body, html);
           await supabase.from("opportunities")

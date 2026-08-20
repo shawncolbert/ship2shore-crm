@@ -7,11 +7,12 @@
 // Skips any field that's empty/null rather than printing "Vehicle: undefined"
 // or a blank "Pickup: " line.
 export function buildBookingSummary({
-  customerName, customerPhone, pickupAddress, dropoffAddress,
+  customerName, customerPhone, bookingNumber, pickupAddress, dropoffAddress,
   vehicleYear, vehicleMake, vehicleModel, vehicleVin, photoUrl,
   serviceLabel, notes, detailUrl,
 }) {
   const lines = [`New booking${customerName ? ` — ${customerName}` : ''}`]
+  if (bookingNumber) lines.push(`Booking ID: ${bookingNumber}`)
   if (customerPhone) lines.push(`Phone: ${customerPhone}`)
   if (pickupAddress) lines.push(`Pickup: ${pickupAddress}`)
   if (dropoffAddress) lines.push(`Drop-off: ${dropoffAddress}`)

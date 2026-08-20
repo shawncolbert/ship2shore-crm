@@ -137,7 +137,11 @@ export default function InvoiceDetail() {
     setFields((f) => ({
       ...f,
       contact_id: opp.contact_id || '',
-      po_number: opp.billing_number || '',
+      // Port/TWIC billing numbers (entered by hand on escort jobs) win when
+      // present, since that's the number the port actually wants on the
+      // paperwork -- the auto-assigned booking number is the fallback so
+      // every invoice still carries some reference back to the job.
+      po_number: opp.billing_number || opp.booking_number || '',
       ...(contact ? fillBillToFromContact(contact) : {}),
       // Pickup is where we're shipping it from, drop-off is where it's
       // going -- Ship To already existed for the destination, Ship From
