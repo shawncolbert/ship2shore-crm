@@ -665,34 +665,28 @@ async function mapboxDrivingMiles(from, to) {
 
 const VEHICLE_TYPES = [
   { value: 'sedan', label: 'Sedan / car' },
-  { value: 'suv', label: 'SUV (+$175)' },
-  { value: 'truck', label: 'Truck (+$250)' },
-  { value: 'enclosed', label: 'Enclosed trailer (×1.5)' },
+  { value: 'suv', label: 'SUV / crossover (+$200)' },
+  { value: 'truck', label: 'Truck (no adjustment)' },
+  { value: 'enclosed', label: 'Enclosed trailer (no adjustment)' },
 ]
 const INTERSTATE_MIN_MI = 250
-const INTERSTATE_RATE_LOW = 1.5
-const INTERSTATE_RATE_HIGH = 2.5
 
-// Real driver quotes you gave me: Long Beach→Vegas (~300 mi) ran $450-$750,
-// and a 670 mi run cost $1,600 -- both land in this same $1.50-$2.50/mi
-// band despite the mileage gap, so this is a flat rate rather than
-// Gemini's original multi-tier taper (no long-haul reference point yet to
-// justify tapering further out -- revisit once a real 2,000+ mi quote
-// comes in). No fuel adjustment -- not worth the EIA dependency for the
-// accuracy it'd add on top of a driver-sourced rate that already has fuel
-// baked in.
-function interstateFloor({ miles, vehicleType }) {
-  let lineHaulMin = miles * INTERSTATE_RATE_LOW
-  let lineHaulMax = miles * INTERSTATE_RATE_HIGH
-  if (vehicleType === 'enclosed') { lineHaulMin *= 1.5; lineHaulMax *= 1.5 }
+// Locked pricing structure (2026-08-20) -- distance-tiered per-mile rate,
+// a flat $150 dispatch fee on every load, and a $200 SUV/crossover
+// adjustment. Returns one number, not a range -- this replaced the old
+// flat $1.50-$2.50/mi + 20%-margin formula.
+function interstateQuote({ miles, vehicleType }) {
+  const dispatchFee = 150
+  const weightAdjustment = vehicleType === 'suv' ? 200 : 0
 
-  const flatSurcharge = vehicleType === 'suv' ? 175 : vehicleType === 'truck' ? 250 : 0
-  return { floorMin: lineHaulMin + flatSurcharge, floorMax: lineHaulMax + flatSurcharge }
-}
+  let rate
+  if (miles < 500) rate = 2.12
+  else if (miles < 1000) rate = 1.0
+  else if (miles < 2000) rate = 0.65 * 0.9
+  else rate = 0.75
 
-// Your locked formula: at least 20% margin, or a flat $150, whichever's bigger.
-function applyMargin(floor) {
-  return Math.max(floor * 1.2, floor + 150)
+  const transportCost = miles * rate
+  return Math.round((transportCost + weightAdjustment + dispatchFee) * 100) / 100
 }
 
 function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
@@ -716,12 +710,7 @@ function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
     }
   }
 
-  let floorMin = null, floorMax = null, targetMin = null, targetMax = null
-  if (miles != null) {
-    const f = interstateFloor({ miles, vehicleType })
-    floorMin = f.floorMin; floorMax = f.floorMax
-    targetMin = applyMargin(floorMin); targetMax = applyMargin(floorMax)
-  }
+  const quote = miles != null ? interstateQuote({ miles, vehicleType }) : null
 
   return (
     <div className="space-y-1.5">
@@ -744,24 +733,17 @@ function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
       {miles != null && miles <= INTERSTATE_MIN_MI && (
         <p className="text-[10px] text-muted">Under {INTERSTATE_MIN_MI} mi — the Zone tab may fit this better.</p>
       )}
-      {floorMin != null && (
-        <>
-          <p className="text-[10px] text-muted">
-            Floor ${Math.round(floorMin).toLocaleString()}–${Math.round(floorMax).toLocaleString()}
-          </p>
-          <div className="flex items-center justify-between rounded bg-accent/10 px-2 py-1.5">
-            <span className="text-xs font-semibold text-ink">
-              ${Math.round(targetMin).toLocaleString()}–${Math.round(targetMax).toLocaleString()}
-            </span>
-            <button
-              type="button"
-              onClick={() => onUseAmount(Math.round((targetMin + targetMax) / 2))}
-              className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-ink hover:bg-accent-600"
-            >
-              Use as Amount
-            </button>
-          </div>
-        </>
+      {quote != null && (
+        <div className="flex items-center justify-between rounded bg-accent/10 px-2 py-1.5">
+          <span className="text-xs font-semibold text-ink">${quote.toLocaleString()}</span>
+          <button
+            type="button"
+            onClick={() => onUseAmount(quote)}
+            className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-ink hover:bg-accent-600"
+          >
+            Use as Amount
+          </button>
+        </div>
       )}
     </div>
   )
