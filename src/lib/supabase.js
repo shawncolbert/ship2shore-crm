@@ -283,6 +283,10 @@ export async function createContactWithBooking({ contact, booking = null }) {
         service_code: booking.service_code || null,
         port: booking.port || null,
         value: Number(booking.value) || 0,
+        pickup_address: booking.pickup_address?.trim() || null,
+        dropoff_address: booking.dropoff_address?.trim() || null,
+        vehicle: booking.vehicle?.trim() || null,
+        source_board: booking.source_board || null,
         status: 'open',
       })
       .select('id')

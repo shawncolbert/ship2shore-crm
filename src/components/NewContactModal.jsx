@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContactWithBooking, fetchServices } from '../lib/supabase'
+import AddressAutocompleteField from './AddressAutocompleteField'
 
 const SEGMENTS = [
   { value: '', label: '—' },
@@ -33,6 +34,42 @@ const emptyBooking = {
   service_code: '',
   port: '',
   value: '',
+  pickup_address: '',
+  dropoff_address: '',
+  vehicle: '',
+}
+
+// Best-effort extraction from whatever a customer texted -- a dispatcher in
+// the field pastes the raw message and this fills in a starting point, but
+// every field stays editable below since free-text addresses in particular
+// are never reliable enough to trust blindly.
+const EMAIL_RE = /[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}/
+const PHONE_RE = /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/
+const labeledLine = (text, keys) => {
+  const re = new RegExp(`(?:${keys.join('|')})\\s*[:\\-]\\s*(.+)`, 'i')
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(re)
+    if (m) return m[1].trim()
+  }
+  return ''
+}
+
+function parsePastedText(text) {
+  const email = (text.match(EMAIL_RE) || [])[0] || ''
+  const phone = (text.match(PHONE_RE) || [])[0] || ''
+
+  let name = labeledLine(text, ['name'])
+  if (!name) {
+    // First non-empty line that isn't just the phone or email itself.
+    const line = text.split(/\r?\n/).map((l) => l.trim()).find((l) => l && l !== phone && l !== email && !EMAIL_RE.test(l) && !/^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$/.test(l))
+    name = line || ''
+  }
+
+  const pickup = labeledLine(text, ['pickup', 'pick[\\s-]?up', 'from', 'origin'])
+  const dropoff = labeledLine(text, ['drop[\\s-]?off', 'delivery', 'destination', 'to'])
+  const vehicle = labeledLine(text, ['vehicle', 'car'])
+
+  return { name, phone, email, pickup, dropoff, vehicle }
 }
 
 export default function NewContactModal({ open, onClose, initial, onCreated }) {
@@ -42,6 +79,7 @@ export default function NewContactModal({ open, onClose, initial, onCreated }) {
   const [booking, setBooking] = useState(emptyBooking)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [pasteText, setPasteText] = useState('')
 
   const { data: services = [] } = useQuery({
     queryKey: ['services'],
@@ -55,6 +93,7 @@ export default function NewContactModal({ open, onClose, initial, onCreated }) {
       setForm({ ...empty, ...initial })
       setAddBooking(false)
       setBooking(emptyBooking)
+      setPasteText('')
       setError('')
       setBusy(false)
     }
@@ -67,6 +106,26 @@ export default function NewContactModal({ open, onClose, initial, onCreated }) {
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
   const setB = (k) => (e) => setBooking((b) => ({ ...b, [k]: e.target.value }))
+
+  // Re-parses on every keystroke/paste so a dispatcher can paste, glance at
+  // what filled in, and just fix whatever's wrong rather than needing a
+  // separate "parse" button. Every field below stays directly editable
+  // either way, so a bad guess is a quick correction, not a blocker.
+  const onPasteText = (e) => {
+    const text = e.target.value
+    setPasteText(text)
+    const parsed = parsePastedText(text)
+    setForm((f) => ({ ...f, full_name: parsed.name || f.full_name, phone: parsed.phone || f.phone, email: parsed.email || f.email }))
+    if (parsed.pickup || parsed.dropoff || parsed.vehicle) {
+      setAddBooking(true)
+      setBooking((b) => ({
+        ...b,
+        pickup_address: parsed.pickup || b.pickup_address,
+        dropoff_address: parsed.dropoff || b.dropoff_address,
+        vehicle: parsed.vehicle || b.vehicle,
+      }))
+    }
+  }
 
   // When a service is picked, prefill the value with its default rate.
   const onService = (e) => {
@@ -89,7 +148,7 @@ export default function NewContactModal({ open, onClose, initial, onCreated }) {
     try {
       const { contact } = await createContactWithBooking({
         contact: form,
-        booking: addBooking ? booking : null,
+        booking: addBooking ? { ...booking, source_board: 'direct' } : null,
       })
       // Refresh anything that shows contacts or pipeline data.
       qc.invalidateQueries({ queryKey: ['contacts'] })
@@ -132,6 +191,20 @@ export default function NewContactModal({ open, onClose, initial, onCreated }) {
         </div>
 
         <form onSubmit={submit} className="flex-1 overflow-y-auto px-5 py-4">
+          <label className="mb-4 block rounded-xl border border-dashed border-line bg-canvas/60 p-3">
+            <span className="text-sm font-medium text-ink">Paste customer's text (optional)</span>
+            <textarea
+              value={pasteText}
+              onChange={onPasteText}
+              placeholder={'e.g.\nJane Doe\n(310) 555-1234\njane@email.com\nPickup: 123 Main St, Long Beach CA\nDrop-off: 456 Oak Ave, Phoenix AZ\nVehicle: 2022 Toyota Tacoma'}
+              rows={4}
+              className="mt-1.5 w-full rounded-md border border-line bg-surface px-3 py-2 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+            />
+            <span className="mt-1 block text-xs text-muted">
+              Fills in name, phone, email, pickup, drop-off and vehicle below — check them over, everything stays editable.
+            </span>
+          </label>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block sm:col-span-2">
               <span className="text-sm font-medium text-ink">Name</span>
@@ -241,8 +314,25 @@ export default function NewContactModal({ open, onClose, initial, onCreated }) {
                 />
               </label>
 
+              <div className="sm:col-span-2">
+                <AddressAutocompleteField label="Pickup" value={booking.pickup_address} onChange={(v) => setBooking((b) => ({ ...b, pickup_address: v }))} />
+              </div>
+              <div className="sm:col-span-2">
+                <AddressAutocompleteField label="Drop-off" value={booking.dropoff_address} onChange={(v) => setBooking((b) => ({ ...b, dropoff_address: v }))} />
+              </div>
+
+              <label className="block sm:col-span-2">
+                <span className="text-sm font-medium text-ink">Vehicle</span>
+                <input
+                  value={booking.vehicle}
+                  onChange={setB('vehicle')}
+                  placeholder="2022 Toyota Tacoma"
+                  className={field}
+                />
+              </label>
+
               <p className="text-xs text-muted sm:col-span-2">
-                The card lands in your first pipeline stage (New Booking).
+                The card lands in your first pipeline stage (New Lead).
               </p>
             </div>
           )}
