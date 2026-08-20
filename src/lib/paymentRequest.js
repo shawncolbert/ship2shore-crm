@@ -40,27 +40,31 @@ function cashAppLink(handle, amount) {
 const hasPayLink = (method) => method === 'venmo' || method === 'cashapp'
 
 // Method-specific "how to pay" instructions for the plain-text fallback.
-function instructionsFor(method, handle, amount, jobRef) {
+// payeeName (when set in Payment Settings) is included on every method, not
+// just Zelle -- a customer who's dealt with multiple transport companies
+// shouldn't have to guess whose handle they're looking at.
+function instructionsFor(method, handle, amount, jobRef, payeeName) {
   const amt = money(amount)
   const ref = jobRef ? ` — please include "${jobRef}" in the memo/note` : ''
+  const to = payeeName ? `${payeeName} (${handle})` : handle
   switch (method) {
     case 'zelle':
-      return `Please send ${amt} to ${handle} via Zelle${ref}.`
+      return `Please send ${amt} to ${to} via Zelle${ref}.`
     case 'venmo':
       return `Please send ${amt} via Venmo${ref}: ${venmoLink(handle, amount)}`
     case 'cashapp':
       return `Please send ${amt} via Cash App${ref}: ${cashAppLink(handle, amount)}`
     case 'apple_pay':
-      return `Please send ${amt} to ${handle} via Apple Pay (Apple Cash)${ref}.`
+      return `Please send ${amt} to ${to} via Apple Pay (Apple Cash)${ref}.`
     default:
-      return `Please send ${amt} to ${handle}${ref}.`
+      return `Please send ${amt} to ${to}${ref}.`
   }
 }
 
 // Inline-styled, table-based HTML so it renders consistently in Gmail/Outlook/
 // Apple Mail without relying on a <style> block. Amber accent matches the
 // app's theme (--color-accent: #e8a317).
-function buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, jobRef, orgName }) {
+function buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, jobRef, orgName, payeeName }) {
   const amt = money(amount)
   const label = methodLabel(method)
   const greeting = escapeHtml(contactFirstName || 'there')
@@ -86,6 +90,7 @@ function buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, job
       <tr>
         <td align="center" style="padding:6px 0 0;">
           <p style="margin:0;font-size:12px;color:#9ca3af;word-break:break-all;">${url}</p>
+          ${payeeName ? `<p style="margin:2px 0 0;font-size:12px;color:#9ca3af;">Recipient: ${escapeHtml(payeeName)}</p>` : ''}
         </td>
       </tr>`
   } else {
@@ -98,6 +103,7 @@ function buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, job
                 <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#8a6d1a;">
                   Send via ${escapeHtml(label)}
                 </div>
+                ${payeeName ? `<div style="margin-top:6px;font-size:15px;font-weight:600;color:#1a1a1a;">${escapeHtml(payeeName)}</div>` : ''}
                 <div style="margin-top:8px;font-size:26px;font-weight:700;color:#1a1a1a;">
                   ${escapeHtml(handle)}
                 </div>
@@ -147,7 +153,7 @@ function buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, job
 // typically the ship billing number or job title, whichever is available.
 // `body` is the plain-text fallback (still sent alongside `html` in a
 // multipart message, for text-only clients and accessibility).
-export function buildPaymentRequestEmail({ method, handle, amount, contactFirstName, jobTitle, jobRef, orgName }) {
+export function buildPaymentRequestEmail({ method, handle, amount, contactFirstName, jobTitle, jobRef, orgName, payeeName }) {
   const label = methodLabel(method)
   const amt = money(amount)
   const brand = orgName || 'Dispatch'
@@ -155,9 +161,9 @@ export function buildPaymentRequestEmail({ method, handle, amount, contactFirstN
   const body =
     `Hi ${contactFirstName || 'there'},\n\n` +
     `${jobTitle ? `For your ${orgName || 'your'} job (${jobTitle}), the ` : 'The '}amount due is ${amt}.\n\n` +
-    `${instructionsFor(method, handle, amount, jobRef)}\n\n` +
-    `${label}: ${handle}\n\n` +
+    `${instructionsFor(method, handle, amount, jobRef, payeeName)}\n\n` +
+    `${label}: ${handle}${payeeName ? ` (${payeeName})` : ''}\n\n` +
     `Thank you,\n${brand}`
-  const html = buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, jobRef, orgName })
+  const html = buildHtmlBody({ method, handle, amount, contactFirstName, jobTitle, jobRef, orgName, payeeName })
   return { subject, body, html }
 }

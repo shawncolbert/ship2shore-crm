@@ -117,15 +117,16 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
   zelle: "Zelle", venmo: "Venmo", cashapp: "Cash App", apple_pay: "Apple Pay",
 };
 const money = (n: unknown) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(n) || 0);
-function paymentInstructions(method: string, handle: string, amount: unknown, jobRef: string): string {
+function paymentInstructions(method: string, handle: string, amount: unknown, jobRef: string, payeeName?: string): string {
   const amt = money(amount);
   const ref = jobRef ? ` — please include "${jobRef}" in the memo/note` : "";
+  const to = payeeName ? `${payeeName} (${handle})` : handle;
   switch (method) {
-    case "zelle": return `Please send ${amt} to ${handle} via Zelle${ref}.`;
+    case "zelle": return `Please send ${amt} to ${to} via Zelle${ref}.`;
     case "venmo": return `Please send ${amt} via Venmo${ref}: ${venmoLink(handle, amount)}`;
     case "cashapp": return `Please send ${amt} via Cash App${ref}: ${cashAppLink(handle, amount)}`;
-    case "apple_pay": return `Please send ${amt} to ${handle} via Apple Pay (Apple Cash)${ref}.`;
-    default: return `Please send ${amt} to ${handle}${ref}.`;
+    case "apple_pay": return `Please send ${amt} to ${to} via Apple Pay (Apple Cash)${ref}.`;
+    default: return `Please send ${amt} to ${to}${ref}.`;
   }
 }
 function venmoLink(handle: string, amount: unknown): string {
@@ -143,7 +144,7 @@ const escapeHtml = (s: unknown) =>
 // Inline-styled, table-based HTML -- identical design to
 // src/lib/paymentRequest.js's buildHtmlBody() so the email looks the same
 // whether it was sent by a dispatcher's click or this automation.
-function buildHtmlBody(opts: { method: string; handle: string; amount: unknown; contactFirstName: string; jobTitle: string; jobRef: string; orgName: string }): string {
+function buildHtmlBody(opts: { method: string; handle: string; amount: unknown; contactFirstName: string; jobTitle: string; jobRef: string; orgName: string; payeeName?: string }): string {
   const amt = money(opts.amount);
   const label = PAYMENT_METHOD_LABEL[opts.method] || opts.method;
   const greeting = escapeHtml(opts.contactFirstName || "there");
@@ -166,6 +167,7 @@ function buildHtmlBody(opts: { method: string; handle: string; amount: unknown; 
       </td></tr>
       <tr><td align="center" style="padding:6px 0 0;">
         <p style="margin:0;font-size:12px;color:#9ca3af;word-break:break-all;">${url}</p>
+        ${opts.payeeName ? `<p style="margin:2px 0 0;font-size:12px;color:#9ca3af;">Recipient: ${escapeHtml(opts.payeeName)}</p>` : ""}
       </td></tr>`;
   } else {
     actionBlock = `
@@ -173,6 +175,7 @@ function buildHtmlBody(opts: { method: string; handle: string; amount: unknown; 
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fdf6e8;border:2px solid #e8a317;border-radius:12px;">
           <tr><td align="center" style="padding:22px 20px;">
             <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#8a6d1a;">Send via ${escapeHtml(label)}</div>
+            ${opts.payeeName ? `<div style="margin-top:6px;font-size:15px;font-weight:600;color:#1a1a1a;">${escapeHtml(opts.payeeName)}</div>` : ""}
             <div style="margin-top:8px;font-size:26px;font-weight:700;color:#1a1a1a;">${escapeHtml(opts.handle)}</div>
             <div style="margin-top:6px;font-size:14px;color:#4b5563;">Amount: <strong>${amt}</strong></div>
           </td></tr>
@@ -204,7 +207,7 @@ function buildHtmlBody(opts: { method: string; handle: string; amount: unknown; 
 </table>`;
 }
 
-function buildPaymentRequestEmail(opts: { method: string; handle: string; amount: unknown; contactFirstName: string; jobTitle: string; jobRef: string; orgName: string }) {
+function buildPaymentRequestEmail(opts: { method: string; handle: string; amount: unknown; contactFirstName: string; jobTitle: string; jobRef: string; orgName: string; payeeName?: string }) {
   const label = PAYMENT_METHOD_LABEL[opts.method] || opts.method;
   const amt = money(opts.amount);
   const brand = opts.orgName || "Dispatch";
@@ -212,8 +215,8 @@ function buildPaymentRequestEmail(opts: { method: string; handle: string; amount
   const body =
     `Hi ${opts.contactFirstName || "there"},\n\n` +
     `${opts.jobTitle ? `For your ${opts.orgName || "your"} job (${opts.jobTitle}), the ` : "The "}amount due is ${amt}.\n\n` +
-    `${paymentInstructions(opts.method, opts.handle, opts.amount, opts.jobRef)}\n\n` +
-    `${label}: ${opts.handle}\n\n` +
+    `${paymentInstructions(opts.method, opts.handle, opts.amount, opts.jobRef, opts.payeeName)}\n\n` +
+    `${label}: ${opts.handle}${opts.payeeName ? ` (${opts.payeeName})` : ""}\n\n` +
     `Thank you,\n${brand}`;
   const html = buildHtmlBody(opts);
   return { subject, body, html };
@@ -316,6 +319,7 @@ Deno.serve(async (req: Request) => {
             method, handle, amount: Math.max(0, (Number(opp?.value) || 0) - (Number(opp?.deposit_amount) || 0)),
             contactFirstName: vars.first_name, jobTitle: opp?.title || "",
             jobRef: opp?.billing_number || opp?.booking_number || opp?.title || "", orgName: orgName || "",
+            payeeName: paymentSettings?.payee_name || "",
           });
           await sendGmail(gmail.token, gmail.from, contact.email, subject, body, html);
           await supabase.from("opportunities")

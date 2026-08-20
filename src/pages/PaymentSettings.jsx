@@ -30,6 +30,7 @@ export default function PaymentSettings() {
   useEffect(() => {
     if (data) {
       setForm({
+        payee_name: data.payee_name || '',
         zelle_handle: data.zelle_handle || '',
         venmo_handle: data.venmo_handle || '',
         cashapp_handle: data.cashapp_handle || '',
@@ -70,6 +71,19 @@ export default function PaymentSettings() {
       {saved && <p className="mb-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">✓ Saved</p>}
 
       <div className={card}>
+        <div className="mb-4">
+          <label className={label}>Payee name</label>
+          <input
+            className={input}
+            value={form.payee_name}
+            onChange={set('payee_name')}
+            placeholder="e.g. Shawn Colbert"
+          />
+          <p className="mt-1 text-[11px] text-muted">
+            Shown alongside every handle below on payment-request emails, so a customer paying via Zelle (or
+            any other method) can tell it's really you and not confuse it with the company name.
+          </p>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           {PAYMENT_METHODS.map((m) => (
             <div key={m.value}>
