@@ -874,6 +874,7 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, 
   const [dropoffAddress, setDropoffAddress] = useState(c.dropoff_address || '')
   const [when, setWhen] = useState(toLocalInput(c.scheduled_at))
   const [amount, setAmount] = useState(c.value ?? '')
+  const [depositAmount, setDepositAmount] = useState(c.deposit_amount ?? '')
   const [sourceBoard, setSourceBoard] = useState(c.source_board || '')
   const [boardOrderNumber, setBoardOrderNumber] = useState(c.board_order_number || '')
   const [saving, setSaving] = useState(false)
@@ -904,6 +905,7 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, 
         dropoff_address: dropoffAddress.trim() || null,
         scheduled_at: fromLocalInput(when),
         value: amount === '' ? null : amount,
+        deposit_amount: depositAmount === '' ? 0 : depositAmount,
         source_board: sourceBoard || null,
         board_order_number: boardOrderNumber || null,
       })
@@ -979,6 +981,22 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, 
             placeholder="0"
             className="w-full rounded border border-line bg-canvas px-2 py-1 font-[family-name:var(--font-mono)] text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           />
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Deposit collected ($)</label>
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="1"
+            value={depositAmount}
+            onChange={(e) => setDepositAmount(e.target.value)}
+            placeholder="0"
+            className="w-full rounded border border-line bg-canvas px-2 py-1 font-[family-name:var(--font-mono)] text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+          />
+          {Number(depositAmount) > 0 && Number(amount) > 0 && (
+            <p className="mt-1 text-[10px] text-muted">Balance due at delivery: ${(Number(amount) - Number(depositAmount)).toLocaleString()}</p>
+          )}
         </div>
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Port</label>

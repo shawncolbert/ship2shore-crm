@@ -340,7 +340,7 @@ export async function fetchDefaultPipeline() {
 
   const { data: opps, error: oErr } = await supabase
     .from('opportunities')
-    .select('id, title, service_code, port, vehicle, value, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, source_board, board_order_number, assigned_dispatcher_id, contacts!opportunities_contact_id_fkey(full_name, company, email, phone), assigned_dispatcher:contacts!opportunities_assigned_dispatcher_id_fkey(id, full_name, company), invoices(id, status, invoice_number, total, amount_due, created_at)')
+    .select('id, title, service_code, port, vehicle, value, deposit_amount, scheduled_at, stage_id, contact_id, status, billing_number, cleared, paid, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, source_board, board_order_number, assigned_dispatcher_id, contacts!opportunities_contact_id_fkey(full_name, company, email, phone), assigned_dispatcher:contacts!opportunities_assigned_dispatcher_id_fkey(id, full_name, company), invoices(id, status, invoice_number, total, amount_due, created_at)')
     .eq('pipeline_id', pipeline.id)
     .order('created_at', { ascending: false, foreignTable: 'invoices' })
   if (oErr) throw oErr
@@ -499,6 +499,10 @@ export async function updateOpportunity(id, patch) {
   if ('value' in patch) {
     const n = Number(patch.value)
     allowed.value = Number.isFinite(n) && n >= 0 ? n : null
+  }
+  if ('deposit_amount' in patch) {
+    const n = Number(patch.deposit_amount)
+    allowed.deposit_amount = Number.isFinite(n) && n >= 0 ? n : 0
   }
   if ('source_board' in patch) allowed.source_board = patch.source_board || null
   if ('board_order_number' in patch)

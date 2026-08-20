@@ -141,10 +141,19 @@ export default function InvoiceDetail() {
       ship_from_address: opp.pickup_address || '',
       ship_to_address: opp.dropoff_address || '',
     }))
-    setLineItems([{
-      service_id: '', quantity: 1, unit_price: Number(opp.value) || 0,
-      description: [opp.title, detail].filter(Boolean).join(' — '),
-    }])
+    const deposit = Number(opp.deposit_amount) || 0
+    setLineItems([
+      {
+        service_id: '', quantity: 1, unit_price: Number(opp.value) || 0,
+        description: [opp.title, detail].filter(Boolean).join(' — '),
+      },
+      // Deposit was already collected at booking -- credit it back so the
+      // invoice reflects what's actually still owed, not the full price.
+      ...(deposit > 0 ? [{
+        service_id: '', quantity: 1, unit_price: -deposit,
+        description: 'Deposit received at booking',
+      }] : []),
+    ])
     setPrefilledFrom(opp.id)
   }
 
