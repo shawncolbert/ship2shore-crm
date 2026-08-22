@@ -154,10 +154,12 @@ const SECTIONS = [
       flip it — independent of each other and of the invoice status badges next to them, so you can tell at a
       glance what's actually come in versus what's still outstanding.
 
-      Once there's a customer, a vehicle, and a Deposit amount on the job, hitting Save automatically builds
-      the deposit invoice draft for you — correct customer, correct amount, correct vehicle/route on it,
-      Zelle always included. Nothing gets emailed on its own: it's just sitting there ready under "Deposit
-      invoice" so opening it is reviewing and hitting Send, not starting from a blank form.
+      Once there's a customer, a vehicle, and a dollar amount on the job, hitting Save automatically builds
+      both invoice drafts for you — a Deposit invoice for the Deposit amount, and a Balance invoice for
+      whatever's left once that's subtracted from the total — correct customer, correct amount, correct
+      vehicle/route on each, Zelle always included. Nothing gets emailed on its own: they're just sitting
+      there ready under "Deposit invoice"/"Balance invoice" so opening one is reviewing and hitting Send,
+      not starting from a blank form.
 
       "Send contract" emails the customer a booking agreement (their price, deposit, vehicle, and pickup/
       drop-off, plus standard transport terms) with a link to review and sign — type name, check "I agree,"

@@ -883,17 +883,16 @@ function JobDetailModal({
     setPriceConfirmed(true)
   }
 
-  // Once there's a contact, a vehicle, and a deposit amount, there's nothing
-  // left for a human to decide about the deposit invoice itself -- so build
-  // the draft automatically on Save rather than making the dispatcher start
-  // one from a blank form. It still lands as a draft, not sent: opening
-  // "Deposit invoice" shows it pre-filled and ready, the dispatcher still
-  // has to hit Send. Best-effort and silent -- if it fails, the "Deposit
-  // invoice" button still lets them build one by hand, same as before.
-  async function autoDraftDepositInvoice() {
-    if (depositInvoice || !c.contact_id) return
-    const dep = Number(depositAmount)
-    if (!(dep > 0)) return
+  // Once there's a contact, a vehicle, and a dollar amount, there's nothing
+  // left for a human to decide about an invoice's contents -- so build the
+  // draft automatically on Save rather than making the dispatcher start one
+  // from a blank form. It still lands as a draft, not sent: opening
+  // "Deposit invoice"/"Balance invoice" shows it pre-filled and ready, the
+  // dispatcher still has to hit Send. Best-effort and silent -- if it
+  // fails, the buttons still let them build one by hand, same as before.
+  async function autoDraftInvoice({ kind, existing, unitPrice, label }) {
+    if (existing || !c.contact_id) return
+    if (!(unitPrice > 0)) return
     const vehicleDesc = vehicle.trim() || [vehicleYear, vehicleMake, vehicleModel].filter(Boolean).join(' ').trim()
     try {
       await createInvoice({
@@ -904,12 +903,20 @@ function JobDetailModal({
           bill_to_phone: c.contacts?.phone || null,
           bill_to_email: c.contacts?.email || null,
           notes: [vehicleDesc, pickupAddress && dropoffAddress ? `${pickupAddress} → ${dropoffAddress}` : null].filter(Boolean).join('\n') || null,
-          kind: 'deposit',
+          kind,
         },
-        lineItems: [{ description: `Deposit — ${vehicleDesc || title.trim() || 'vehicle transport'}`, quantity: 1, unit_price: dep }],
+        lineItems: [{ description: `${label} — ${vehicleDesc || title.trim() || 'vehicle transport'}`, quantity: 1, unit_price: unitPrice }],
       })
       qc.invalidateQueries({ queryKey: ['pipeline'] })
-    } catch { /* best-effort -- the Deposit invoice button still works by hand */ }
+    } catch { /* best-effort -- the invoice buttons still work by hand */ }
+  }
+
+  async function autoDraftInvoices() {
+    await autoDraftInvoice({ kind: 'deposit', existing: depositInvoice, unitPrice: Number(depositAmount), label: 'Deposit' })
+    // Balance invoice: whatever's still owed once the deposit's accounted
+    // for. Skipped if that's zero/negative (e.g. fully covered by deposit).
+    const remaining = Number(amount || 0) - Number(depositAmount || 0)
+    await autoDraftInvoice({ kind: 'invoice', existing: invoice, unitPrice: remaining, label: 'Balance' })
   }
 
   function handleShare() {
@@ -944,7 +951,7 @@ function JobDetailModal({
         }),
         billingNumber.trim().slice(0, 16) !== (c.billing_number || '') ? onSaveBilling(billingNumber.trim().slice(0, 16)) : null,
       ])
-      await autoDraftDepositInvoice()
+      await autoDraftInvoices()
       setJustSaved(true)
     } finally {
       setSaving(false)
