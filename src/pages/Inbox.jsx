@@ -237,7 +237,7 @@ export default function Inbox() {
               tabIndex={0}
               onClick={() => setActiveId(c.id)}
               onKeyDown={(e) => { if (e.key === 'Enter') setActiveId(c.id) }}
-              className="group relative flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
+              className="group relative flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left transition-colors hover:bg-accent/8"
               style={activeId === c.id ? { background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' } : undefined}
             >
               {activeId === c.id && (
