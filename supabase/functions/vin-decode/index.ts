@@ -37,8 +37,19 @@ const NHTSA_TIMEOUT_MS = 5000;
 const VEHICLE_TYPES = ["small", "sedan", "suv", "truck", "van", "coupe"] as const;
 type VehicleType = (typeof VEHICLE_TYPES)[number];
 
+// The browser sends a CORS preflight (OPTIONS) before the real POST because
+// this call carries an Authorization header -- without these headers on
+// every response (including the OPTIONS one) the browser blocks the request
+// before it reaches this function at all, and the client just reports
+// "Failed to send a request to the Edge Function" with no other detail.
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...corsHeaders } });
 }
 
 function mapBodyClassToVehicleType(bodyClass: string | null | undefined): VehicleType | null {
@@ -81,6 +92,7 @@ async function decodeVin(vin: string) {
 }
 
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
   let body: any;
