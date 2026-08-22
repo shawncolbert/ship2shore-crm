@@ -1007,9 +1007,11 @@ function JobDetailModal({
                     ) : classifyResult.vehicle_type ? (
                       <>
                         <p className="text-xs font-semibold text-ink">
-                          Detected: <span className="text-accent-600">{VEHICLE_TYPE_LABEL[classifyResult.vehicle_type] || classifyResult.vehicle_type}</span>
+                          {classifyResult.guessed ? 'Best guess: ' : 'Detected: '}
+                          <span className="text-accent-600">{VEHICLE_TYPE_LABEL[classifyResult.vehicle_type] || classifyResult.vehicle_type}</span>
                           {classifyResult.from_cache && <span className="ml-1 font-normal text-muted">(seen before)</span>}
                         </p>
+                        {classifyResult.guessed && <p className="mt-0.5 text-[11px] text-muted">Based on the model name — please confirm below.</p>}
                         {classifyResult.body_class && <p className="mt-0.5 text-[11px] text-muted">NHTSA body class: {classifyResult.body_class}</p>}
                       </>
                     ) : (

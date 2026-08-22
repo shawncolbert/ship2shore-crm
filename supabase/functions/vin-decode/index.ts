@@ -64,6 +64,34 @@ function mapBodyClassToVehicleType(bodyClass: string | null | undefined): Vehicl
   return null;
 }
 
+// Best-effort fallback when there's no BodyClass to go on -- the manual
+// Year/Make/Model path (no VIN) with nothing in vehicle_type_cache yet, since
+// NHTSA has no "classify by make/model" endpoint to fall back to. Matched
+// against common model names so the common case (a Highlander, an F-150)
+// still gets an answer instead of a dead end on the very first time it's
+// seen. Explicitly labeled a "guess" wherever it's surfaced -- the dispatcher
+// always sees the editable Vehicle Type field right there to correct it, and
+// a guess is never written to vehicle_type_cache (that stays reserved for
+// NHTSA-confirmed results so a bad guess can't propagate).
+const MODEL_TYPE_HINTS: [RegExp, VehicleType][] = [
+  [/\b(f-?150|f-?250|f-?350|f-?450|silverado|sierra|tacoma|tundra|ram ?1500|ram ?2500|ram ?3500|ranger|colorado|canyon|frontier|titan|ridgeline|maverick|gladiator)\b/, "truck"],
+  [/\b(sienna|odyssey|pacifica|voyager|carnival|sedona|transit|sprinter|promaster|express|savana|town ?& ?country)\b/, "van"],
+  // Lexus alphanumeric trims (rx450h, nx300, gx460, ux200) never have a word
+  // boundary between the letters and the trim digits, so these get their own
+  // digit-suffixed pattern instead of the trailing \b the rest share.
+  [/\b(rx|nx|gx|ux)\d/, "suv"],
+  [/\b(lx450|lx570|lx600|rav4|highlander|4runner|land ?cruiser|cr-?v|hr-?v|pilot|passport|explorer|expedition|escape|edge|bronco|equinox|traverse|tahoe|suburban|trailblazer|blazer|rogue|murano|pathfinder|armada|kicks|santa ?fe|tucson|palisade|sportage|sorento|telluride|cx-5|cx-9|cx-30|outback|forester|ascent|crosstrek|wrangler|grand ?cherokee|cherokee|compass|renegade|x1|x3|x5|x7|q3|q5|q7|q8|glc|gle|gls|xc40|xc60|xc90|model ?x|model ?y)\b/, "suv"],
+  [/\b(mustang|camaro|challenger|corvette|\b86\b|brz|miata|mx-5|supra|z4|gt86)\b/, "coupe"],
+  [/\b(yaris|fit|fiesta|spark|mirage|versa|rio|accent|soul|leaf|bolt|model ?3)\b/, "small"],
+  [/\b(camry|corolla|accord|civic|altima|sentra|maxima|malibu|impala|fusion|taurus|charger|300|elantra|sonata|optima|forte|k5|jetta|passat|\ba3\b|\ba4\b|\ba6\b|3 ?series|5 ?series|c-class|e-class|s-class|model ?s|prius)\b/, "sedan"],
+]
+
+function guessVehicleTypeFromModel(make: string | null | undefined, model: string | null | undefined): VehicleType | null {
+  const text = `${make || ""} ${model || ""}`.toLowerCase()
+  for (const [pattern, type] of MODEL_TYPE_HINTS) if (pattern.test(text)) return type
+  return null
+}
+
 function isPlausibleVin(vin: string) {
   return /^[A-HJ-NPR-Z0-9]{17}$/i.test(vin);
 }
@@ -112,9 +140,14 @@ Deno.serve(async (req: Request) => {
       return json({ manual_required: true, reason: "Couldn't decode that VIN — enter the vehicle manually." });
     }
 
-    const vehicle_type = mapBodyClassToVehicleType(decoded.bodyClass);
+    let vehicle_type = mapBodyClassToVehicleType(decoded.bodyClass);
+    let guessed = false;
+    if (!vehicle_type) {
+      vehicle_type = guessVehicleTypeFromModel(decoded.make, decoded.model);
+      guessed = !!vehicle_type;
+    }
 
-    if (decoded.make && decoded.model && decoded.year && vehicle_type) {
+    if (decoded.make && decoded.model && decoded.year && vehicle_type && !guessed) {
       await supabase.from("vehicle_type_cache")
         .upsert(
           { make: decoded.make, model: decoded.model, year: decoded.year, body_class: decoded.bodyClass, vehicle_type },
@@ -124,6 +157,7 @@ Deno.serve(async (req: Request) => {
 
     return json({
       manual_required: !vehicle_type,
+      guessed,
       vin,
       year: decoded.year,
       make: decoded.make,
@@ -150,6 +184,11 @@ Deno.serve(async (req: Request) => {
 
   if (cached?.vehicle_type) {
     return json({ manual_required: false, year, make, model, body_class: cached.body_class, vehicle_type: cached.vehicle_type, from_cache: true });
+  }
+
+  const guess = guessVehicleTypeFromModel(make, model);
+  if (guess) {
+    return json({ manual_required: false, guessed: true, year, make, model, vehicle_type: guess });
   }
 
   return json({
