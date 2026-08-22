@@ -1015,7 +1015,10 @@ function JobDetailModal({
                         {classifyResult.body_class && <p className="mt-0.5 text-[11px] text-muted">NHTSA body class: {classifyResult.body_class}</p>}
                       </>
                     ) : (
-                      <p className="text-xs text-ink">{classifyResult.reason || 'Could not auto-detect this vehicle — pick a type below.'}</p>
+                      <p className="text-xs text-ink">
+                        {classifyResult.reason || 'Could not auto-detect this vehicle — pick a type below.'}
+                        {vehicleType && <span className="block text-[11px] text-muted">Currently set to {VEHICLE_TYPE_LABEL[vehicleType] || vehicleType} below — change it if that's not right.</span>}
+                      </p>
                     )}
 
                     <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">

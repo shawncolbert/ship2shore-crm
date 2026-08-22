@@ -82,6 +82,12 @@ const MODEL_TYPE_HINTS: [RegExp, VehicleType][] = [
   [/\b(rx|nx|gx|ux)\d/, "suv"],
   [/\b(lx450|lx570|lx600|rav4|highlander|4runner|land ?cruiser|cr-?v|hr-?v|pilot|passport|explorer|expedition|escape|edge|bronco|equinox|traverse|tahoe|suburban|trailblazer|blazer|rogue|murano|pathfinder|armada|kicks|santa ?fe|tucson|palisade|sportage|sorento|telluride|cx-5|cx-9|cx-30|outback|forester|ascent|crosstrek|wrangler|grand ?cherokee|cherokee|compass|renegade|x1|x3|x5|x7|q3|q5|q7|q8|glc|gle|gls|xc40|xc60|xc90|model ?x|model ?y)\b/, "suv"],
   [/\b(mustang|camaro|challenger|corvette|\b86\b|brz|miata|mx-5|supra|z4|gt86)\b/, "coupe"],
+  // Common JDM grey-market imports (25-year rule) -- a real share of what
+  // ships through West Coast ports like Long Beach/Wilmington, so worth
+  // covering by name even though NHTSA's own body-class data is thin or
+  // absent for these once they're re-titled in the US.
+  [/\b(skyline|gt-?r|silvia|s13|s14|s15|soarer|rx-?7|fd3s|fc3s|fairlady|300zx|350z|370z|nsx|integra|ae86|levin|trueno)\b/, "coupe"],
+  [/\b(chaser|mark ?ii|mark ?x|cresta|laurel|cefiro|crown|celsior|altezza)\b/, "sedan"],
   [/\b(yaris|fit|fiesta|spark|mirage|versa|rio|accent|soul|leaf|bolt|model ?3)\b/, "small"],
   [/\b(camry|corolla|accord|civic|altima|sentra|maxima|malibu|impala|fusion|taurus|charger|300|elantra|sonata|optima|forte|k5|jetta|passat|\ba3\b|\ba4\b|\ba6\b|3 ?series|5 ?series|c-class|e-class|s-class|model ?s|prius)\b/, "sedan"],
 ]
