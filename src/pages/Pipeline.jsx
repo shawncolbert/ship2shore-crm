@@ -1182,7 +1182,18 @@ function JobDetailModal({
                 estimator needs the addresses, the suggested price needs the
                 vehicle). */}
             <div className={panel}>
-              <h3 className="mb-3 text-sm font-bold text-ink">Logistics &amp; Pricing</h3>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-bold text-ink">Logistics &amp; Pricing</h3>
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={saving}
+                  title="Save just this job — no need to scroll to the bottom"
+                  className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
+                >
+                  {saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Save'}
+                </button>
+              </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <AddressAutocompleteField label="Pickup" value={pickupAddress} onChange={setPickupAddress} />
