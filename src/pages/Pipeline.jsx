@@ -779,8 +779,26 @@ function JobDetailModal({
       setBriefError('')
       setBriefApplied(null)
       setBriefTranscript('')
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel()
       recognitionRef.current.start()
     }
+  }
+
+  // Reads the captured fields back out loud (browser-native SpeechSynthesis,
+  // same "entirely client-side, no extra API cost" reasoning as the
+  // SpeechRecognition side of this feature) -- so a dispatcher glancing away
+  // from the screen still hears what actually got picked up, not just silence.
+  function speakBriefSummary(result) {
+    if (!('speechSynthesis' in window)) return
+    const parts = []
+    if (result.title) parts.push(`Title: ${result.title}.`)
+    if (result.vehicle_description) parts.push(`Vehicle: ${result.vehicle_description}.`)
+    if (result.pickup_address) parts.push(`Pickup: ${result.pickup_address}.`)
+    if (result.dropoff_address) parts.push(`Drop-off: ${result.dropoff_address}.`)
+    if (result.price != null) parts.push(`Price: ${result.price} dollars.`)
+    const text = parts.length ? `Got it. ${parts.join(' ')}` : "I didn't catch anything usable in that -- try again."
+    window.speechSynthesis.cancel()
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(text))
   }
 
   async function handleProcessBrief() {
@@ -796,6 +814,7 @@ function JobDetailModal({
       if (result.vehicle_description) { setVehicle(result.vehicle_description); applied.push('vehicle') }
       if (result.price != null) { setAmount(String(result.price)); setPriceConfirmed(false); applied.push('price') }
       setBriefApplied({ fields: applied, notes: result.notes })
+      speakBriefSummary(result)
     } catch (err) {
       setBriefError(err.message)
     } finally {

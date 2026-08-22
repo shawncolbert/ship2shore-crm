@@ -365,6 +365,162 @@ function detectBoardEmail(fromEmail: string, subject: string, bodyText: string):
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Zelle payment auto-matching
+// ---------------------------------------------------------------------------
+//
+// The receiving bank emails a "you got money" notification the moment a
+// Zelle payment lands -- there's no other reliable signal, since Zelle
+// itself has no API for a small business account. Gated on the word
+// "zelle" actually appearing before ever calling Claude, same cost-control
+// pattern as looksLikeLoadEmail below. Every bank phrases these differently
+// (Chase vs BofA vs Wells Fargo etc.) -- not confirmed against a real one
+// from every bank a customer might use; if a real notification never
+// triggers this, forward one and check its subject/body against the gate.
+function looksLikeZelleEmail(subject: string, bodyText: string): boolean {
+  const text = `${subject} ${bodyText}`.toLowerCase();
+  if (!text.includes("zelle")) return false;
+  return /(received|deposited|sent you|is available|has been added|you got)/.test(text);
+}
+
+const ZELLE_EXTRACT_SYSTEM = `You read a bank notification email to check whether it's a "Zelle payment received" notice -- money coming IN to the account holder's own bank account via Zelle. If it's anything else (a Zelle payment SENT out, a failed/pending/canceled transfer, a request for money, or an unrelated email that merely mentions Zelle), respond with exactly {"is_zelle_received": false} and nothing else. Otherwise extract exactly this shape, with ONLY valid JSON, no other text:
+{"is_zelle_received": true, "amount": number, "sender_name": "string or null", "memo": "string or null"}
+amount is a plain number, no currency symbol or commas. sender_name is the person who sent the money, exactly as the notification names them -- not the bank's own name. memo is any note/message that came with the payment, or null.`;
+
+async function extractZellePayment(subject: string, bodyText: string): Promise<any | null> {
+  if (!ANTHROPIC_API_KEY) return null;
+  const res = await fetch(CLAUDE_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 300,
+      system: ZELLE_EXTRACT_SYSTEM,
+      messages: [{ role: "user", content: `Subject: ${subject}\n\nBody:\n${bodyText}` }],
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error("Claude API error: " + JSON.stringify(data));
+  const raw = (data.content || []).map((b: any) => b.text || "").join("").trim();
+  try {
+    const parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, ""));
+    if (!parsed?.is_zelle_received || !(Number(parsed.amount) > 0)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+// Loose "do these two names share a real word" check -- good enough to tell
+// "Sarah Chen" from "Sarah's Zelle" apart from a same-amount coincidence
+// without needing a real fuzzy-matching library for this one comparison.
+function nameWordsOverlap(a: string, b: string): boolean {
+  const words = (s: string) => (s || "").toLowerCase().replace(/[^a-z\s]/g, "").split(/\s+/).filter((w) => w.length >= 3);
+  const aw = new Set(words(a));
+  return words(b).some((w) => aw.has(w));
+}
+
+function buildSimpleRaw(from: string, to: string, subject: string, body: string): string {
+  const msg = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    "",
+    body,
+  ].join("\r\n");
+  return btoa(unescape(encodeURIComponent(msg))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// Self-email alert, same "org's own inbox" pattern as contract-send's
+// internal alerts -- sent from and to the org's own connected Gmail account
+// so it just shows up in their normal inbox, no separate notification
+// system needed. Best-effort: a failed alert never blocks the payment match
+// itself, since the zelle_payments row (and, for an auto-match, the paid
+// invoice) is already the durable record either way.
+async function gmailSendSelf(accessToken: string, selfEmail: string, subject: string, body: string) {
+  try {
+    const raw = buildSimpleRaw(selfEmail, selfEmail, subject, body);
+    await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ raw }),
+    });
+  } catch { /* best-effort */ }
+}
+
+// Matches on amount first (an open invoice's amount_due), then narrows by
+// sender name only when the amount alone doesn't already pin it down to one
+// invoice. "Unambiguous" = exactly one candidate once both signals are
+// applied; anything else (zero, or several that still tie) gets flagged in
+// zelle_payments for a dispatcher's one-click confirm instead of guessing
+// which job actually got paid.
+async function handleZellePayment(
+  supabase: any, orgId: string, subject: string, body: string, msgId: string,
+  accessToken: string, selfEmail: string, sentAt: string,
+) {
+  const { data: already } = await supabase
+    .from("zelle_payments").select("id").eq("org_id", orgId).eq("provider_msg_id", msgId).maybeSingle();
+  if (already) return;
+
+  const info = await extractZellePayment(subject, body);
+  if (!info) return;
+
+  const amount = Number(info.amount);
+  const { data: candidates } = await supabase
+    .from("invoices")
+    .select("id, opportunity_id, kind, amount_due, bill_to_name, contacts:contact_id(full_name)")
+    .eq("org_id", orgId)
+    .in("status", ["sent", "overdue"])
+    .eq("amount_due", amount);
+
+  let matchedInvoice: any = null;
+  let unambiguous = false;
+  const list = candidates || [];
+  if (list.length === 1) {
+    const inv = list[0];
+    const billName = inv.bill_to_name || inv.contacts?.full_name || "";
+    unambiguous = !info.sender_name || !billName || nameWordsOverlap(billName, info.sender_name);
+    matchedInvoice = inv;
+  } else if (list.length > 1 && info.sender_name) {
+    const named = list.filter((inv: any) =>
+      nameWordsOverlap(inv.bill_to_name || inv.contacts?.full_name || "", info.sender_name));
+    if (named.length === 1) { matchedInvoice = named[0]; unambiguous = true; }
+  }
+
+  if (unambiguous && matchedInvoice) {
+    await supabase.from("invoices").update({
+      status: "paid", amount_due: 0, paid_at: new Date().toISOString(),
+      payment_method: "Zelle", updated_at: new Date().toISOString(),
+    }).eq("id", matchedInvoice.id);
+
+    if (matchedInvoice.opportunity_id) {
+      const field = matchedInvoice.kind === "deposit" ? "deposit_paid" : "paid";
+      await supabase.from("opportunities").update({ [field]: true }).eq("id", matchedInvoice.opportunity_id);
+    }
+
+    await supabase.from("zelle_payments").insert({
+      org_id: orgId, provider_msg_id: msgId, amount, sender_name: info.sender_name || null, memo: info.memo || null,
+      invoice_id: matchedInvoice.id, opportunity_id: matchedInvoice.opportunity_id || null,
+      status: "matched", auto_matched: true, received_at: sentAt, resolved_at: new Date().toISOString(),
+    });
+
+    await gmailSendSelf(accessToken, selfEmail,
+      `Zelle payment matched — $${amount.toFixed(2)}`,
+      `A Zelle payment of $${amount.toFixed(2)} from ${info.sender_name || "an unknown sender"} was automatically matched to an invoice and marked paid.\n\nCheck the job on your Pipeline to confirm.`);
+  } else {
+    await supabase.from("zelle_payments").insert({
+      org_id: orgId, provider_msg_id: msgId, amount, sender_name: info.sender_name || null, memo: info.memo || null,
+      invoice_id: matchedInvoice?.id || null, opportunity_id: matchedInvoice?.opportunity_id || null,
+      status: "pending", auto_matched: false, received_at: sentAt,
+    });
+
+    await gmailSendSelf(accessToken, selfEmail,
+      `Zelle payment needs review — $${amount.toFixed(2)}`,
+      `A Zelle payment of $${amount.toFixed(2)} from ${info.sender_name || "an unknown sender"} came in but couldn't be matched to exactly one open invoice automatically. Review and confirm it under Invoices in the app.`);
+  }
+}
+
 const PLATFORM_TO_BOARD: Record<string, string> = {
   "Super Dispatch": "super_dispatch",
   "Central Dispatch": "central_dispatch",
@@ -588,6 +744,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
   let created = 0, skipped = 0, notContact = 0;
   const docs = { stored: 0, matched: 0, review: 0, irrelevant: 0 };
   const dispatches = { detected: 0, opportunitiesCreated: 0 };
+  const zelle = { detected: 0 };
   const errors: any[] = [];
 
   for (const msg of messages) {
@@ -634,6 +791,16 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
           dispatches.opportunitiesCreated += result.opportunitiesCreated;
         } catch (e) {
           errors.push({ board: detected.board, msgId: msg.id, detail: String(e) });
+        }
+        continue;
+      }
+
+      if (looksLikeZelleEmail(subjectHeader, body)) {
+        zelle.detected++;
+        try {
+          await handleZellePayment(supabase, orgId, subjectHeader, body, msg.id, accessToken, tokenRow.email, sentAt);
+        } catch (e) {
+          errors.push({ zelle: true, msgId: msg.id, detail: String(e) });
         }
         continue;
       }
@@ -692,7 +859,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
     else created++;
   }
 
-  return { account: tokenRow.email, scanned: messages.length, created, skipped, non_contact: notContact, documents: docs, dispatches, errors };
+  return { account: tokenRow.email, scanned: messages.length, created, skipped, non_contact: notContact, documents: docs, dispatches, zelle, errors };
 }
 
 Deno.serve(async (_req: Request) => {

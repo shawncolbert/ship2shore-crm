@@ -283,6 +283,59 @@ export async function markInvoicePaidManually(id, { paymentMethod }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Zelle payment auto-matching review queue                            */
+/* ------------------------------------------------------------------ */
+// gmail-sync (every 15 min) detects "Zelle payment received" emails in the
+// org's connected Gmail and tries to match them to an open invoice by
+// amount + sender name -- an unambiguous match gets marked paid straight
+// away there. Anything it couldn't safely resolve on its own lands here as
+// 'pending' for a one-click confirm instead of guessing which job got paid.
+
+export async function fetchZellePaymentFlags() {
+  const { data, error } = await supabase
+    .from('zelle_payments')
+    .select('id, amount, sender_name, memo, invoice_id, opportunity_id, received_at, created_at, invoices(invoice_number, kind, bill_to_name, status)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+// Applies the same "mark paid" effect gmail-sync's auto-match path uses --
+// invoice paid, and the linked job's Deposit/Final badge flipped -- then
+// records the confirm on the zelle_payments row itself.
+export async function confirmZellePaymentMatch(zelleId, invoiceId) {
+  const { data: inv, error: invErr } = await supabase
+    .from('invoices').select('id, kind, opportunity_id').eq('id', invoiceId).single()
+  if (invErr) throw invErr
+
+  const { error: updErr } = await supabase.from('invoices').update({
+    status: 'paid', amount_due: 0, paid_at: new Date().toISOString(),
+    payment_method: 'Zelle', updated_at: new Date().toISOString(),
+  }).eq('id', invoiceId)
+  if (updErr) throw updErr
+
+  if (inv.opportunity_id) {
+    const field = inv.kind === 'deposit' ? 'deposit_paid' : 'paid'
+    await supabase.from('opportunities').update({ [field]: true }).eq('id', inv.opportunity_id)
+  }
+
+  const { error: zErr } = await supabase.from('zelle_payments').update({
+    status: 'matched', auto_matched: false, invoice_id: invoiceId,
+    opportunity_id: inv.opportunity_id || null, resolved_at: new Date().toISOString(),
+  }).eq('id', zelleId)
+  if (zErr) throw zErr
+}
+
+export async function dismissZellePaymentMatch(zelleId) {
+  const { error } = await supabase
+    .from('zelle_payments')
+    .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
+    .eq('id', zelleId)
+  if (error) throw error
+}
+
+/* ------------------------------------------------------------------ */
 /* Send (status + Stripe payment link + email, via Netlify function)   */
 /* ------------------------------------------------------------------ */
 

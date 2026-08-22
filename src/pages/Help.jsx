@@ -142,6 +142,12 @@ const SECTIONS = [
       for trucks) drive a live Suggested price — "Confirm price" is what actually applies it to Amount;
       nothing changes the invoice on its own.
 
+      "Audio Brief" at the top of the page lets you just talk a job in instead of typing it: hit the mic,
+      say the pickup, drop-off, vehicle, and price the way you'd say it out loud to a person, hit it again to
+      stop, then "Process Audio Brief" — it fills in Title/Pickup/Drop-off/Vehicle/Price from whatever it
+      caught, and reads back what it understood out loud so you know it actually heard you right, without
+      needing to look at the screen. Nothing saves on its own — you still review and hit Save same as always.
+
       Below that, "Price estimator" prices the actual run itself, automatically, the moment pickup and
       drop-off addresses are both in: it matches the drop-off to one of your named local zones (Los Angeles,
       Orange County, San Diego, etc. — set those up under Pricing Zones) if it's a Southern/Northern
@@ -220,6 +226,14 @@ const SECTIONS = [
       an invoice. Zelle is the one exception — it's always included on every invoice (deposit invoices
       created automatically from a signed contract too), checkbox locked on, the safest payment route —
       everything else only shows up if you check it.
+
+      Zelle payments get matched automatically, too: every 15 minutes the app checks your connected Gmail
+      for "you received a Zelle payment" notification emails and, when the amount and sender name line up
+      with exactly one open invoice, marks it paid and flips that job's Deposit/Final badge on its own —
+      you'll get an alert in your own inbox either way. If it's not sure (two open invoices at the same
+      amount, or the name doesn't clearly match), it shows up under "Zelle payments needing review" at the
+      top of this page instead of guessing — pick the right invoice and click Confirm paid, or Dismiss if it
+      wasn't actually a match.
 
       "Payment reminders" is its own section, off by default — check "Auto-remind if unpaid" and pick 3
       days, 7 days, or a custom number, and it'll email the customer that reminder every time that many days

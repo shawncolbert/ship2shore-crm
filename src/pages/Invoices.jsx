@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { fetchInvoices, fetchInvoiceBusinessInfo, saveInvoiceBusinessInfo, uploadInvoiceLogo, deleteInvoice } from '../lib/invoices'
+import {
+  fetchInvoices, fetchInvoiceBusinessInfo, saveInvoiceBusinessInfo, uploadInvoiceLogo, deleteInvoice,
+  fetchZellePaymentFlags, confirmZellePaymentMatch, dismissZellePaymentMatch,
+} from '../lib/invoices'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)] space-y-3'
 const btnAccent = 'rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-accent-600'
@@ -16,11 +19,80 @@ const STATUS_STYLES = {
   overdue: 'bg-red-50 text-red-600',
 }
 
+// One flagged Zelle payment: shows the amount/sender Claude read out of the
+// bank's email, and either a one-click Confirm (gmail-sync already found a
+// best-guess invoice, just couldn't be sure enough to apply it on its own)
+// or a manual pick from the org's still-open invoices when it found none.
+function ZellePaymentRow({ flag, openInvoices, onResolved }) {
+  const [picked, setPicked] = useState(flag.invoice_id || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const confirm = async () => {
+    if (!picked || busy) return
+    setBusy(true); setErr('')
+    try {
+      await confirmZellePaymentMatch(flag.id, picked)
+      onResolved()
+    } catch (e) {
+      setErr(e.message || 'Could not confirm this match.')
+      setBusy(false)
+    }
+  }
+
+  const dismiss = async () => {
+    if (busy) return
+    setBusy(true); setErr('')
+    try {
+      await dismissZellePaymentMatch(flag.id)
+      onResolved()
+    } catch (e) {
+      setErr(e.message || 'Could not dismiss this.')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5">
+      <div className="text-sm">
+        <span className="font-semibold text-ink">{money(flag.amount)}</span>
+        <span className="text-muted"> from {flag.sender_name || 'an unknown sender'}</span>
+        {flag.invoices?.invoice_number && (
+          <span className="text-muted"> — best guess: {flag.invoices.invoice_number} ({flag.invoices.bill_to_name})</span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <select
+          value={picked}
+          onChange={(e) => setPicked(e.target.value)}
+          className="rounded border border-line bg-surface px-2 py-1 text-xs text-ink outline-none focus:border-accent"
+        >
+          <option value="">Pick an invoice…</option>
+          {(openInvoices || []).map((inv) => (
+            <option key={inv.id} value={inv.id}>
+              {inv.invoice_number} — {inv.contacts?.full_name || 'no contact'} — {money(inv.amount_due)}
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={confirm} disabled={!picked || busy} className="rounded bg-accent px-2.5 py-1 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50">
+          Confirm paid
+        </button>
+        <button type="button" onClick={dismiss} disabled={busy} className="rounded border border-line px-2.5 py-1 text-xs font-semibold text-ink hover:bg-canvas disabled:opacity-50">
+          Dismiss
+        </button>
+      </div>
+      {err && <p className="w-full text-xs text-port">{err}</p>}
+    </div>
+  )
+}
+
 export default function Invoices() {
   const qc = useQueryClient()
   const [showSettings, setShowSettings] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
   const { data: invoices, isLoading } = useQuery({ queryKey: ['invoices'], queryFn: fetchInvoices })
+  const { data: zelleFlags } = useQuery({ queryKey: ['zellePaymentFlags'], queryFn: fetchZellePaymentFlags })
+  const openInvoices = (invoices || []).filter((inv) => inv.status === 'sent' || inv.status === 'overdue')
 
   const handleDelete = async (e, inv) => {
     e.preventDefault(); e.stopPropagation()
@@ -48,6 +120,26 @@ export default function Invoices() {
           <Link to="/invoices/new" className={btnAccent}>+ New invoice</Link>
         </div>
       </header>
+
+      {zelleFlags?.length > 0 && (
+        <div className="mb-6 space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Zelle payments needing review ({zelleFlags.length})
+          </h2>
+          {zelleFlags.map((flag) => (
+            <ZellePaymentRow
+              key={flag.id}
+              flag={flag}
+              openInvoices={openInvoices}
+              onResolved={() => {
+                qc.invalidateQueries({ queryKey: ['zellePaymentFlags'] })
+                qc.invalidateQueries({ queryKey: ['invoices'] })
+                qc.invalidateQueries({ queryKey: ['pipeline'] })
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {isLoading && <p className="text-sm text-muted">Loading…</p>}
 
