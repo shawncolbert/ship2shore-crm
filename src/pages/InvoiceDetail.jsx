@@ -9,7 +9,10 @@ import {
 import { fetchPaymentSettings, fetchWaveCheckoutLinks } from '../lib/supabase'
 import InvoicePreview from '../components/InvoicePreview'
 
-const DEFAULT_PAYMENT_OPTIONS = { stripe: true, wave: false, zelle: false, venmo: false, cashapp: false, apple_pay: false }
+// Zelle is always on -- the safest payment method, per policy -- and can't
+// be turned off from this form; enforced again server-side in
+// createInvoice/updateInvoice so it can't be bypassed by any other path.
+const DEFAULT_PAYMENT_OPTIONS = { stripe: true, wave: false, zelle: true, venmo: false, cashapp: false, apple_pay: false }
 const HANDLE_METHODS = [
   { key: 'zelle', field: 'zelle_handle', label: 'Zelle' },
   { key: 'venmo', field: 'venmo_handle', label: 'Venmo' },
@@ -122,7 +125,7 @@ export default function InvoiceDetail() {
           ? existing.lineItems.map((li) => ({ service_id: li.service_id || '', description: li.description, quantity: li.quantity, unit_price: li.unit_price }))
           : [blankLineItem()]
       )
-      setPaymentOptions({ ...DEFAULT_PAYMENT_OPTIONS, ...(inv.payment_options || {}) })
+      setPaymentOptions({ ...DEFAULT_PAYMENT_OPTIONS, ...(inv.payment_options || {}), zelle: true })
       setWaveCheckoutLinkId(inv.wave_checkout_link_id || '')
       setReminderEnabled(!!inv.reminder_enabled)
       setReminderIntervalDays(inv.reminder_interval_days || 7)
@@ -507,16 +510,18 @@ export default function InvoiceDetail() {
 
               {HANDLE_METHODS.map((m) => {
                 const handle = paymentSettings?.[m.field]
+                const locked = m.key === 'zelle'
                 return (
                   <label key={m.key} className={`flex items-center gap-2 text-sm ${handle ? 'text-ink' : 'text-muted'}`}>
                     <input
                       type="checkbox"
-                      checked={paymentOptions[m.key]}
-                      disabled={!handle}
+                      checked={locked ? true : paymentOptions[m.key]}
+                      disabled={locked || !handle}
                       onChange={() => togglePaymentOption(m.key)}
                       className="h-4 w-4 rounded border-line"
                     />
                     {m.label}
+                    {locked && <span className="text-xs text-muted">(always included)</span>}
                     {handle ? <span className="text-xs text-muted">({handle})</span> : <Link to="/payment-settings" className="text-xs text-accent hover:underline">set handle in Payment Settings</Link>}
                   </label>
                 )
