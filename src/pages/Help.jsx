@@ -148,13 +148,14 @@ const SECTIONS = [
       caught, and reads back what it understood out loud so you know it actually heard you right, without
       needing to look at the screen. Nothing saves on its own — you still review and hit Save same as always.
 
-      Below that, "Price estimator" prices the actual run itself, automatically, the moment pickup and
-      drop-off addresses are both in: it matches the drop-off to one of your named local zones (Los Angeles,
-      Orange County, San Diego, etc. — set those up under Pricing Zones) if it's a Southern/Northern
-      California run, or falls back to a real driving-distance quote off the map for anything farther,
-      using the vehicle type it already decoded above. It shows as a Suggested price you click Confirm on —
-      same rule as everywhere else, it never fills Amount by itself. "Adjust manually" drops back to picking
-      a zone or entering mileage by hand for a one-off override.
+      Below that, "Price estimator" prices the actual run itself using Val's exact locked formula, off real
+      driving distance the moment pickup and drop-off are both in (type miles by hand if you'd rather skip
+      the address lookup). It auto-fills the vehicle size (Sedan/SUV/Truck) from what's already decoded above
+      — pick Luxury or Exotic yourself if it's one of those, since there's no automatic way to detect that
+      yet — and the season surcharge from the job's scheduled date. Rural destination and Open vs. Enclosed
+      are always your call, so set those two before reading the quote. It shows two numbers, Low ($150
+      broker fee) and High ($250 fee) — pick whichever you're quoting and click Confirm on that one; neither
+      fills Amount by itself.
 
       Each job also shows Deposit and Final payment badges — red for unpaid, blue for paid, click either to
       flip it — independent of each other and of the invoice status badges next to them, so you can tell at a

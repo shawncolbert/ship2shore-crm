@@ -1197,7 +1197,7 @@ function JobDetailModal({
               </div>
               {(pickupAddress || dropoffAddress) && (
                 <div className="mt-3">
-                  <PriceEstimator pickup={pickupAddress} dropoff={dropoffAddress} vehicleType={vehicleType} onUseAmount={(v) => { setAmount(v); setPriceConfirmed(false) }} />
+                  <PriceEstimator pickup={pickupAddress} dropoff={dropoffAddress} vehicleType={vehicleType} scheduledAt={fromLocalInput(when)} onUseAmount={(v) => { setAmount(v); setPriceConfirmed(false) }} />
                 </div>
               )}
 
