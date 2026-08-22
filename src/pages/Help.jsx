@@ -124,7 +124,34 @@ const SECTIONS = [
       shows as a small badge on the card. Neither board offers API access on the plans available to us, so
       this is manual for now — worth doing anyway since it means every job lives on this one board instead
       of scattered across board account and CRM, and you can always see where your revenue's actually coming
-      from. Both boards are also one click away from the sidebar (see Custom Links) to book/check a load.`,
+      from. Both boards are also one click away from the sidebar (see Custom Links) to book/check a load.
+
+      Click a card's "Open job details" pencil and it opens as a full page instead of a small popup — pickup/
+      drop-off, price estimator, vehicle, port, source, assigned dispatcher, invoices, and a stage stepper you
+      can click straight to any stage, all visible at once. Save only saves — it never closes the page on you,
+      so you can always see it actually went through; Close (with a back arrow) is the one thing that exits,
+      back to the board exactly where you were.
+
+      The Vehicle section on that page auto-detects the vehicle as you type: enter a 17-character VIN and it
+      decodes year/make/model plus a type (sedan, SUV, truck, van, coupe, or small) straight from the
+      government's own VIN database, including a set of common JDM import names (Skyline, Silvia, Chaser, and
+      similar) it recognizes by name alone. No VIN? Type Year/Make/Model instead — it checks what's already
+      been seen before, and falls back to its best guess from the model name (clearly flagged as a guess) if
+      it's genuinely new. Every vehicle you confirm teaches the system, so the same year/make/model is instant
+      the next time anyone books it. Vehicle type and condition (Stock/Raised/Lowered, plus Extended/long-bed
+      for trucks) drive a live Suggested price — "Confirm price" is what actually applies it to Amount;
+      nothing changes the invoice on its own.
+
+      Each job also shows Deposit and Final payment badges — red for unpaid, blue for paid, click either to
+      flip it — independent of each other and of the invoice status badges next to them, so you can tell at a
+      glance what's actually come in versus what's still outstanding.
+
+      "Send contract" emails the customer a booking agreement (their price, deposit, vehicle, and pickup/
+      drop-off, plus standard transport terms) with a link to review and sign — type name, check "I agree,"
+      done, no login needed on their end. The moment they sign, their deposit invoice is created and emailed
+      automatically — one connected flow instead of two separate things to remember to send — and you get an
+      internal alert both when the contract goes out and when it comes back signed, so you're not stuck
+      checking the board to find out.`,
   },
   {
     id: 'pipeline-stages',
@@ -171,12 +198,13 @@ const SECTIONS = [
       still send and customers can still view them, there's just no live Pay Now button yet.
 
       Every invoice has its own "Payment options" section where you check off which ways to pay actually go
-      out with it: the Stripe pay-now link, and/or your Zelle/Venmo/Cash App/Apple Pay handles from Payment
+      out with it: the Stripe pay-now link, and/or your Venmo/Cash App/Apple Pay handles from Payment
       Settings. There's also Wave Checkout — Wave's payment links work without needing Wave's paid API tier
       and are reusable, so build a small library of them once under Payment Settings (name each one, e.g.
       "Escort - $85"), then just pick the right one from a dropdown when checking the Wave Checkout box on
-      an invoice. Only the options you check are shown to the customer; nothing is included by default
-      except Stripe.
+      an invoice. Zelle is the one exception — it's always included on every invoice (deposit invoices
+      created automatically from a signed contract too), checkbox locked on, the safest payment route —
+      everything else only shows up if you check it.
 
       "Payment reminders" is its own section, off by default — check "Auto-remind if unpaid" and pick 3
       days, 7 days, or a custom number, and it'll email the customer that reminder every time that many days
@@ -256,8 +284,9 @@ const SECTIONS = [
     nav: '/payment-settings',
     body: `Enter your Zelle, Venmo, Cash App, and Apple Pay handles once. From then on they're available as
       check-off options in a job's invoice (see Invoices) and in the "send a payment request" automation
-      action (see Automations) — no separate app needed. None of these have a way to auto-confirm payment
-      landed, so you'll still mark it paid yourself once it does.
+      action (see Automations) — no separate app needed. Zelle is automatically included on every invoice
+      from then on, no checkbox needed — the other three stay optional. None of these have a way to
+      auto-confirm payment landed, so you'll still mark it paid yourself once it does.
 
       This page also holds your Wave Checkout links — Wave has no API to generate one automatically, so you
       build a link by hand in Wave (the "Create a new Wave Checkout" button jumps you straight there once
