@@ -384,7 +384,7 @@ export async function fetchDefaultPipeline() {
 
   const { data: opps, error: oErr } = await supabase
     .from('opportunities')
-    .select('id, org_id, title, service_code, port, vehicle, value, deposit_amount, scheduled_at, stage_id, contact_id, status, billing_number, booking_number, cleared, paid, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, vehicle_type, vehicle_modification, vehicle_extended, vehicle_body_class, vehicle_gvwr, suggested_price, confirmed_price, source_board, board_order_number, assigned_dispatcher_id, contacts!opportunities_contact_id_fkey(full_name, company, email, phone), assigned_dispatcher:contacts!opportunities_assigned_dispatcher_id_fkey(id, full_name, company), invoices(id, status, invoice_number, total, amount_due, created_at, kind)')
+    .select('id, org_id, title, service_code, port, vehicle, value, deposit_amount, scheduled_at, stage_id, contact_id, status, billing_number, booking_number, cleared, paid, deposit_paid, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, vehicle_type, vehicle_modification, vehicle_extended, vehicle_body_class, vehicle_gvwr, suggested_price, confirmed_price, source_board, board_order_number, assigned_dispatcher_id, contacts!opportunities_contact_id_fkey(full_name, company, email, phone), assigned_dispatcher:contacts!opportunities_assigned_dispatcher_id_fkey(id, full_name, company), invoices(id, status, invoice_number, total, amount_due, created_at, kind)')
     .eq('pipeline_id', pipeline.id)
     .order('created_at', { ascending: false, foreignTable: 'invoices' })
   if (oErr) throw oErr
@@ -501,11 +501,13 @@ export async function setOpportunityBilling(id, billingNumber) {
   return value
 }
 
-// Toggle per-job flags (cleared, paid). Pass only the fields you're changing.
+// Toggle per-job flags (cleared, paid, deposit_paid). Pass only the fields
+// you're changing.
 export async function patchOpportunity(id, patch) {
   const allowed = {}
   if ('cleared' in patch) allowed.cleared = !!patch.cleared
   if ('paid' in patch) allowed.paid = !!patch.paid
+  if ('deposit_paid' in patch) allowed.deposit_paid = !!patch.deposit_paid
   const { error } = await supabase.from('opportunities').update(allowed).eq('id', id)
   if (error) throw error
 }

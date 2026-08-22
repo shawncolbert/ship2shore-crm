@@ -537,13 +537,15 @@ function JobCard({ c, isWon, stages, dragId, setDragId, cancelling, onCancel, on
         )}
       </div>
 
-      {/* Cleared (NC/C) and Paid toggles */}
-      <div className="mt-2 flex items-center gap-4">
-        <ClearedToggle
-          cleared={c.cleared}
-          onToggle={() => onPatch(c.id, { cleared: !c.cleared })}
+      {/* What's actually come in -- deposit and final payment, independently */}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <PaymentBadgeToggle
+          label="Deposit"
+          paid={c.deposit_paid}
+          onToggle={() => onPatch(c.id, { deposit_paid: !c.deposit_paid })}
         />
-        <PaidToggle
+        <PaymentBadgeToggle
+          label="Final"
           paid={c.paid}
           onToggle={() => onPatch(c.id, { paid: !c.paid })}
         />
@@ -1181,9 +1183,9 @@ function JobDetailModal({
                     </button>
                   </div>
                 )}
-                <div className="mt-3 flex items-center gap-5 border-t border-line pt-3">
-                  <ClearedToggle cleared={c.cleared} onToggle={() => onPatch({ cleared: !c.cleared })} />
-                  <PaidToggle paid={c.paid} onToggle={() => onPatch({ paid: !c.paid })} />
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                  <PaymentBadgeToggle label="Deposit" paid={c.deposit_paid} onToggle={() => onPatch({ deposit_paid: !c.deposit_paid })} />
+                  <PaymentBadgeToggle label="Final" paid={c.paid} onToggle={() => onPatch({ paid: !c.paid })} />
                 </div>
               </div>
             </div>
@@ -1315,31 +1317,23 @@ function AmountField({ value, paid, onSave, onInteractStart, onInteractEnd }) {
   )
 }
 
-// Paid / unpaid switch, mirroring ClearedToggle.
-function PaidToggle({ paid, onToggle }) {
+// Deposit-paid / final-paid status, shown as the same bubble style as
+// InvoiceStatusBadge/ContractStatusBadge -- red means money hasn't come in
+// yet, blue means it has. Still a click-to-flip toggle (not read-only),
+// same interaction as the switches it replaced.
+function PaymentBadgeToggle({ label, paid, onToggle }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={paid}
-      title={paid ? 'Paid — click to mark unpaid' : 'Mark as paid'}
+      title={paid ? `${label} paid — click to mark unpaid` : `${label} unpaid — click to mark paid`}
       onClick={(e) => { e.stopPropagation(); onToggle() }}
-      className="flex shrink-0 items-center gap-1"
+      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset transition-colors ${
+        paid ? 'bg-blue-50 text-blue-600 ring-blue-200 hover:bg-blue-100' : 'bg-red-50 text-red-600 ring-red-200 hover:bg-red-100'
+      }`}
     >
-      <span
-        className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors ${
-          paid ? 'bg-starboard' : 'bg-slate-300'
-        }`}
-      >
-        <span
-          className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
-            paid ? 'translate-x-4' : 'translate-x-0.5'
-          }`}
-        />
-      </span>
-      <span className={`text-[10px] font-bold ${paid ? 'text-starboard' : 'text-muted'}`}>
-        {paid ? 'PAID' : 'UNPAID'}
-      </span>
+      {label} {paid ? 'paid' : 'unpaid'}
     </button>
   )
 }
@@ -1367,38 +1361,6 @@ function ContractStatusBadge({ contract }) {
     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${signed ? 'bg-emerald-50 text-emerald-600 ring-emerald-200' : 'bg-canvas text-muted ring-line'}`}>
       {signed ? 'Signed' : 'Sent'}
     </span>
-  )
-}
-
-// Cleared / not-cleared switch. Shows a sliding toggle plus a C / NC label.
-function ClearedToggle({ cleared, onToggle }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={cleared}
-      aria-label={cleared ? 'Cleared' : 'Not cleared'}
-      title={cleared ? 'Cleared — click to mark not cleared' : 'Not cleared — click to mark cleared'}
-      onClick={(e) => { e.stopPropagation(); onToggle() }}
-      className="flex shrink-0 items-center gap-1"
-    >
-      <span
-        className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors ${
-          cleared ? 'bg-starboard' : 'bg-slate-300'
-        }`}
-      >
-        <span
-          className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
-            cleared ? 'translate-x-4' : 'translate-x-0.5'
-          }`}
-        />
-      </span>
-      <span
-        className={`w-5 text-[10px] font-bold ${cleared ? 'text-starboard' : 'text-port'}`}
-      >
-        {cleared ? 'C' : 'NC'}
-      </span>
-    </button>
   )
 }
 
