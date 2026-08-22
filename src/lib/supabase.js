@@ -631,6 +631,36 @@ export async function assignDispatcher(opportunityId, dispatcherContactId) {
   return data
 }
 
+// "Send contract" action on a pipeline card. Renders and emails the
+// customer a booking agreement to review and sign (contract-send.js); the
+// deposit invoice is created and sent automatically once they sign, not
+// here -- see ContractSign.jsx.
+export async function sendContract(opportunityId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/contract-send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ opportunityId }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Could not send that contract.')
+  return data
+}
+
+// Latest contract sent for a job, if any -- shown as a status badge on the
+// pipeline card the same way invoice status is.
+export async function fetchLatestContract(opportunityId) {
+  const { data, error } = await supabase
+    .from('contracts')
+    .select('id, status, signer_name, signed_at, deposit_invoice_id, sent_at')
+    .eq('opportunity_id', opportunityId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
 // "Send invoice" action on a pipeline card. Calls the wave-send-invoice Edge
 // Function (creates/reuses a Wave customer, creates + emails the invoice, and
 // stores wave_invoice_id + payment_status='sent' on the opportunity server-side).

@@ -30,6 +30,7 @@ import Invoices from './pages/Invoices'
 import CompletedJobs from './pages/CompletedJobs'
 import InvoiceDetail from './pages/InvoiceDetail'
 import PublicInvoice from './pages/PublicInvoice'
+import ContractSign from './pages/ContractSign'
 import PipelineStages from './pages/PipelineStages'
 import AdminOrgs from './pages/AdminOrgs'
 import DeliveryOrderFix from './pages/DeliveryOrderFix'
@@ -82,6 +83,9 @@ function App() {
       <Route path="/funnel/:slug" element={<PublicFunnel />} />
       {/* Public invoice page — no auth gate, this is the link a customer gets emailed */}
       <Route path="/invoice/:id" element={<PublicInvoice />} />
+      {/* Public booking agreement page — no auth gate, the link sent by
+          "Send contract" on a pipeline card */}
+      <Route path="/contract/:id" element={<ContractSign />} />
       {/* Branded front door -- your own company name/logo, "Enter CRM" takes
           you to the Dashboard. Shown every time you land here, including
           right after signing in (see Login.jsx's post-auth redirect).

@@ -7,6 +7,7 @@ import {
   uploadCompletionVideo, fetchCompletionVideo, fetchMyOrgId, fetchLatestJobNote, fetchVehiclePhotoUrl,
   fetchDispatcherContacts, assignDispatcher,
   classifyVehicle, previewSuggestedPrice,
+  sendContract, fetchLatestContract,
 } from '../lib/supabase'
 import { buildBookingSummary, shareBooking } from '../lib/shareBooking'
 import NewContactModal from '../components/NewContactModal'
@@ -714,7 +715,23 @@ function JobDetailModal({
 
   const { data: latestNote } = useQuery({ queryKey: ['jobNote', c.id], queryFn: () => fetchLatestJobNote(c.id) })
   const { data: photoUrl } = useQuery({ queryKey: ['jobPhoto', c.id], queryFn: () => fetchVehiclePhotoUrl(c.id) })
+  const { data: contract } = useQuery({ queryKey: ['jobContract', c.id], queryFn: () => fetchLatestContract(c.id) })
+  const [sendingContract, setSendingContract] = useState(false)
+  const qc = useQueryClient()
   const hasVehicleDetails = c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin
+
+  async function handleSendContract() {
+    if (sendingContract) return
+    setSendingContract(true)
+    try {
+      await sendContract(c.id)
+      qc.invalidateQueries({ queryKey: ['jobContract', c.id] })
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setSendingContract(false)
+    }
+  }
 
   // Escape closes, same as clicking the X or the backdrop.
   useEffect(() => {
@@ -1067,6 +1084,15 @@ function JobDetailModal({
                     Deposit invoice {depositInvoice && <InvoiceStatusBadge status={depositInvoice.status} prefix="Deposit: " />}
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleSendContract}
+                  disabled={sendingContract}
+                  className="mt-2 flex w-full items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent disabled:opacity-50"
+                >
+                  <span>{sendingContract ? 'Sending contract…' : contract ? 'Resend contract' : 'Send contract'}</span>
+                  {contract && <ContractStatusBadge contract={contract} />}
+                </button>
                 <button type="button" onClick={handleShare} className="mt-2 w-full rounded-md bg-brand px-3 py-2 text-xs font-semibold text-white hover:bg-brand-600">
                   📱 Text driver / share booking
                 </button>
@@ -1331,6 +1357,15 @@ function InvoiceStatusBadge({ status, prefix = '' }) {
   return (
     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${INVOICE_STATUS_STYLE[key]}`}>
       {prefix}{INVOICE_STATUS_LABEL[key]}
+    </span>
+  )
+}
+
+function ContractStatusBadge({ contract }) {
+  const signed = contract?.status === 'signed'
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${signed ? 'bg-emerald-50 text-emerald-600 ring-emerald-200' : 'bg-canvas text-muted ring-line'}`}>
+      {signed ? 'Signed' : 'Sent'}
     </span>
   )
 }
