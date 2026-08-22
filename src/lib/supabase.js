@@ -633,6 +633,22 @@ export async function assignDispatcher(opportunityId, dispatcherContactId) {
   return data
 }
 
+// Audio Brief: turns a dispatcher's spoken job description (already
+// transcribed to text client-side) into structured job fields via Claude.
+// Never saves anything -- the caller fills the form with whatever comes
+// back and still has to hit Save.
+export async function parseJobBrief(transcript) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/parse-job-brief', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ transcript }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Could not process that brief.')
+  return data
+}
+
 // "Send contract" action on a pipeline card. Renders and emails the
 // customer a booking agreement to review and sign (contract-send.js); the
 // deposit invoice is created and sent automatically once they sign, not

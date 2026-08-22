@@ -8,6 +8,7 @@ import {
   fetchDispatcherContacts, assignDispatcher,
   classifyVehicle, previewSuggestedPrice,
   sendContract, fetchLatestContract,
+  parseJobBrief,
 } from '../lib/supabase'
 import { buildBookingSummary, shareBooking } from '../lib/shareBooking'
 import NewContactModal from '../components/NewContactModal'
@@ -735,6 +736,65 @@ function JobDetailModal({
     }
   }
 
+  // Audio Brief -- talk through a job, have it fill the fields in below.
+  // Speech-to-text happens entirely in the browser (same SpeechRecognition
+  // API the AI Assistant page already uses); only the resulting text is
+  // sent anywhere, to parseJobBrief for Claude to structure. Never saves --
+  // it only fills the form state below, same as typing it in by hand.
+  const [briefListening, setBriefListening] = useState(false)
+  const [briefTranscript, setBriefTranscript] = useState('')
+  const [processingBrief, setProcessingBrief] = useState(false)
+  const [briefError, setBriefError] = useState('')
+  const [briefApplied, setBriefApplied] = useState(null)
+  const recognitionRef = useRef(null)
+
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) return
+    const rec = new SpeechRecognition()
+    rec.continuous = true
+    rec.interimResults = true
+    rec.lang = 'en-US'
+    rec.onstart = () => setBriefListening(true)
+    rec.onend = () => setBriefListening(false)
+    rec.onerror = () => setBriefListening(false)
+    rec.onresult = (event) => {
+      let finalText = ''
+      for (let i = 0; i < event.results.length; i++) {
+        if (event.results[i].isFinal) finalText += event.results[i][0].transcript + ' '
+      }
+      if (finalText) setBriefTranscript((prev) => (prev ? prev.trim() + ' ' : '') + finalText.trim())
+    }
+    recognitionRef.current = rec
+    return () => rec.stop()
+  }, [])
+
+  function toggleBriefMic() {
+    if (!recognitionRef.current) { setBriefError('Voice input is not supported in this browser.'); return }
+    if (briefListening) recognitionRef.current.stop()
+    else { setBriefError(''); setBriefApplied(null); recognitionRef.current.start() }
+  }
+
+  async function handleProcessBrief() {
+    if (!briefTranscript.trim() || processingBrief) return
+    setProcessingBrief(true)
+    setBriefError('')
+    try {
+      const result = await parseJobBrief(briefTranscript)
+      const applied = []
+      if (result.title) { setTitle(result.title); applied.push('title') }
+      if (result.pickup_address) { setPickupAddress(result.pickup_address); applied.push('pickup') }
+      if (result.dropoff_address) { setDropoffAddress(result.dropoff_address); applied.push('drop-off') }
+      if (result.vehicle_description) { setVehicle(result.vehicle_description); applied.push('vehicle') }
+      if (result.price != null) { setAmount(String(result.price)); setPriceConfirmed(false); applied.push('price') }
+      setBriefApplied({ fields: applied, notes: result.notes })
+    } catch (err) {
+      setBriefError(err.message)
+    } finally {
+      setProcessingBrief(false)
+    }
+  }
+
   // Escape closes, same as clicking the X or the backdrop.
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -966,11 +1026,57 @@ function JobDetailModal({
           )}
 
           <div className="space-y-4">
-            {/* Section 1 -- Job details. "Audio Brief" (talk through a job,
-                have it fill these fields in) isn't built yet -- this is
-                where it'll live once it is. */}
+            {/* Section 1 -- Job details, plus Audio Brief: talk through a
+                job and have it fill the fields below in. */}
             <div className={panel}>
-              <h3 className="mb-3 text-sm font-bold text-ink">Job details</h3>
+              <h3 className="mb-3 text-sm font-bold text-ink">Job details &amp; Audio Brief</h3>
+
+              <div className="mb-4 rounded-md border border-line bg-canvas p-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleBriefMic}
+                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${
+                      briefListening ? 'bg-port text-white' : 'bg-accent text-ink hover:bg-accent-600'
+                    }`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+                      <path d="M8 1a2 2 0 0 0-2 2v4a2 2 0 1 0 4 0V3a2 2 0 0 0-2-2Z" />
+                      <path d="M4.5 7a.5.5 0 0 1 .5.5 3 3 0 0 0 6 0 .5.5 0 0 1 1 0 4 4 0 0 1-3.5 3.97V13H10a.5.5 0 0 1 0 1H6a.5.5 0 0 1 0-1h1.5v-1.53A4 4 0 0 1 4 7.5a.5.5 0 0 1 .5-.5Z" />
+                    </svg>
+                    {briefListening ? 'Stop recording' : 'Record brief'}
+                  </button>
+                  {briefTranscript && !briefListening && (
+                    <button
+                      type="button"
+                      onClick={handleProcessBrief}
+                      disabled={processingBrief}
+                      className="rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:border-accent disabled:opacity-50"
+                    >
+                      {processingBrief ? 'Processing…' : 'Process Audio Brief'}
+                    </button>
+                  )}
+                </div>
+                {briefTranscript && (
+                  <textarea
+                    value={briefTranscript}
+                    onChange={(e) => setBriefTranscript(e.target.value)}
+                    rows={2}
+                    placeholder="Talk through the job — pickup, drop-off, vehicle, price..."
+                    className="mt-2 w-full rounded-md border border-line bg-surface px-2.5 py-1.5 text-xs text-ink outline-none focus:border-accent"
+                  />
+                )}
+                {briefError && <p className="mt-2 text-xs text-port">{briefError}</p>}
+                {briefApplied && (
+                  <p className="mt-2 text-xs text-starboard">
+                    {briefApplied.fields.length
+                      ? `Filled in: ${briefApplied.fields.join(', ')} — review below, then Save.`
+                      : "Didn't catch any fields to fill in — try again or type them in below."}
+                    {briefApplied.notes && <span className="mt-1 block text-muted">Also mentioned: {briefApplied.notes}</span>}
+                  </p>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <label className={label}>Title</label>
