@@ -47,3 +47,20 @@ export async function sendCustomerEmail({ orgId, to, subject, body, html, contac
 
   return { id: sent.id, conversationId: convId }
 }
+
+// Internal, org-facing alert -- sent from the org's own connected Gmail
+// account to itself, same pattern as delivery-payment-reminder.js. Lands in
+// both their real inbox and the in-app Inbox (which reads that same
+// account), so a dispatcher sees it either way without a new notification
+// system. Deliberately swallows a missing/unconnected Gmail account -- the
+// customer-facing action this follows should never fail just because the
+// internal heads-up couldn't go out.
+export async function sendInternalAlert({ orgId, subject, body }) {
+  try {
+    const { accessToken, email: orgEmail } = await orgGoogleAccessToken(orgId, admin)
+    await gmailSend(accessToken, buildRaw({ from: orgEmail, to: orgEmail, subject, body }))
+    return true
+  } catch {
+    return false
+  }
+}

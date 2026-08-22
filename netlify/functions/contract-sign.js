@@ -1,5 +1,6 @@
 import { admin } from './_shared/supabaseAdmin.js'
 import { sendInvoiceCore } from './_shared/sendInvoiceCore.js'
+import { sendInternalAlert } from './_shared/email.js'
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -49,10 +50,6 @@ export const handler = async (event) => {
   }).eq('id', id)
   if (updErr) return json(500, { error: updErr.message })
 
-  if (!(Number(contract.deposit_amount) > 0)) {
-    return json(200, { ok: true, status: 'signed', depositInvoiceId: null })
-  }
-
   const { data: opp } = await admin
     .from('opportunities')
     .select('id, org_id, title, booking_number, contact_id, dropoff_address, vehicle, vehicle_year, vehicle_make, vehicle_model, contacts!contact_id(id, full_name, email, phone)')
@@ -60,6 +57,15 @@ export const handler = async (event) => {
   const contact = opp?.contacts
 
   const vehicleDescription = opp?.vehicle || [opp?.vehicle_year, opp?.vehicle_make, opp?.vehicle_model].filter(Boolean).join(' ') || 'vehicle transport'
+
+  if (!(Number(contract.deposit_amount) > 0)) {
+    await sendInternalAlert({
+      orgId: contract.org_id,
+      subject: `Contract signed — ${name}`,
+      body: `${name} just signed the booking agreement for ${vehicleDescription}.\n\nNo deposit amount was set, so no invoice was created automatically.`,
+    })
+    return json(200, { ok: true, status: 'signed', depositInvoiceId: null })
+  }
 
   const { data: invoice, error: invErr } = await admin
     .from('invoices')
@@ -93,6 +99,16 @@ export const handler = async (event) => {
   const sendResult = await sendInvoiceCore({ invoice, orgId: contract.org_id, event })
 
   await admin.from('contracts').update({ deposit_invoice_id: invoice.id }).eq('id', id)
+
+  await sendInternalAlert({
+    orgId: contract.org_id,
+    subject: `Contract signed — ${name}`,
+    body:
+      `${name} just signed the booking agreement for ${vehicleDescription}.\n\n` +
+      `Booking: ${opp?.booking_number || '—'}\n` +
+      `Deposit: $${Number(contract.deposit_amount).toFixed(2)}\n` +
+      `${sendResult.ok && sendResult.emailSent ? 'Deposit invoice sent to the customer.' : `Deposit invoice email did not go out (${sendResult.ok ? sendResult.emailError : sendResult.error}) — check ${invoice.invoice_number} in Invoices.`}`,
+  })
 
   return json(200, {
     ok: true, status: 'signed',

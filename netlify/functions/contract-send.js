@@ -1,5 +1,5 @@
 import { admin, userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
-import { sendCustomerEmail } from './_shared/email.js'
+import { sendCustomerEmail, sendInternalAlert } from './_shared/email.js'
 import { renderContract } from './_shared/contractTemplate.js'
 
 const json = (statusCode, body) => ({
@@ -111,6 +111,16 @@ export const handler = async (event) => {
   } catch (e) {
     emailError = String(e.message || e)
   }
+
+  await sendInternalAlert({
+    orgId,
+    subject: `Contract sent — ${contact.full_name || opp.title || 'Job'}`,
+    body:
+      `A booking agreement was sent for ${vehicleDescription || opp.title || 'this job'}.\n\n` +
+      `Customer: ${contact.full_name || contact.email}\n` +
+      `Total: $${Number(opp.value || 0).toFixed(2)} — Deposit: $${Number(opp.deposit_amount || 0).toFixed(2)}\n` +
+      `${emailSent ? 'Customer email sent.' : `Customer email failed: ${emailError}`}`,
+  })
 
   return json(200, { ok: true, contractId: contract.id, publicUrl, emailSent, emailError })
 }
