@@ -6,6 +6,7 @@ import {
   updateOpportunity,
   uploadCompletionVideo, fetchCompletionVideo, fetchMyOrgId, fetchLatestJobNote, fetchVehiclePhotoUrl,
   fetchDispatcherContacts, assignDispatcher,
+  classifyVehicle, previewSuggestedPrice,
 } from '../lib/supabase'
 import { buildBookingSummary, shareBooking } from '../lib/shareBooking'
 import NewContactModal from '../components/NewContactModal'
@@ -52,6 +53,18 @@ const PORT_LABEL = {
   matson: 'Matson',
   other: 'Other',
 }
+
+// Vehicle type bucket used for auto-pricing (matches the DB check constraint
+// and the vin-decode Edge Function's BodyClass mapping).
+const VEHICLE_TYPE_LABEL = {
+  small: 'Small vehicle',
+  sedan: 'Sedan',
+  suv: 'SUV',
+  truck: 'Truck',
+  van: 'Van',
+  coupe: 'Coupe',
+}
+const VEHICLE_MOD_LABEL = { stock: 'Stock', raised: 'Raised', lowered: 'Lowered' }
 
 // Which load board (if any) a job came from -- no API access on any plan
 // available from either board, so this is a manual tag rather than
@@ -682,6 +695,22 @@ function JobDetailModal({
   const [billingNumber, setBillingNumber] = useState(c.billing_number || '')
   const [saving, setSaving] = useState(false)
 
+  // Vehicle classification + auto-pricing. vehicleYear/Make/Model double as
+  // the "manual entry" fallback fields -- typing all three (with no VIN)
+  // checks vehicle_type_cache the same way a VIN decode does, just without
+  // the NHTSA call.
+  const [vehicleVin, setVehicleVin] = useState(c.vehicle_vin || '')
+  const [vehicleYear, setVehicleYear] = useState(c.vehicle_year || '')
+  const [vehicleMake, setVehicleMake] = useState(c.vehicle_make || '')
+  const [vehicleModel, setVehicleModel] = useState(c.vehicle_model || '')
+  const [vehicleType, setVehicleType] = useState(c.vehicle_type || '')
+  const [vehicleModification, setVehicleModification] = useState(c.vehicle_modification || 'stock')
+  const [vehicleExtended, setVehicleExtended] = useState(!!c.vehicle_extended)
+  const [classifying, setClassifying] = useState(false)
+  const [classifyResult, setClassifyResult] = useState(null)
+  const [suggestedPrice, setSuggestedPrice] = useState(c.suggested_price ?? null)
+  const [priceConfirmed, setPriceConfirmed] = useState(false)
+
   const { data: latestNote } = useQuery({ queryKey: ['jobNote', c.id], queryFn: () => fetchLatestJobNote(c.id) })
   const { data: photoUrl } = useQuery({ queryKey: ['jobPhoto', c.id], queryFn: () => fetchVehiclePhotoUrl(c.id) })
   const hasVehicleDetails = c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin
@@ -692,6 +721,71 @@ function JobDetailModal({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  // Auto-detect the vehicle as the dispatcher types -- a VIN (decodes via
+  // NHTSA), or a "2022 Toyota Tacoma"-style description (parsed locally and
+  // checked against the cache), or the manual Year/Make/Model fields once
+  // all three are filled. Debounced so it fires after typing pauses, not on
+  // every keystroke. Whichever result comes back drives the "what is this
+  // vehicle" popup under the Vehicle panel.
+  useEffect(() => {
+    const vin = vehicleVin.trim().toUpperCase()
+    let year = vehicleYear.trim(), make = vehicleMake.trim(), model = vehicleModel.trim()
+
+    if (!vin && (!year || !make || !model)) {
+      const parsed = vehicle.match(/^\s*((?:19|20)\d{2})\s+(\S+)\s+(.+?)\s*$/)
+      if (parsed) { year = parsed[1]; make = parsed[2]; model = parsed[3] }
+    }
+
+    const vinReady = vin.length === 17
+    const manualReady = !vinReady && year && make && model
+    if (!vinReady && !manualReady) { setClassifyResult(null); return }
+
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      setClassifying(true)
+      try {
+        const result = vinReady ? await classifyVehicle({ vin }) : await classifyVehicle({ year, make, model })
+        if (cancelled) return
+        setClassifyResult(result)
+        if (result.year) setVehicleYear(result.year)
+        if (result.make) setVehicleMake(result.make)
+        if (result.model) setVehicleModel(result.model)
+        if (result.vehicle_type) setVehicleType(result.vehicle_type)
+      } catch (err) {
+        if (!cancelled) setClassifyResult({ manual_required: true, reason: err.message || 'Could not classify this vehicle.' })
+      } finally {
+        if (!cancelled) setClassifying(false)
+      }
+    }, 600)
+    return () => { cancelled = true; clearTimeout(timer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicleVin, vehicleYear, vehicleMake, vehicleModel, vehicle])
+
+  // Live suggested price -- same formula as the calculate_suggested_price DB
+  // trigger, called via RPC so the two never drift. Recomputes whenever the
+  // vehicle condition or the base amount/service changes; never writes
+  // anywhere until the dispatcher hits Confirm price.
+  useEffect(() => {
+    if (!vehicleType) { setSuggestedPrice(c.suggested_price ?? null); return }
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      try {
+        const price = await previewSuggestedPrice({
+          orgId: c.org_id, serviceCode: c.service_code, value: amount,
+          vehicleType, vehicleModification, vehicleExtended,
+        })
+        if (!cancelled) setSuggestedPrice(price)
+      } catch { /* leave last known suggestion in place */ }
+    }, 400)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [c.org_id, c.service_code, amount, vehicleType, vehicleModification, vehicleExtended, c.suggested_price])
+
+  function confirmPrice() {
+    if (suggestedPrice == null) return
+    setAmount(String(suggestedPrice))
+    setPriceConfirmed(true)
+  }
 
   function handleShare() {
     shareBooking({ summaryText: bookingSummaryFor(c, latestNote, photoUrl), recipientPhone: c.contacts?.phone })
@@ -713,6 +807,14 @@ function JobDetailModal({
           deposit_amount: depositAmount === '' ? 0 : depositAmount,
           source_board: sourceBoard || null,
           board_order_number: boardOrderNumber || null,
+          vehicle_vin: vehicleVin || null,
+          vehicle_year: vehicleYear || null,
+          vehicle_make: vehicleMake || null,
+          vehicle_model: vehicleModel || null,
+          vehicle_type: vehicleType || null,
+          vehicle_modification: vehicleModification,
+          vehicle_extended: vehicleExtended,
+          ...(priceConfirmed ? { confirmed_price: suggestedPrice } : {}),
         }),
         billingNumber.trim().slice(0, 16) !== (c.billing_number || '') ? onSaveBilling(billingNumber.trim().slice(0, 16)) : null,
       ])
@@ -870,6 +972,73 @@ function JobDetailModal({
                 {photoUrl && (
                   <a href={photoUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs text-accent hover:underline">📷 Vehicle photo ↗</a>
                 )}
+
+                <div className="mt-3 grid grid-cols-1 gap-3 border-t border-line pt-3 sm:grid-cols-3">
+                  <div className="sm:col-span-3">
+                    <label className={label}>VIN</label>
+                    <input
+                      value={vehicleVin}
+                      onChange={(e) => setVehicleVin(e.target.value.toUpperCase().slice(0, 17))}
+                      placeholder="17-character VIN — auto-decodes"
+                      maxLength={17}
+                      className={`${field} ${mono}`}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Year</label>
+                    <input value={vehicleYear} onChange={(e) => setVehicleYear(e.target.value.slice(0, 4))} placeholder="2022" className={field} />
+                  </div>
+                  <div>
+                    <label className={label}>Make</label>
+                    <input value={vehicleMake} onChange={(e) => setVehicleMake(e.target.value)} placeholder="Toyota" className={field} />
+                  </div>
+                  <div>
+                    <label className={label}>Model</label>
+                    <input value={vehicleModel} onChange={(e) => setVehicleModel(e.target.value)} placeholder="Tacoma" className={field} />
+                  </div>
+                </div>
+
+                {/* Auto-detect popup -- appears as soon as the VIN, description, or
+                    manual Year/Make/Model fields resolve to a vehicle. */}
+                {(classifying || classifyResult) && (
+                  <div className="mt-3 rounded-md border border-accent/40 bg-accent/8 p-3">
+                    {classifying ? (
+                      <p className="text-xs font-semibold text-ink">Detecting vehicle…</p>
+                    ) : classifyResult.vehicle_type ? (
+                      <>
+                        <p className="text-xs font-semibold text-ink">
+                          Detected: <span className="text-accent-600">{VEHICLE_TYPE_LABEL[classifyResult.vehicle_type] || classifyResult.vehicle_type}</span>
+                          {classifyResult.from_cache && <span className="ml-1 font-normal text-muted">(seen before)</span>}
+                        </p>
+                        {classifyResult.body_class && <p className="mt-0.5 text-[11px] text-muted">NHTSA body class: {classifyResult.body_class}</p>}
+                      </>
+                    ) : (
+                      <p className="text-xs text-ink">{classifyResult.reason || 'Could not auto-detect this vehicle — pick a type below.'}</p>
+                    )}
+
+                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div>
+                        <label className={label}>Vehicle type</label>
+                        <select value={vehicleType} onChange={(e) => setVehicleType(e.target.value)} className={field}>
+                          <option value="">—</option>
+                          {Object.entries(VEHICLE_TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={label}>Condition</label>
+                        <select value={vehicleModification} onChange={(e) => setVehicleModification(e.target.value)} className={field}>
+                          {Object.entries(VEHICLE_MOD_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    {vehicleType === 'truck' && (
+                      <label className="mt-2 flex items-center gap-2 text-xs font-medium text-ink">
+                        <input type="checkbox" checked={vehicleExtended} onChange={(e) => setVehicleExtended(e.target.checked)} />
+                        Extended / long bed
+                      </label>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className={panel}>
@@ -940,7 +1109,11 @@ function JobDetailModal({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={label}>Amount ($)</label>
-                    <input type="number" inputMode="decimal" min="0" step="1" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className={`${field} ${mono}`} />
+                    <input
+                      type="number" inputMode="decimal" min="0" step="1" value={amount}
+                      onChange={(e) => { setAmount(e.target.value); setPriceConfirmed(false) }}
+                      placeholder="0" className={`${field} ${mono}`}
+                    />
                   </div>
                   <div>
                     <label className={label}>Deposit collected ($)</label>
@@ -949,6 +1122,22 @@ function JobDetailModal({
                 </div>
                 {Number(depositAmount) > 0 && Number(amount) > 0 && (
                   <p className={`${mono} mt-2 text-xs text-muted`}>Balance due at delivery: {money(balance)}</p>
+                )}
+                {suggestedPrice != null && vehicleType && (
+                  <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-accent/40 bg-accent/8 px-3 py-2">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Suggested price</p>
+                      <p className={`${mono} text-sm font-bold text-ink`}>{money(suggestedPrice)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={confirmPrice}
+                      disabled={priceConfirmed && Number(amount) === Number(suggestedPrice)}
+                      className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
+                    >
+                      {priceConfirmed && Number(amount) === Number(suggestedPrice) ? 'Confirmed ✓' : 'Confirm price'}
+                    </button>
+                  </div>
                 )}
                 <div className="mt-3 flex items-center gap-5 border-t border-line pt-3">
                   <ClearedToggle cleared={c.cleared} onToggle={() => onPatch({ cleared: !c.cleared })} />

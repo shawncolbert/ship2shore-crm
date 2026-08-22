@@ -384,7 +384,7 @@ export async function fetchDefaultPipeline() {
 
   const { data: opps, error: oErr } = await supabase
     .from('opportunities')
-    .select('id, title, service_code, port, vehicle, value, deposit_amount, scheduled_at, stage_id, contact_id, status, billing_number, booking_number, cleared, paid, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, source_board, board_order_number, assigned_dispatcher_id, contacts!opportunities_contact_id_fkey(full_name, company, email, phone), assigned_dispatcher:contacts!opportunities_assigned_dispatcher_id_fkey(id, full_name, company), invoices(id, status, invoice_number, total, amount_due, created_at, kind)')
+    .select('id, org_id, title, service_code, port, vehicle, value, deposit_amount, scheduled_at, stage_id, contact_id, status, billing_number, booking_number, cleared, paid, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, vehicle_type, vehicle_modification, vehicle_extended, vehicle_body_class, vehicle_gvwr, suggested_price, confirmed_price, source_board, board_order_number, assigned_dispatcher_id, contacts!opportunities_contact_id_fkey(full_name, company, email, phone), assigned_dispatcher:contacts!opportunities_assigned_dispatcher_id_fkey(id, full_name, company), invoices(id, status, invoice_number, total, amount_due, created_at, kind)')
     .eq('pipeline_id', pipeline.id)
     .order('created_at', { ascending: false, foreignTable: 'invoices' })
   if (oErr) throw oErr
@@ -551,8 +551,52 @@ export async function updateOpportunity(id, patch) {
   if ('source_board' in patch) allowed.source_board = patch.source_board || null
   if ('board_order_number' in patch)
     allowed.board_order_number = patch.board_order_number?.trim() || null
+  if ('vehicle_vin' in patch) allowed.vehicle_vin = patch.vehicle_vin?.trim().toUpperCase() || null
+  if ('vehicle_year' in patch) allowed.vehicle_year = patch.vehicle_year?.trim() || null
+  if ('vehicle_make' in patch) allowed.vehicle_make = patch.vehicle_make?.trim() || null
+  if ('vehicle_model' in patch) allowed.vehicle_model = patch.vehicle_model?.trim() || null
+  if ('vehicle_type' in patch) allowed.vehicle_type = patch.vehicle_type || null
+  if ('vehicle_modification' in patch) allowed.vehicle_modification = patch.vehicle_modification || 'stock'
+  if ('vehicle_extended' in patch) allowed.vehicle_extended = !!patch.vehicle_extended
+  if ('confirmed_price' in patch) {
+    const n = Number(patch.confirmed_price)
+    allowed.confirmed_price = Number.isFinite(n) && n >= 0 ? n : null
+  }
   const { data, error } = await supabase
     .from('opportunities').update(allowed).eq('id', id).select('*').single()
+  if (error) throw error
+  return data
+}
+
+// Vehicle classification for the auto-pricing feature (Supabase Edge
+// Function "vin-decode"). Two shapes in, matching the function's two modes:
+// { vin } decodes via NHTSA and caches the result; { year, make, model }
+// only checks vehicle_type_cache (no external call) for the manual-entry
+// fallback. Never throws on a bad/undecodable VIN -- the function itself
+// always returns 200 with manual_required: true in that case.
+export async function classifyVehicle(params) {
+  const { data, error } = await supabase.functions.invoke('vin-decode', { body: params })
+  if (error) {
+    let message = error.message
+    try { message = (await error.context.json())?.error || message } catch { /* keep default */ }
+    throw new Error(message)
+  }
+  return data
+}
+
+// Live "what would this cost" preview as the dispatcher edits vehicle type/
+// condition, before anything is saved. Mirrors the calculate_suggested_price
+// trigger exactly (same SQL function) so the number shown here always
+// matches what gets persisted on save.
+export async function previewSuggestedPrice({ orgId, serviceCode, value, vehicleType, vehicleModification, vehicleExtended }) {
+  const { data, error } = await supabase.rpc('preview_suggested_price', {
+    p_org_id: orgId,
+    p_service_code: serviceCode || null,
+    p_value: value === '' || value == null ? 0 : Number(value),
+    p_vehicle_type: vehicleType || null,
+    p_vehicle_modification: vehicleModification || 'stock',
+    p_vehicle_extended: !!vehicleExtended,
+  })
   if (error) throw error
   return data
 }
