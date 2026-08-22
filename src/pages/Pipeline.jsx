@@ -772,7 +772,14 @@ function JobDetailModal({
   function toggleBriefMic() {
     if (!recognitionRef.current) { setBriefError('Voice input is not supported in this browser.'); return }
     if (briefListening) recognitionRef.current.stop()
-    else { setBriefError(''); setBriefApplied(null); recognitionRef.current.start() }
+    else {
+      // Starting a fresh recording -- clear whatever was left over from
+      // last time instead of piling new speech onto old text.
+      setBriefError('')
+      setBriefApplied(null)
+      setBriefTranscript('')
+      recognitionRef.current.start()
+    }
   }
 
   async function handleProcessBrief() {
