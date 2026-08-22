@@ -10,9 +10,11 @@
 # per-org to every connected gmail_oauth_tokens row -- not just Ship2Shore's.
 # See supabase/functions/gmail-sync and supabase/functions/gmail-enrichment.
 
-# Draft (never send) a suggested reply for any conversation awaiting one
-[functions."ai-draft-reply"]
-  schedule = "*/10 * * * *"
+# Draft (never send) a suggested reply for any conversation awaiting one.
+# PAUSED -- schedule commented out on request. Restore by uncommenting the
+# schedule line below (function code is untouched, nothing else to redo).
+# [functions."ai-draft-reply"]
+#   schedule = "*/10 * * * *"
 
 # Publish any Social Media Planner post whose scheduled time has arrived
 [functions."tiktok-publish"]
