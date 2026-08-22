@@ -965,32 +965,74 @@ function JobDetailModal({
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {/* Left column */}
-            <div className="space-y-4">
-              <div className={panel}>
-                <h3 className="mb-3 text-sm font-bold text-ink">Pickup &amp; drop-off</h3>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <AddressAutocompleteField label="Pickup" value={pickupAddress} onChange={setPickupAddress} />
-                  <AddressAutocompleteField label="Drop-off" value={dropoffAddress} onChange={setDropoffAddress} />
+          <div className="space-y-4">
+            {/* Section 1 -- Job details. "Audio Brief" (talk through a job,
+                have it fill these fields in) isn't built yet -- this is
+                where it'll live once it is. */}
+            <div className={panel}>
+              <h3 className="mb-3 text-sm font-bold text-ink">Job details</h3>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className={label}>Title</label>
+                  <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Job title" className={field} />
                 </div>
-                {(pickupAddress.trim() !== (c.pickup_address || '') || dropoffAddress.trim() !== (c.dropoff_address || '')) && (
-                  <p className="mt-2 text-xs text-amber-600">Address changed — hit Save, then Text driver sends the corrected one.</p>
-                )}
-                <div className="mt-3">
-                  <label className={label}>Scheduled (Pacific)</label>
-                  <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className={field} />
+                <div>
+                  <label className={label}>Port</label>
+                  <select value={port} onChange={(e) => setPort(e.target.value)} className={field}>
+                    <option value="">—</option>
+                    {Object.entries(PORT_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
                 </div>
-                {(pickupAddress || dropoffAddress) && (
-                  <div className="mt-3">
-                    <PriceEstimator pickup={pickupAddress} dropoff={dropoffAddress} onUseAmount={(v) => setAmount(v)} />
+                <div>
+                  <label className={label}>Source</label>
+                  <select value={sourceBoard} onChange={(e) => setSourceBoard(e.target.value)} className={field}>
+                    <option value="">—</option>
+                    {Object.entries(SOURCE_BOARD_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
+                </div>
+                {sourceBoard && sourceBoard !== 'direct' && sourceBoard !== 'referral' && (
+                  <div>
+                    <label className={label}>Board order #</label>
+                    <input value={boardOrderNumber} onChange={(e) => setBoardOrderNumber(e.target.value)} placeholder="e.g. CD-482910" className={field} />
                   </div>
                 )}
+                <div>
+                  <label className={label}>Assigned dispatcher</label>
+                  <DispatcherAssignField value={c.assigned_dispatcher_id} dispatchers={dispatchers} onAssign={(id) => onAssignDispatcher(c.id, id)} bare />
+                </div>
+                <div>
+                  <label className={label}>Ship billing #</label>
+                  <input value={billingNumber} onChange={(e) => setBillingNumber(e.target.value.slice(0, 16))} maxLength={16} placeholder="Ship billing #" className={`${field} ${mono}`} />
+                </div>
               </div>
+            </div>
 
-              <div className={panel}>
-                <h3 className="mb-3 text-sm font-bold text-ink">Vehicle</h3>
-                <label className={label}>Description</label>
+            {/* Section 2 -- Logistics & Pricing: addresses, vehicle, and
+                price all together, since they drive each other (the price
+                estimator needs the addresses, the suggested price needs the
+                vehicle). */}
+            <div className={panel}>
+              <h3 className="mb-3 text-sm font-bold text-ink">Logistics &amp; Pricing</h3>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <AddressAutocompleteField label="Pickup" value={pickupAddress} onChange={setPickupAddress} />
+                <AddressAutocompleteField label="Drop-off" value={dropoffAddress} onChange={setDropoffAddress} />
+              </div>
+              {(pickupAddress.trim() !== (c.pickup_address || '') || dropoffAddress.trim() !== (c.dropoff_address || '')) && (
+                <p className="mt-2 text-xs text-amber-600">Address changed — hit Save, then Text driver sends the corrected one.</p>
+              )}
+              <div className="mt-3">
+                <label className={label}>Scheduled (Pacific)</label>
+                <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className={field} />
+              </div>
+              {(pickupAddress || dropoffAddress) && (
+                <div className="mt-3">
+                  <PriceEstimator pickup={pickupAddress} dropoff={dropoffAddress} onUseAmount={(v) => setAmount(v)} />
+                </div>
+              )}
+
+              <div className="mt-4 border-t border-line pt-4">
+                <label className={label}>Vehicle description</label>
                 <input value={vehicle} onChange={(e) => setVehicle(e.target.value)} placeholder="e.g. 2022 Toyota Tacoma" className={field} />
                 {hasVehicleDetails && (
                   <p className="mt-2 text-xs text-muted">
@@ -1003,7 +1045,7 @@ function JobDetailModal({
                   <a href={photoUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs text-accent hover:underline">📷 Vehicle photo ↗</a>
                 )}
 
-                <div className="mt-3 grid grid-cols-1 gap-3 border-t border-line pt-3 sm:grid-cols-3">
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div className="sm:col-span-3">
                     <label className={label}>VIN</label>
                     <input
@@ -1076,80 +1118,7 @@ function JobDetailModal({
                 )}
               </div>
 
-              <div className={panel}>
-                <h3 className="mb-3 text-sm font-bold text-ink">Documents &amp; actions</h3>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <button type="button" onClick={() => onOpenInvoice()} className="flex items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent">
-                    Balance invoice {invoice && <InvoiceStatusBadge status={invoice.status} />}
-                  </button>
-                  <button type="button" onClick={() => onOpenDepositInvoice()} className="flex items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent">
-                    Deposit invoice {depositInvoice && <InvoiceStatusBadge status={depositInvoice.status} prefix="Deposit: " />}
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleSendContract}
-                  disabled={sendingContract}
-                  className="mt-2 flex w-full items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent disabled:opacity-50"
-                >
-                  <span>{sendingContract ? 'Sending contract…' : contract ? 'Resend contract' : 'Send contract'}</span>
-                  {contract && <ContractStatusBadge contract={contract} />}
-                </button>
-                <button type="button" onClick={handleShare} className="mt-2 w-full rounded-md bg-brand px-3 py-2 text-xs font-semibold text-white hover:bg-brand-600">
-                  📱 Text driver / share booking
-                </button>
-                {isWon && (
-                  <div className="mt-3">
-                    <CompletionVideoField opportunityId={c.id} contactId={c.contact_id} onInteractStart={() => {}} onInteractEnd={() => {}} />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right column */}
-            <div className="space-y-4">
-              <div className={panel}>
-                <h3 className="mb-3 text-sm font-bold text-ink">Job info</h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className={label}>Title</label>
-                    <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Job title" className={field} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className={label}>Port</label>
-                      <select value={port} onChange={(e) => setPort(e.target.value)} className={field}>
-                        <option value="">—</option>
-                        {Object.entries(PORT_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className={label}>Source</label>
-                      <select value={sourceBoard} onChange={(e) => setSourceBoard(e.target.value)} className={field}>
-                        <option value="">—</option>
-                        {Object.entries(SOURCE_BOARD_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  {sourceBoard && sourceBoard !== 'direct' && sourceBoard !== 'referral' && (
-                    <div>
-                      <label className={label}>Board order #</label>
-                      <input value={boardOrderNumber} onChange={(e) => setBoardOrderNumber(e.target.value)} placeholder="e.g. CD-482910" className={field} />
-                    </div>
-                  )}
-                  <div>
-                    <label className={label}>Assigned dispatcher</label>
-                    <DispatcherAssignField value={c.assigned_dispatcher_id} dispatchers={dispatchers} onAssign={(id) => onAssignDispatcher(c.id, id)} bare />
-                  </div>
-                  <div>
-                    <label className={label}>Ship billing #</label>
-                    <input value={billingNumber} onChange={(e) => setBillingNumber(e.target.value.slice(0, 16))} maxLength={16} placeholder="Ship billing #" className={`${field} ${mono}`} />
-                  </div>
-                </div>
-              </div>
-
-              <div className={panel}>
-                <h3 className="mb-3 text-sm font-bold text-ink">Price</h3>
+              <div className="mt-4 border-t border-line pt-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={label}>Amount ($)</label>
@@ -1188,6 +1157,36 @@ function JobDetailModal({
                   <PaymentBadgeToggle label="Final" paid={c.paid} onToggle={() => onPatch({ paid: !c.paid })} />
                 </div>
               </div>
+            </div>
+
+            {/* Section 3 -- Documents & Execution */}
+            <div className={panel}>
+              <h3 className="mb-3 text-sm font-bold text-ink">Documents &amp; Execution</h3>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button type="button" onClick={() => onOpenInvoice()} className="flex items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent">
+                  Balance invoice {invoice && <InvoiceStatusBadge status={invoice.status} />}
+                </button>
+                <button type="button" onClick={() => onOpenDepositInvoice()} className="flex items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent">
+                  Deposit invoice {depositInvoice && <InvoiceStatusBadge status={depositInvoice.status} prefix="Deposit: " />}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={handleSendContract}
+                disabled={sendingContract}
+                className="mt-2 flex w-full items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent disabled:opacity-50"
+              >
+                <span>{sendingContract ? 'Sending contract…' : contract ? 'Resend contract' : 'Send contract'}</span>
+                {contract && <ContractStatusBadge contract={contract} />}
+              </button>
+              <button type="button" onClick={handleShare} className="mt-2 w-full rounded-md bg-brand px-3 py-2 text-xs font-semibold text-white hover:bg-brand-600">
+                📱 Text driver / share booking
+              </button>
+              {isWon && (
+                <div className="mt-3">
+                  <CompletionVideoField opportunityId={c.id} contactId={c.contact_id} onInteractStart={() => {}} onInteractEnd={() => {}} />
+                </div>
+              )}
             </div>
           </div>
         </div>
