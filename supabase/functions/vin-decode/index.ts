@@ -2,37 +2,40 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // Vehicle classification for the pipeline card's auto-pricing feature.
-// Two modes, both dispatcher-triggered from the frontend (never automatic):
+// Four layers, cheapest/most-authoritative first, each one only running if
+// the one before it came up empty:
 //
-//   { vin }                    -- decode a VIN via NHTSA vPIC, map its
-//                                  BodyClass to our vehicle_type enum, and
-//                                  cache the (make, model, year) -> type
-//                                  result. A specific VIN can't be looked up
-//                                  without an API call (there's no way to
-//                                  learn its make/model/year without one),
-//                                  so this path always calls NHTSA.
+//   1. NHTSA vPIC (VIN only)     -- ground truth when there's a real VIN.
+//   2. vehicle_type_cache        -- free, instant answer for anything this
+//                                    org has seen before (a real VIN decode,
+//                                    or an earlier dispatcher-confirmed save).
+//   3. Local keyword list        -- free, instant, common US-market models.
+//   4. Claude (ANTHROPIC_API_KEY)-- broad general knowledge for everything
+//                                    else (imports, rare trims, anything the
+//                                    hand-written list doesn't cover). Skipped
+//                                    entirely if the key isn't configured --
+//                                    this layer is additive, never required.
 //
-//   { year, make, model }      -- manual-entry fallback when there's no VIN
-//                                  (or NHTSA decode failed). This is the path
-//                                  that actually skips NHTSA: if that exact
-//                                  year/make/model was already decoded from
-//                                  some other VIN before, vehicle_type_cache
-//                                  answers it with zero external calls. If
-//                                  it's genuinely new, we return
-//                                  manual_required so the dispatcher picks
-//                                  the type themselves from the (always
-//                                  editable) Vehicle Type field -- NHTSA has
-//                                  no "classify by year/make/model" endpoint,
-//                                  only by-VIN.
+// Two entry modes, both dispatcher-triggered from the frontend (never
+// automatic): { vin } runs layer 1 then 3/4 on its result; { year, make,
+// model } (the manual-entry fallback, no VIN) runs layers 2 then 3/4 --
+// NHTSA has no "classify by year/make/model" endpoint, only by-VIN, so that
+// path never touches NHTSA at all.
 //
 // Every failure path returns a normal 200 with manual_required: true rather
-// than throwing/500ing -- a bad VIN or a flaky NHTSA response should never
-// block the dispatcher from just typing the vehicle in by hand.
+// than throwing/500ing -- a bad VIN or a flaky upstream response should
+// never block the dispatcher from just typing the vehicle in by hand. Any
+// result from layers 3/4 is a guess, not ground truth -- it's always shown
+// as "best guess" with the Vehicle Type field editable, and only gets
+// written to vehicle_type_cache once a dispatcher actually saves the job
+// (see the learn_vehicle_type_cache DB trigger), never straight from here.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
 const NHTSA_URL = "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues";
 const NHTSA_TIMEOUT_MS = 5000;
+const CLAUDE_TIMEOUT_MS = 8000;
 
 const VEHICLE_TYPES = ["small", "sedan", "suv", "truck", "van", "coupe"] as const;
 type VehicleType = (typeof VEHICLE_TYPES)[number];
@@ -98,6 +101,42 @@ function guessVehicleTypeFromModel(make: string | null | undefined, model: strin
   return null
 }
 
+// Last-resort layer: ask Claude, which has broad general knowledge of
+// vehicles the hand-written keyword list was never going to cover
+// exhaustively (obscure trims, imports, anything new). No-ops cleanly if
+// ANTHROPIC_API_KEY isn't set -- this layer is additive, the system works
+// without it, it just falls back to a manual pick sooner.
+async function aiGuessVehicleType(
+  year: string | null | undefined, make: string | null | undefined, model: string | null | undefined,
+): Promise<VehicleType | null> {
+  if (!ANTHROPIC_API_KEY || !make || !model) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CLAUDE_TIMEOUT_MS);
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      signal: controller.signal,
+      headers: { "content-type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 8,
+        messages: [{
+          role: "user",
+          content: `Vehicle: ${year || "unknown year"} ${make} ${model}. Reply with exactly one word describing its body style, nothing else: small, sedan, suv, truck, van, or coupe. Give your single best guess even if you're not fully certain.`,
+        }],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = String(data?.content?.[0]?.text || "").trim().toLowerCase();
+    return (VEHICLE_TYPES as readonly string[]).includes(text) ? (text as VehicleType) : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function isPlausibleVin(vin: string) {
   return /^[A-HJ-NPR-Z0-9]{17}$/i.test(vin);
 }
@@ -152,6 +191,10 @@ Deno.serve(async (req: Request) => {
       vehicle_type = guessVehicleTypeFromModel(decoded.make, decoded.model);
       guessed = !!vehicle_type;
     }
+    if (!vehicle_type) {
+      vehicle_type = await aiGuessVehicleType(decoded.year, decoded.make, decoded.model);
+      guessed = !!vehicle_type;
+    }
 
     if (decoded.make && decoded.model && decoded.year && vehicle_type && !guessed) {
       // NHTSA-confirmed -- always wins the cache slot, even over an earlier
@@ -194,7 +237,7 @@ Deno.serve(async (req: Request) => {
     return json({ manual_required: false, year, make, model, body_class: cached.body_class, vehicle_type: cached.vehicle_type, from_cache: true });
   }
 
-  const guess = guessVehicleTypeFromModel(make, model);
+  const guess = guessVehicleTypeFromModel(make, model) || await aiGuessVehicleType(year, make, model);
   if (guess) {
     return json({ manual_required: false, guessed: true, year, make, model, vehicle_type: guess });
   }
