@@ -39,23 +39,56 @@ function parseFromHeader(from: string) {
   return { name, email };
 }
 
+// Strips tags/scripts/styles and decodes the entities that actually show up
+// in real mail -- good enough for a readable preview, not a full HTML parser.
+function htmlToText(html: string): string {
+  return html
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// A message body can be UTF-8-encoded -- treating the decoded bytes as a JS
+// string directly (the old atob()-only approach) reinterprets each UTF-8
+// continuation byte as its own Latin-1 character, producing mojibake ("Ã¢Â€Â""
+// instead of an em dash) on anything outside plain ASCII. TextDecoder("utf-8")
+// reassembles the real characters. Also now actually checks mimeType on a
+// single-part message instead of blindly using payload.body.data regardless
+// of type -- an HTML-only email (common for automated notifications) used to
+// get its raw markup dumped in as "the message" with nothing stripped.
 function decodeBody(payload: any): string {
-  function findPart(part: any): string | null {
+  function findPartByType(part: any, mimeType: string): string | null {
     if (!part) return null;
-    if (part.mimeType === "text/plain" && part.body?.data) return part.body.data;
+    if (part.mimeType === mimeType && part.body?.data) return part.body.data;
     if (part.parts) {
       for (const p of part.parts) {
-        const found = findPart(p);
+        const found = findPartByType(p, mimeType);
         if (found) return found;
       }
     }
     return null;
   }
-  const data = payload?.body?.data || findPart(payload);
+
+  const plainData = payload?.mimeType === "text/plain" ? payload?.body?.data : findPartByType(payload, "text/plain");
+  const htmlData = payload?.mimeType === "text/html" ? payload?.body?.data : findPartByType(payload, "text/html");
+  const data = plainData || htmlData;
   if (!data) return "";
+
   try {
-    const base64 = data.replace(/-/g, "+").replace(/_/g, "/");
-    return atob(base64).slice(0, 5000);
+    const decoded = new TextDecoder("utf-8").decode(b64urlToBytes(data));
+    const text = plainData ? decoded : htmlToText(decoded);
+    return text.slice(0, 5000);
   } catch {
     return "";
   }
