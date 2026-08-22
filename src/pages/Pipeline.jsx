@@ -403,7 +403,7 @@ function JobCard({ c, isWon, stages, dragId, setDragId, cancelling, onCancel, on
         invoice={invoice}
         depositInvoice={depositInvoice}
         onClose={() => setEditing(false)}
-        onSave={async (patch) => { await onSaveFields(c.id, patch); setEditing(false) }}
+        onSave={async (patch) => { await onSaveFields(c.id, patch) }}
         onCancelJob={() => {
           if (window.confirm(`Cancel "${c.title || 'this job'}"? It'll disappear from the board.`)) { onCancel(c.id); setEditing(false) }
         }}
@@ -694,6 +694,7 @@ function JobDetailModal({
   const [boardOrderNumber, setBoardOrderNumber] = useState(c.board_order_number || '')
   const [billingNumber, setBillingNumber] = useState(c.billing_number || '')
   const [saving, setSaving] = useState(false)
+  const [justSaved, setJustSaved] = useState(false)
 
   // Vehicle classification + auto-pricing. vehicleYear/Make/Model double as
   // the "manual entry" fallback fields -- typing all three (with no VIN)
@@ -721,6 +722,14 @@ function JobDetailModal({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  // "Saved ✓" confirmation fades back to the normal Save label on its own,
+  // so it reads as a quick confirmation rather than a permanent status.
+  useEffect(() => {
+    if (!justSaved) return
+    const t = setTimeout(() => setJustSaved(false), 3000)
+    return () => clearTimeout(t)
+  }, [justSaved])
 
   // Auto-detect the vehicle as the dispatcher types -- a VIN (decodes via
   // NHTSA), or a "2022 Toyota Tacoma"-style description (parsed locally and
@@ -794,6 +803,7 @@ function JobDetailModal({
   const save = async () => {
     if (saving) return
     setSaving(true)
+    setJustSaved(false)
     try {
       await Promise.all([
         onSave({
@@ -818,6 +828,7 @@ function JobDetailModal({
         }),
         billingNumber.trim().slice(0, 16) !== (c.billing_number || '') ? onSaveBilling(billingNumber.trim().slice(0, 16)) : null,
       ])
+      setJustSaved(true)
     } finally {
       setSaving(false)
     }
@@ -1153,7 +1164,9 @@ function JobDetailModal({
           </div>
         </div>
 
-        {/* Footer actions */}
+        {/* Footer actions -- Save only saves and stays open, so you can see
+            it actually went through before leaving; Close (a real "back to
+            the board" action, never automatic) is the only thing that exits. */}
         <div className="flex flex-wrap items-center gap-2 border-t border-line bg-surface px-5 py-3">
           <button
             type="button"
@@ -1161,14 +1174,18 @@ function JobDetailModal({
             disabled={saving}
             className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
           >
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Save'}
           </button>
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="rounded-md border border-line px-4 py-2 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50"
+            title="Back to the board"
+            className="flex items-center gap-1.5 rounded-md border border-line px-4 py-2 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50"
           >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+              <path fillRule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clipRule="evenodd" />
+            </svg>
             Close
           </button>
           <button
