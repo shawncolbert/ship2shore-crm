@@ -81,6 +81,45 @@ function calculateCrmQuoteMatrix({ miles, vehicleType = 'Sedan', season = 'other
   }
 }
 
+// LOCKED enclosed Luxury/Exotic formula (2026-08-22) -- Val's separate
+// breakdown for Luxury/Exotic vehicles specifically. These always ship
+// enclosed (its own, higher per-mile rate table -- not the general
+// formula's base rate with the ×1.45 enclosed multiplier stacked on top),
+// have no SUV/Truck-style flat vehicle modifier (Exotic gets its own +$300
+// instead), and use a different rural fee scale ($150/$300, not $100/$225).
+// There's no Open/Enclosed choice here -- it's enclosed-only by definition.
+function calculateLuxuryExoticQuote({ miles, vehicleCategory = 'Luxury', season = 'other', ruralLevel = 'none' }) {
+  // 1. Enclosed base carrier target (higher per-mile cost for specialized trailers)
+  let base
+  if (miles <= 100) base = Math.max(600, miles * 5.50)
+  else if (miles <= 300) base = Math.max(950, miles * 3.80)
+  else if (miles <= 900) base = miles * 1.85
+  else if (miles <= 1800) base = miles * 1.30
+  else base = miles * 0.95
+
+  // 2. Exotic tier surcharge (liftgate/high-value insurance handling)
+  if (vehicleCategory === 'Exotic') base += 300
+
+  // 3. Seasonal peak surge (spring & summer demand)
+  if (season === 'spring' || season === 'summer') base *= 1.15
+
+  // 4. Rural destination surcharge (Luxury/Exotic's own scale)
+  const ruralFees = { none: 0, minor: 150, remote: 300 }
+  base += ruralFees[ruralLevel] ?? 0
+
+  // 5. CRM system calculation layer (15% system markup on the enclosed carrier target)
+  const markedUp = base * 1.15
+
+  // 6. Broker fee tiers ($150 low vs $250 high option)
+  const round2 = (n) => Math.round(n * 100) / 100
+  return {
+    requiredTransport: 'Enclosed Trailer',
+    targetDriverPayout: round2(base),
+    quoteLow: round2(markedUp + 150),
+    quoteHigh: round2(markedUp + 250),
+  }
+}
+
 const EMPTY_AUTO = { loading: false, error: '', miles: null, quote: null }
 
 // Staff-only quote helper: the landing page/funnel form only ever collects
@@ -101,6 +140,7 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
   const stop = (e) => e.stopPropagation()
 
   const effectiveVehicleType = vehicleOverride === 'auto' ? toFormulaVehicleType(vehicleType) : vehicleOverride
+  const isLuxuryExotic = effectiveVehicleType === 'Luxury' || effectiveVehicleType === 'Exotic'
   const season = seasonFor(scheduledAt ? new Date(scheduledAt) : new Date())
 
   useEffect(() => {
@@ -126,7 +166,9 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
 
   const miles = milesOverride !== '' ? Number(milesOverride) : auto.miles
   const quote = miles > 0
-    ? calculateCrmQuoteMatrix({ miles, vehicleType: effectiveVehicleType, season, ruralLevel, transportMode })
+    ? (isLuxuryExotic
+        ? calculateLuxuryExoticQuote({ miles, vehicleCategory: effectiveVehicleType, season, ruralLevel })
+        : calculateCrmQuoteMatrix({ miles, vehicleType: effectiveVehicleType, season, ruralLevel, transportMode }))
     : null
 
   const confirm = (amount) => {
@@ -149,13 +191,19 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
         </select>
         <select value={ruralLevel} onChange={(e) => setRuralLevel(e.target.value)} className="w-full rounded border border-line bg-canvas px-1.5 py-1 text-[11px] text-ink outline-none focus:border-accent">
           <option value="none">Rural: none</option>
-          <option value="minor">Rural: minor (+$100)</option>
-          <option value="remote">Rural: remote (+$225)</option>
+          <option value="minor">{`Rural: minor (+$${isLuxuryExotic ? 150 : 100})`}</option>
+          <option value="remote">{`Rural: remote (+$${isLuxuryExotic ? 300 : 225})`}</option>
         </select>
-        <select value={transportMode} onChange={(e) => setTransportMode(e.target.value)} className="w-full rounded border border-line bg-canvas px-1.5 py-1 text-[11px] text-ink outline-none focus:border-accent">
-          <option value="open">Open</option>
-          <option value="enclosed">Enclosed (×1.45)</option>
-        </select>
+        {isLuxuryExotic ? (
+          <div className="flex items-center justify-center rounded border border-line bg-canvas px-1.5 py-1 text-[11px] text-muted" title="Luxury/Exotic always ships enclosed">
+            Enclosed (required)
+          </div>
+        ) : (
+          <select value={transportMode} onChange={(e) => setTransportMode(e.target.value)} className="w-full rounded border border-line bg-canvas px-1.5 py-1 text-[11px] text-ink outline-none focus:border-accent">
+            <option value="open">Open</option>
+            <option value="enclosed">Enclosed (×1.45)</option>
+          </select>
+        )}
       </div>
 
       {!pickup?.trim() || !dropoff?.trim() ? (
@@ -212,7 +260,10 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
               {confirmedAmount === quote.quoteHigh ? 'Confirmed ✓' : 'Confirm'}
             </button>
           </div>
-          <p className="text-[9px] text-muted">Target driver payout: ${quote.targetDriverPayout.toLocaleString()} · {season} · {miles ? Math.round(miles) : 0} mi</p>
+          <p className="text-[9px] text-muted">
+            Target driver payout: ${quote.targetDriverPayout.toLocaleString()} · {season} · {miles ? Math.round(miles) : 0} mi
+            {quote.requiredTransport ? ` · ${quote.requiredTransport} required` : ''}
+          </p>
         </div>
       )}
     </div>

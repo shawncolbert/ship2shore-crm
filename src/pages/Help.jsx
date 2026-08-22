@@ -152,10 +152,12 @@ const SECTIONS = [
       driving distance the moment pickup and drop-off are both in (type miles by hand if you'd rather skip
       the address lookup). It auto-fills the vehicle size (Sedan/SUV/Truck) from what's already decoded above
       — pick Luxury or Exotic yourself if it's one of those, since there's no automatic way to detect that
-      yet — and the season surcharge from the job's scheduled date. Rural destination and Open vs. Enclosed
-      are always your call, so set those two before reading the quote. It shows two numbers, Low ($150
-      broker fee) and High ($250 fee) — pick whichever you're quoting and click Confirm on that one; neither
-      fills Amount by itself.
+      yet — and the season surcharge from the job's scheduled date. Rural destination is always your call,
+      so set that before reading the quote. Luxury/Exotic ships enclosed-only (a separate, higher rate table
+      Val locked in specifically for those, and the Open/Enclosed pick disappears since there's no other
+      option); everything else gives you the Open/Enclosed choice. Either way it shows two numbers, Low
+      ($150 broker fee) and High ($250 fee) — pick whichever you're quoting and click Confirm on that one;
+      neither fills Amount by itself.
 
       Each job also shows Deposit and Final payment badges — red for unpaid, blue for paid, click either to
       flip it — independent of each other and of the invoice status badges next to them, so you can tell at a
