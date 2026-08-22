@@ -603,6 +603,22 @@ export async function previewSuggestedPrice({ orgId, serviceCode, value, vehicle
   return data
 }
 
+// Fuzzy-matches a drop-off address to one of the org's named local pricing
+// zones (see match-pricing-zone.js -- zones are named regions, not defined
+// geo-boundaries, so this needs an LLM's judgment, not a lookup table).
+// Returns null if the address doesn't fit any zone (treat as Interstate).
+export async function matchPricingZone(address, zones) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/match-pricing-zone', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ address, zones }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Could not match that address to a zone.')
+  return data.zoneId
+}
+
 // Contacts tagged as dispatchers (e.g. Warrior Auto Transport, Team Auto
 // Transport/Dispatch) -- the pool a Pipeline job can be handed off to. RLS
 // already scopes contacts to the caller's org, same as every other contacts

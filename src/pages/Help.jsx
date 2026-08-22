@@ -142,9 +142,22 @@ const SECTIONS = [
       for trucks) drive a live Suggested price — "Confirm price" is what actually applies it to Amount;
       nothing changes the invoice on its own.
 
+      Below that, "Price estimator" prices the actual run itself, automatically, the moment pickup and
+      drop-off addresses are both in: it matches the drop-off to one of your named local zones (Los Angeles,
+      Orange County, San Diego, etc. — set those up under Pricing Zones) if it's a Southern/Northern
+      California run, or falls back to a real driving-distance quote off the map for anything farther,
+      using the vehicle type it already decoded above. It shows as a Suggested price you click Confirm on —
+      same rule as everywhere else, it never fills Amount by itself. "Adjust manually" drops back to picking
+      a zone or entering mileage by hand for a one-off override.
+
       Each job also shows Deposit and Final payment badges — red for unpaid, blue for paid, click either to
       flip it — independent of each other and of the invoice status badges next to them, so you can tell at a
       glance what's actually come in versus what's still outstanding.
+
+      Once there's a customer, a vehicle, and a Deposit amount on the job, hitting Save automatically builds
+      the deposit invoice draft for you — correct customer, correct amount, correct vehicle/route on it,
+      Zelle always included. Nothing gets emailed on its own: it's just sitting there ready under "Deposit
+      invoice" so opening it is reviewing and hitting Send, not starting from a blank form.
 
       "Send contract" emails the customer a booking agreement (their price, deposit, vehicle, and pickup/
       drop-off, plus standard transport terms) with a link to review and sign — type name, check "I agree,"

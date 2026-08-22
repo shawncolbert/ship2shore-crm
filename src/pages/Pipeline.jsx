@@ -10,6 +10,7 @@ import {
   sendContract, fetchLatestContract,
   parseJobBrief,
 } from '../lib/supabase'
+import { createInvoice } from '../lib/invoices'
 import { buildBookingSummary, shareBooking } from '../lib/shareBooking'
 import NewContactModal from '../components/NewContactModal'
 import Tooltip from '../components/Tooltip'
@@ -882,6 +883,35 @@ function JobDetailModal({
     setPriceConfirmed(true)
   }
 
+  // Once there's a contact, a vehicle, and a deposit amount, there's nothing
+  // left for a human to decide about the deposit invoice itself -- so build
+  // the draft automatically on Save rather than making the dispatcher start
+  // one from a blank form. It still lands as a draft, not sent: opening
+  // "Deposit invoice" shows it pre-filled and ready, the dispatcher still
+  // has to hit Send. Best-effort and silent -- if it fails, the "Deposit
+  // invoice" button still lets them build one by hand, same as before.
+  async function autoDraftDepositInvoice() {
+    if (depositInvoice || !c.contact_id) return
+    const dep = Number(depositAmount)
+    if (!(dep > 0)) return
+    const vehicleDesc = vehicle.trim() || [vehicleYear, vehicleMake, vehicleModel].filter(Boolean).join(' ').trim()
+    try {
+      await createInvoice({
+        fields: {
+          opportunity_id: c.id,
+          contact_id: c.contact_id,
+          bill_to_name: c.contacts?.full_name || null,
+          bill_to_phone: c.contacts?.phone || null,
+          bill_to_email: c.contacts?.email || null,
+          notes: [vehicleDesc, pickupAddress && dropoffAddress ? `${pickupAddress} → ${dropoffAddress}` : null].filter(Boolean).join('\n') || null,
+          kind: 'deposit',
+        },
+        lineItems: [{ description: `Deposit — ${vehicleDesc || title.trim() || 'vehicle transport'}`, quantity: 1, unit_price: dep }],
+      })
+      qc.invalidateQueries({ queryKey: ['pipeline'] })
+    } catch { /* best-effort -- the Deposit invoice button still works by hand */ }
+  }
+
   function handleShare() {
     shareBooking({ summaryText: bookingSummaryFor(c, latestNote, photoUrl), recipientPhone: c.contacts?.phone })
   }
@@ -914,6 +944,7 @@ function JobDetailModal({
         }),
         billingNumber.trim().slice(0, 16) !== (c.billing_number || '') ? onSaveBilling(billingNumber.trim().slice(0, 16)) : null,
       ])
+      await autoDraftDepositInvoice()
       setJustSaved(true)
     } finally {
       setSaving(false)
@@ -1140,7 +1171,7 @@ function JobDetailModal({
               </div>
               {(pickupAddress || dropoffAddress) && (
                 <div className="mt-3">
-                  <PriceEstimator pickup={pickupAddress} dropoff={dropoffAddress} onUseAmount={(v) => setAmount(v)} />
+                  <PriceEstimator pickup={pickupAddress} dropoff={dropoffAddress} vehicleType={vehicleType} onUseAmount={(v) => { setAmount(v); setPriceConfirmed(false) }} />
                 </div>
               )}
 

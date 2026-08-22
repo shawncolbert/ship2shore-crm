@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchPricingZones, fetchPricingSurcharges } from '../lib/supabase'
+import { fetchPricingZones, fetchPricingSurcharges, matchPricingZone } from '../lib/supabase'
 import { MAPBOX_TOKEN } from '../lib/mapbox'
 
 async function mapboxGeocodeOne(address) {
@@ -30,6 +30,16 @@ const VEHICLE_TYPES = [
 ]
 const INTERSTATE_MIN_MI = 250
 
+// Maps the VIN-decoded vehicle_type (sedan/suv/truck/van/coupe/small -- see
+// vin-decode's mapBodyClassToVehicleType) down to this estimator's simpler
+// pricing categories. Vans and trucks share the "no adjustment" tier; coupe
+// and small ride with sedan.
+function toEstimatorVehicleType(vinVehicleType) {
+  if (vinVehicleType === 'suv') return 'suv'
+  if (vinVehicleType === 'truck' || vinVehicleType === 'van') return 'truck'
+  return 'sedan'
+}
+
 // Locked pricing structure (2026-08-20, retiered twice same day) --
 // distance-tiered per-mile rate with a June-August peak-summer bump, a flat
 // $150 dispatch fee on every load, and a $200 SUV/crossover adjustment.
@@ -51,8 +61,7 @@ function interstateQuote({ miles, vehicleType, when = new Date() }) {
   return Math.round((transportCost + weightAdjustment + dispatchFee) * 100) / 100
 }
 
-function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
-  const [vehicleType, setVehicleType] = useState('sedan')
+function InterstateEstimator({ pickup, dropoff, vehicleType, onVehicleType, onUseAmount }) {
   const [miles, setMiles] = useState(null)
   const [milesLoading, setMilesLoading] = useState(false)
   const [milesErr, setMilesErr] = useState('')
@@ -79,7 +88,7 @@ function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
     <div className="space-y-1.5">
       <select
         value={vehicleType}
-        onChange={(e) => setVehicleType(e.target.value)}
+        onChange={(e) => onVehicleType(e.target.value)}
         className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent"
       >
         {VEHICLE_TYPES.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
@@ -119,9 +128,7 @@ function InterstateEstimator({ pickup, dropoff, onUseAmount }) {
 // rate catalog, same pattern as `services`) so the list can grow without a
 // code change. Matches the range whaleyinc.net's own public calculator
 // would quote for a local CA run.
-function ZoneEstimator({ onUseAmount }) {
-  const { data: zones } = useQuery({ queryKey: ['pricingZones'], queryFn: fetchPricingZones })
-  const { data: surcharges } = useQuery({ queryKey: ['pricingSurcharges'], queryFn: fetchPricingSurcharges })
+function ZoneEstimator({ zones, surcharges, onUseAmount }) {
   const [zoneId, setZoneId] = useState('')
   const [vehicleCount, setVehicleCount] = useState(1)
   const [checkedSurcharges, setCheckedSurcharges] = useState(() => new Set())
@@ -202,30 +209,132 @@ function ZoneEstimator({ onUseAmount }) {
   )
 }
 
+const EMPTY_AUTO = { loading: false, error: '', mode: null, miles: null, zoneName: null, amount: null }
+
 // Staff-only quote helper: the landing page/funnel form only ever collects
 // a plain pickup/dropoff address, nobody outside the org ever sees a rate.
-// Staff read that address, then either pick a matching zone (local CA runs)
-// or switch to Interstate (250+ mi) for a mileage-based quote, and get back
-// a number to fill into Amount so what's quoted over the phone matches
-// what's on the books. Shared by the pipeline card and the Quick Quote page.
-export default function PriceEstimator({ pickup, dropoff, onUseAmount }) {
-  const [mode, setMode] = useState('zone')
+// As soon as pickup + drop-off + a decoded vehicle type are all known, this
+// auto-geocodes the run, auto-matches it to a named CA zone (via Claude --
+// see match-pricing-zone.js, since zones are named regions with no defined
+// boundaries) or falls back to the mileage-tiered Interstate table, and
+// shows the result as a Suggested price. It never fills Amount on its own --
+// same "AI suggests, dispatcher confirms" rule as vehicle pricing -- the
+// dispatcher still has to click Confirm. "Adjust manually" drops back to the
+// original zone-pick/mileage-calc controls for a one-off override.
+export default function PriceEstimator({ pickup, dropoff, vehicleType, onUseAmount }) {
+  const { data: zones } = useQuery({ queryKey: ['pricingZones'], queryFn: fetchPricingZones })
+  const { data: surcharges } = useQuery({ queryKey: ['pricingSurcharges'], queryFn: fetchPricingSurcharges })
+  const [manualOverride, setManualOverride] = useState(false)
+  const [manualMode, setManualMode] = useState('zone')
+  const [manualVehicleType, setManualVehicleType] = useState('sedan')
+  const [auto, setAuto] = useState(EMPTY_AUTO)
+  const [confirmedAmount, setConfirmedAmount] = useState(null)
   const stop = (e) => e.stopPropagation()
+
+  const estimatorVehicleType = toEstimatorVehicleType(vehicleType)
+
+  useEffect(() => {
+    if (manualOverride) return
+    if (!pickup?.trim() || !dropoff?.trim()) { setAuto(EMPTY_AUTO); return }
+    let cancelled = false
+    setAuto((a) => ({ ...a, loading: true, error: '' }))
+    const timer = setTimeout(async () => {
+      try {
+        const [from, to] = await Promise.all([mapboxGeocodeOne(pickup), mapboxGeocodeOne(dropoff)])
+        if (cancelled) return
+        if (!from || !to) { setAuto({ ...EMPTY_AUTO, error: 'Could not locate one of those addresses.' }); return }
+        const miles = await mapboxDrivingMiles(from, to)
+        if (cancelled) return
+        if (miles == null) { setAuto({ ...EMPTY_AUTO, error: 'Could not calculate driving distance.' }); return }
+
+        let zoneId = null
+        if (miles <= INTERSTATE_MIN_MI && (zones || []).length) {
+          try { zoneId = await matchPricingZone(dropoff, zones) } catch { /* fall through to interstate */ }
+        }
+
+        if (cancelled) return
+        if (zoneId) {
+          const zone = (zones || []).find((z) => z.id === zoneId)
+          const amount = zone ? Math.round((Number(zone.rate_min) + Number(zone.rate_max)) / 2) : null
+          setAuto({ loading: false, error: '', mode: 'zone', miles, zoneName: zone?.name || null, amount })
+        } else {
+          const amount = interstateQuote({ miles, vehicleType: estimatorVehicleType })
+          setAuto({ loading: false, error: '', mode: 'interstate', miles, zoneName: null, amount })
+        }
+      } catch {
+        if (!cancelled) setAuto({ ...EMPTY_AUTO, error: 'Automatic pricing failed — try Adjust manually.' })
+      }
+    }, 700)
+    return () => { cancelled = true; clearTimeout(timer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickup, dropoff, estimatorVehicleType, manualOverride, zones])
+
+  const confirmAuto = () => {
+    if (auto.amount == null) return
+    onUseAmount(auto.amount)
+    setConfirmedAmount(auto.amount)
+  }
 
   return (
     <div onClick={stop} className="space-y-1.5 rounded border border-line bg-canvas/50 p-2">
       <div className="flex items-center justify-between">
         <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted">Price estimator (staff only)</h4>
-        <div className="flex overflow-hidden rounded border border-line text-[10px] font-semibold">
-          <button type="button" onClick={() => setMode('zone')}
-            className={`px-2 py-0.5 ${mode === 'zone' ? 'bg-accent text-ink' : 'bg-canvas text-muted'}`}>Zone</button>
-          <button type="button" onClick={() => setMode('interstate')}
-            className={`px-2 py-0.5 ${mode === 'interstate' ? 'bg-accent text-ink' : 'bg-canvas text-muted'}`}>Interstate</button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setManualOverride((v) => !v)}
+          className="text-[10px] font-semibold text-muted underline hover:text-ink"
+        >
+          {manualOverride ? 'Back to automatic' : 'Adjust manually'}
+        </button>
       </div>
-      {mode === 'zone'
-        ? <ZoneEstimator onUseAmount={onUseAmount} />
-        : <InterstateEstimator pickup={pickup} dropoff={dropoff} onUseAmount={onUseAmount} />}
+
+      {!manualOverride && (
+        <>
+          {!pickup?.trim() || !dropoff?.trim() ? (
+            <p className="text-[11px] text-muted">Enter a pickup and drop-off address to get an automatic suggested price.</p>
+          ) : auto.loading ? (
+            <p className="text-[11px] text-muted">Calculating…</p>
+          ) : auto.error ? (
+            <p className="text-[11px] text-port">{auto.error}</p>
+          ) : auto.amount != null ? (
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted">
+                {auto.mode === 'zone' ? `Matched to ${auto.zoneName}` : `Interstate — ${Math.round(auto.miles)} mi, ${estimatorVehicleType}`}
+              </p>
+              <div className="flex items-center justify-between rounded bg-accent/10 px-2 py-1.5">
+                <div>
+                  <p className="text-[9px] font-semibold uppercase tracking-wide text-muted">Suggested price</p>
+                  <span className="text-xs font-semibold text-ink">${auto.amount.toLocaleString()}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={confirmAuto}
+                  disabled={confirmedAmount === auto.amount}
+                  className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
+                >
+                  {confirmedAmount === auto.amount ? 'Confirmed ✓' : 'Confirm price'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted">Waiting on an address…</p>
+          )}
+        </>
+      )}
+
+      {manualOverride && (
+        <>
+          <div className="flex overflow-hidden rounded border border-line text-[10px] font-semibold">
+            <button type="button" onClick={() => setManualMode('zone')}
+              className={`flex-1 px-2 py-0.5 ${manualMode === 'zone' ? 'bg-accent text-ink' : 'bg-canvas text-muted'}`}>Zone</button>
+            <button type="button" onClick={() => setManualMode('interstate')}
+              className={`flex-1 px-2 py-0.5 ${manualMode === 'interstate' ? 'bg-accent text-ink' : 'bg-canvas text-muted'}`}>Interstate</button>
+          </div>
+          {manualMode === 'zone'
+            ? <ZoneEstimator zones={zones} surcharges={surcharges} onUseAmount={onUseAmount} />
+            : <InterstateEstimator pickup={pickup} dropoff={dropoff} vehicleType={manualVehicleType} onVehicleType={setManualVehicleType} onUseAmount={onUseAmount} />}
+        </>
+      )}
     </div>
   )
 }
