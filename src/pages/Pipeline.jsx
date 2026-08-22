@@ -13,7 +13,7 @@ import Tooltip from '../components/Tooltip'
 import AddressAutocompleteField from '../components/AddressAutocompleteField'
 import PriceEstimator from '../components/PriceEstimator'
 
-// Shared by the JobCard quick action and the JobEditor's full Share button --
+// Shared by the JobCard quick action and JobDetailModal's full Share button --
 // only the latter has `notes`/`photoUrl` available (fetched while the editor
 // is open, for vehicle-transport bookings that captured a pickup/drop-off
 // and a photo at booking time -- same info the lead-notification email
@@ -211,6 +211,26 @@ export default function Pipeline() {
     }
   }
 
+  // Move a job to a specific stage directly (e.g. tapping a step in the big
+  // job view's progress bar) -- same optimistic-then-refetch shape as
+  // onDrop, just without any drag state to clear.
+  const onMoveStage = async (id, stageId) => {
+    qc.setQueryData(['pipeline'], (prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        opportunities: prev.opportunities.map((o) =>
+          o.id === id ? { ...o, stage_id: stageId } : o
+        ),
+      }
+    })
+    try {
+      await moveOpportunity(id, stageId)
+    } finally {
+      qc.invalidateQueries({ queryKey: ['pipeline'] })
+    }
+  }
+
   const onDrop = async (stageId) => {
     setOverStage(null)
     const id = dragId
@@ -299,6 +319,7 @@ export default function Pipeline() {
                     key={c.id}
                     c={c}
                     isWon={!!stage.is_won}
+                    stages={stages}
                     dragId={dragId}
                     setDragId={setDragId}
                     cancelling={cancelling}
@@ -307,6 +328,7 @@ export default function Pipeline() {
                     onSaveBilling={onSaveBilling}
                     onSaveFields={onSaveFields}
                     onPatch={onPatch}
+                    onMoveStage={onMoveStage}
                     dispatchers={dispatchers}
                     onAssignDispatcher={onAssignDispatcher}
                   />
@@ -322,7 +344,7 @@ export default function Pipeline() {
   )
 }
 
-function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, onSaveBilling, onSaveFields, onPatch, dispatchers, onAssignDispatcher }) {
+function JobCard({ c, isWon, stages, dragId, setDragId, cancelling, onCancel, onDelete, onSaveBilling, onSaveFields, onPatch, onMoveStage, dispatchers, onAssignDispatcher }) {
   const ref = useRef(null)
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
@@ -337,13 +359,16 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, 
   const invoice = c.invoices?.find((i) => i.kind !== 'deposit')
   const depositInvoice = c.invoices?.find((i) => i.kind === 'deposit')
 
+  // `e` is optional -- these fire both from a card's own quick-action icon
+  // (inside a draggable card, so it stops propagation) and from a plain
+  // button inside JobDetailModal (no drag/propagation concern there).
   function handleOpenInvoice(e) {
-    e.stopPropagation()
+    e?.stopPropagation()
     navigate(invoice ? `/invoices/${invoice.id}` : `/invoices/new?opportunity_id=${c.id}`)
   }
 
   function handleOpenDepositInvoice(e) {
-    e.stopPropagation()
+    e?.stopPropagation()
     navigate(depositInvoice ? `/invoices/${depositInvoice.id}` : `/invoices/new?opportunity_id=${c.id}&kind=deposit`)
   }
 
@@ -351,30 +376,37 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, 
   // the same user-gesture the click provides, and this card's fields are
   // already all in memory (no fetch needed for the quick-action version).
   function handleShareBooking(e) {
-    e.stopPropagation()
+    e?.stopPropagation()
     shareBooking({ summaryText: bookingSummaryFor(c), recipientPhone: c.contacts?.phone })
   }
 
-  if (editing) {
-    return (
-      <JobEditor
+  return (
+    <>
+    {editing && (
+      <JobDetailModal
         c={c}
-        onCancel={() => setEditing(false)}
+        stages={stages}
+        isWon={isWon}
+        invoice={invoice}
+        depositInvoice={depositInvoice}
+        onClose={() => setEditing(false)}
         onSave={async (patch) => { await onSaveFields(c.id, patch); setEditing(false) }}
         onCancelJob={() => {
-          if (window.confirm(`Cancel "${c.title || 'this job'}"? It'll disappear from the board.`)) onCancel(c.id)
+          if (window.confirm(`Cancel "${c.title || 'this job'}"? It'll disappear from the board.`)) { onCancel(c.id); setEditing(false) }
         }}
         onDeleteJob={() => {
-          if (window.confirm(`Permanently delete "${c.title || 'this job'}"? This can't be undone. Any linked invoice/appointment stays, just unlinked from this job.`)) onDelete(c.id)
+          if (window.confirm(`Permanently delete "${c.title || 'this job'}"? This can't be undone. Any linked invoice/appointment stays, just unlinked from this job.`)) { onDelete(c.id); setEditing(false) }
         }}
         cancelling={cancelling === c.id}
         dispatchers={dispatchers}
         onAssignDispatcher={onAssignDispatcher}
+        onSaveBilling={(v) => onSaveBilling(c.id, v)}
+        onPatch={(patch) => onPatch(c.id, patch)}
+        onMoveStage={(stageId) => onMoveStage(c.id, stageId)}
+        onOpenInvoice={handleOpenInvoice}
+        onOpenDepositInvoice={handleOpenDepositInvoice}
       />
-    )
-  }
-
-  return (
+    )}
     <article
       ref={ref}
       draggable
@@ -531,6 +563,7 @@ function JobCard({ c, isWon, dragId, setDragId, cancelling, onCancel, onDelete, 
         />
       )}
     </article>
+    </>
   )
 }
 
@@ -620,9 +653,22 @@ function CompletionVideoField({ opportunityId, contactId, onInteractStart, onInt
   )
 }
 
-// Inline editor for a job card's title, port and scheduled time. Replaces the
-// card while open so the compact card stays uncluttered. Not draggable.
-function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, dispatchers, onAssignDispatcher }) {
+// Every field a job has, on one big page -- opened from a card's "Open job
+// details" action. Replaces the old inline-on-the-board editor: this is a
+// full-screen overlay (same fixed-inset-0/backdrop convention as
+// NewContactModal, just a bigger panel) so there's room to actually see
+// pickup/drop-off, price, port, source board, dispatcher, vehicle, and
+// status all at once, plus a real progress stepper across the org's own
+// pipeline stages. Closing it (X, backdrop click, or Escape) always
+// discards unsaved field edits and returns to the normal board -- only the
+// toggles (Cleared/Paid) and dispatcher assignment save immediately,
+// exactly like they already did on the compact card.
+function JobDetailModal({
+  c, stages, isWon, invoice, depositInvoice,
+  onClose, onSave, onCancelJob, onDeleteJob, cancelling,
+  dispatchers, onAssignDispatcher, onSaveBilling, onPatch, onMoveStage,
+  onOpenInvoice, onOpenDepositInvoice,
+}) {
   const [title, setTitle] = useState(c.title || '')
   const [port, setPort] = useState(c.port || '')
   const [vehicle, setVehicle] = useState(c.vehicle || '')
@@ -633,19 +679,21 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, 
   const [depositAmount, setDepositAmount] = useState(c.deposit_amount ?? '')
   const [sourceBoard, setSourceBoard] = useState(c.source_board || '')
   const [boardOrderNumber, setBoardOrderNumber] = useState(c.board_order_number || '')
+  const [billingNumber, setBillingNumber] = useState(c.billing_number || '')
   const [saving, setSaving] = useState(false)
-  const stop = (e) => e.stopPropagation()
 
-  // Loaded while the editor is open (not for every card on the board) so
-  // it's already sitting in state by the time someone taps Share -- calling
-  // navigator.share() after an await here would risk losing the click's
-  // user-activation on some browsers.
   const { data: latestNote } = useQuery({ queryKey: ['jobNote', c.id], queryFn: () => fetchLatestJobNote(c.id) })
   const { data: photoUrl } = useQuery({ queryKey: ['jobPhoto', c.id], queryFn: () => fetchVehiclePhotoUrl(c.id) })
-  const hasDetails = c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin || c.service_code || photoUrl
+  const hasVehicleDetails = c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin
 
-  function handleShare(e) {
-    stop(e)
+  // Escape closes, same as clicking the X or the backdrop.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  function handleShare() {
     shareBooking({ summaryText: bookingSummaryFor(c, latestNote, photoUrl), recipientPhone: c.contacts?.phone })
   }
 
@@ -653,194 +701,288 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, 
     if (saving) return
     setSaving(true)
     try {
-      await onSave({
-        title: title.trim() || null,
-        port: port || null,
-        vehicle: vehicle.trim() || null,
-        pickup_address: pickupAddress.trim() || null,
-        dropoff_address: dropoffAddress.trim() || null,
-        scheduled_at: fromLocalInput(when),
-        value: amount === '' ? null : amount,
-        deposit_amount: depositAmount === '' ? 0 : depositAmount,
-        source_board: sourceBoard || null,
-        board_order_number: boardOrderNumber || null,
-      })
+      await Promise.all([
+        onSave({
+          title: title.trim() || null,
+          port: port || null,
+          vehicle: vehicle.trim() || null,
+          pickup_address: pickupAddress.trim() || null,
+          dropoff_address: dropoffAddress.trim() || null,
+          scheduled_at: fromLocalInput(when),
+          value: amount === '' ? null : amount,
+          deposit_amount: depositAmount === '' ? 0 : depositAmount,
+          source_board: sourceBoard || null,
+          board_order_number: boardOrderNumber || null,
+        }),
+        billingNumber.trim().slice(0, 16) !== (c.billing_number || '') ? onSaveBilling(billingNumber.trim().slice(0, 16)) : null,
+      ])
     } finally {
       setSaving(false)
     }
   }
 
+  const flowStages = (stages || []).filter((s) => !s.is_lost).slice().sort((a, b) => a.position - b.position)
+  const currentIdx = flowStages.findIndex((s) => s.id === c.stage_id)
+  const balance = Number(amount || 0) - Number(depositAmount || 0)
+
+  const label = 'mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted'
+  const field = 'w-full rounded-md border border-line bg-canvas px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30'
+  const mono = 'font-[family-name:var(--font-mono)]'
+  const panel = 'rounded-[var(--radius-card)] border border-line bg-surface p-4 shadow-[var(--shadow-card)]'
+
   return (
-    <article
-      draggable={false}
-      onMouseDown={stop}
-      onPointerDown={stop}
-      onClick={stop}
-      onDragStart={(e) => e.preventDefault()}
-      className="rounded-lg border border-accent bg-surface p-3 shadow-sm ring-2 ring-accent/30"
-    >
-      <div className="space-y-2">
-        <div className="grid grid-cols-2 gap-1.5">
-          <AddressAutocompleteField label="Pickup" value={pickupAddress} onChange={setPickupAddress} />
-          <AddressAutocompleteField label="Drop-off" value={dropoffAddress} onChange={setDropoffAddress} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Job details — ${c.title || c.contacts?.full_name || 'job'}`}
+        className="relative z-10 flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-canvas shadow-2xl sm:h-[92vh]"
+      >
+        {/* Header */}
+        <div className="flex items-center gap-3 border-b border-line bg-surface px-5 py-4">
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate font-[family-name:var(--font-display)] text-xl font-bold text-ink">
+              {c.contacts?.full_name || c.title || 'Job'}
+            </h2>
+            <p className={`${mono} mt-0.5 text-xs text-muted`}>
+              {c.booking_number || 'No booking #'}{c.billing_number ? ` · Ship billing ${c.billing_number}` : ''}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="shrink-0 rounded-md p-1.5 text-muted hover:bg-canvas hover:text-ink"
+            aria-label="Close"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+              <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+            </svg>
+          </button>
         </div>
-        {(pickupAddress.trim() !== (c.pickup_address || '') || dropoffAddress.trim() !== (c.dropoff_address || '')) && (
-          <p className="text-[10px] text-amber-600">Address changed — hit Save below, then Text driver / share booking sends the corrected one.</p>
+
+        {/* Stepper -- tap a stage to move the job there directly */}
+        {flowStages.length > 1 && (
+          <div className="overflow-x-auto border-b border-line bg-surface px-5 py-3">
+            <div className="flex min-w-max items-center">
+              {flowStages.map((s, i) => {
+                const done = currentIdx >= 0 && i < currentIdx
+                const current = i === currentIdx
+                return (
+                  <div key={s.id} className="flex items-center">
+                    {i > 0 && <div className={`h-0.5 w-8 sm:w-16 ${done || current ? 'bg-accent' : 'bg-line'}`} />}
+                    <button
+                      type="button"
+                      onClick={() => onMoveStage(s.id)}
+                      title={current ? 'Current stage' : `Move to ${s.name}`}
+                      className="flex flex-col items-center gap-1 px-1"
+                    >
+                      <span
+                        className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ring-2 transition-colors ${
+                          current
+                            ? 'bg-accent text-ink ring-accent'
+                            : done
+                              ? 'bg-accent/20 text-accent ring-accent/40'
+                              : 'bg-canvas text-muted ring-line'
+                        }`}
+                      >
+                        {done ? '✓' : i + 1}
+                      </span>
+                      <span className={`whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide ${current ? 'text-accent' : 'text-muted'}`}>
+                        {s.name}
+                      </span>
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         )}
-        {hasDetails && (
-          <div className="space-y-0.5 rounded border border-line bg-canvas/50 p-2 text-[11px] text-muted">
-            {c.service_code && <div>Service: <span className="capitalize text-ink">{c.service_code.replace(/_/g, ' ')}</span></div>}
-            {(c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin) && (
-              <div>
-                Vehicle: <span className="text-ink">
-                  {[c.vehicle_year, c.vehicle_make, c.vehicle_model].filter(Boolean).join(' ')}
-                  {c.vehicle_vin ? ` · VIN ${c.vehicle_vin}` : ''}
-                </span>
-              </div>
-            )}
-            {latestNote && <div>Notes: <span className="text-ink">{latestNote}</span></div>}
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+          {/* Hero strip */}
+          <div className="mb-4 flex flex-col gap-4 overflow-hidden rounded-[var(--radius-card)] bg-brand p-4 text-white shadow-[var(--shadow-card)] sm:flex-row sm:items-center">
             {photoUrl && (
-              <div>
-                <a href={photoUrl} target="_blank" rel="noreferrer" className="text-accent hover:underline">📷 Vehicle photo ↗</a>
-              </div>
+              <a href={photoUrl} target="_blank" rel="noreferrer" className="block h-28 w-full shrink-0 overflow-hidden rounded-lg sm:w-40">
+                <img src={photoUrl} alt="Vehicle" className="h-full w-full object-cover" />
+              </a>
             )}
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-white/60">Current job</p>
+              <p className="mt-0.5 truncate text-lg font-bold">
+                {[c.vehicle_year, c.vehicle_make, c.vehicle_model].filter(Boolean).join(' ') || vehicle || c.service_code?.replace(/_/g, ' ') || 'Vehicle transport'}
+              </p>
+              {c.vehicle_vin && <p className={`${mono} text-xs text-white/70`}>VIN {c.vehicle_vin}</p>}
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-white/90">
+                <span className="truncate">{c.pickup_address || 'Pickup TBD'}</span>
+                <span aria-hidden="true">→</span>
+                <span className="truncate">{c.dropoff_address || 'Drop-off TBD'}</span>
+              </div>
+            </div>
+            <div className="shrink-0 border-t border-white/15 pt-3 text-sm sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-white/60">Scheduled (Pacific)</p>
+              <p className="font-semibold">{fmtSched(c.scheduled_at) || 'Not set'}</p>
+              {c.port && <p className="mt-1 text-white/70">{PORT_LABEL[c.port] || c.port}</p>}
+            </div>
           </div>
-        )}
-        {(c.pickup_address || c.dropoff_address) && (
-          <PriceEstimator pickup={c.pickup_address} dropoff={c.dropoff_address} onUseAmount={(v) => setAmount(v)} />
-        )}
-        <button
-          type="button"
-          onClick={handleShare}
-          className="w-full rounded bg-brand px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-600"
-        >
-          📱 Text driver / share booking
-        </button>
-        <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Title</label>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Job title"
-            className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Amount ($)</label>
-          <input
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="1"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0"
-            className="w-full rounded border border-line bg-canvas px-2 py-1 font-[family-name:var(--font-mono)] text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Deposit collected ($)</label>
-          <input
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="1"
-            value={depositAmount}
-            onChange={(e) => setDepositAmount(e.target.value)}
-            placeholder="0"
-            className="w-full rounded border border-line bg-canvas px-2 py-1 font-[family-name:var(--font-mono)] text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-          />
-          {Number(depositAmount) > 0 && Number(amount) > 0 && (
-            <p className="mt-1 text-[10px] text-muted">Balance due at delivery: ${(Number(amount) - Number(depositAmount)).toLocaleString()}</p>
+
+          {latestNote && (
+            <div className="mb-4 rounded-[var(--radius-card)] border border-line bg-surface px-4 py-2.5 text-sm text-ink">
+              <span className="font-semibold text-muted">Latest note: </span>{latestNote}
+            </div>
           )}
-        </div>
-        <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Port</label>
-          <select
-            value={port}
-            onChange={(e) => setPort(e.target.value)}
-            className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent"
-          >
-            <option value="">—</option>
-            {Object.entries(PORT_LABEL).map(([k, label]) => (
-              <option key={k} value={k}>{label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Source</label>
-          <select
-            value={sourceBoard}
-            onChange={(e) => setSourceBoard(e.target.value)}
-            className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent"
-          >
-            <option value="">—</option>
-            {Object.entries(SOURCE_BOARD_LABEL).map(([k, label]) => (
-              <option key={k} value={k}>{label}</option>
-            ))}
-          </select>
-        </div>
-        {sourceBoard && sourceBoard !== 'direct' && sourceBoard !== 'referral' && (
-          <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Board order #</label>
-            <input
-              value={boardOrderNumber}
-              onChange={(e) => setBoardOrderNumber(e.target.value)}
-              placeholder="e.g. CD-482910"
-              className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-            />
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {/* Left column */}
+            <div className="space-y-4">
+              <div className={panel}>
+                <h3 className="mb-3 text-sm font-bold text-ink">Pickup &amp; drop-off</h3>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <AddressAutocompleteField label="Pickup" value={pickupAddress} onChange={setPickupAddress} />
+                  <AddressAutocompleteField label="Drop-off" value={dropoffAddress} onChange={setDropoffAddress} />
+                </div>
+                {(pickupAddress.trim() !== (c.pickup_address || '') || dropoffAddress.trim() !== (c.dropoff_address || '')) && (
+                  <p className="mt-2 text-xs text-amber-600">Address changed — hit Save, then Text driver sends the corrected one.</p>
+                )}
+                <div className="mt-3">
+                  <label className={label}>Scheduled (Pacific)</label>
+                  <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className={field} />
+                </div>
+                {(pickupAddress || dropoffAddress) && (
+                  <div className="mt-3">
+                    <PriceEstimator pickup={pickupAddress} dropoff={dropoffAddress} onUseAmount={(v) => setAmount(v)} />
+                  </div>
+                )}
+              </div>
+
+              <div className={panel}>
+                <h3 className="mb-3 text-sm font-bold text-ink">Vehicle</h3>
+                <label className={label}>Description</label>
+                <input value={vehicle} onChange={(e) => setVehicle(e.target.value)} placeholder="e.g. 2022 Toyota Tacoma" className={field} />
+                {hasVehicleDetails && (
+                  <p className="mt-2 text-xs text-muted">
+                    Captured at booking: <span className="text-ink">{[c.vehicle_year, c.vehicle_make, c.vehicle_model].filter(Boolean).join(' ')}</span>
+                    {c.vehicle_vin && <span className={mono}> · VIN {c.vehicle_vin}</span>}
+                  </p>
+                )}
+                {c.service_code && <p className="mt-1 text-xs text-muted">Service: <span className="capitalize text-ink">{c.service_code.replace(/_/g, ' ')}</span></p>}
+                {photoUrl && (
+                  <a href={photoUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs text-accent hover:underline">📷 Vehicle photo ↗</a>
+                )}
+              </div>
+
+              <div className={panel}>
+                <h3 className="mb-3 text-sm font-bold text-ink">Documents &amp; actions</h3>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button type="button" onClick={() => onOpenInvoice()} className="flex items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent">
+                    Balance invoice {invoice && <InvoiceStatusBadge status={invoice.status} />}
+                  </button>
+                  <button type="button" onClick={() => onOpenDepositInvoice()} className="flex items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent">
+                    Deposit invoice {depositInvoice && <InvoiceStatusBadge status={depositInvoice.status} prefix="Deposit: " />}
+                  </button>
+                </div>
+                <button type="button" onClick={handleShare} className="mt-2 w-full rounded-md bg-brand px-3 py-2 text-xs font-semibold text-white hover:bg-brand-600">
+                  📱 Text driver / share booking
+                </button>
+                {isWon && (
+                  <div className="mt-3">
+                    <CompletionVideoField opportunityId={c.id} contactId={c.contact_id} onInteractStart={() => {}} onInteractEnd={() => {}} />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right column */}
+            <div className="space-y-4">
+              <div className={panel}>
+                <h3 className="mb-3 text-sm font-bold text-ink">Job info</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className={label}>Title</label>
+                    <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Job title" className={field} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={label}>Port</label>
+                      <select value={port} onChange={(e) => setPort(e.target.value)} className={field}>
+                        <option value="">—</option>
+                        {Object.entries(PORT_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={label}>Source</label>
+                      <select value={sourceBoard} onChange={(e) => setSourceBoard(e.target.value)} className={field}>
+                        <option value="">—</option>
+                        {Object.entries(SOURCE_BOARD_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  {sourceBoard && sourceBoard !== 'direct' && sourceBoard !== 'referral' && (
+                    <div>
+                      <label className={label}>Board order #</label>
+                      <input value={boardOrderNumber} onChange={(e) => setBoardOrderNumber(e.target.value)} placeholder="e.g. CD-482910" className={field} />
+                    </div>
+                  )}
+                  <div>
+                    <label className={label}>Assigned dispatcher</label>
+                    <DispatcherAssignField value={c.assigned_dispatcher_id} dispatchers={dispatchers} onAssign={(id) => onAssignDispatcher(c.id, id)} bare />
+                  </div>
+                  <div>
+                    <label className={label}>Ship billing #</label>
+                    <input value={billingNumber} onChange={(e) => setBillingNumber(e.target.value.slice(0, 16))} maxLength={16} placeholder="Ship billing #" className={`${field} ${mono}`} />
+                  </div>
+                </div>
+              </div>
+
+              <div className={panel}>
+                <h3 className="mb-3 text-sm font-bold text-ink">Price</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={label}>Amount ($)</label>
+                    <input type="number" inputMode="decimal" min="0" step="1" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className={`${field} ${mono}`} />
+                  </div>
+                  <div>
+                    <label className={label}>Deposit collected ($)</label>
+                    <input type="number" inputMode="decimal" min="0" step="1" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} placeholder="0" className={`${field} ${mono}`} />
+                  </div>
+                </div>
+                {Number(depositAmount) > 0 && Number(amount) > 0 && (
+                  <p className={`${mono} mt-2 text-xs text-muted`}>Balance due at delivery: {money(balance)}</p>
+                )}
+                <div className="mt-3 flex items-center gap-5 border-t border-line pt-3">
+                  <ClearedToggle cleared={c.cleared} onToggle={() => onPatch({ cleared: !c.cleared })} />
+                  <PaidToggle paid={c.paid} onToggle={() => onPatch({ paid: !c.paid })} />
+                </div>
+              </div>
+            </div>
           </div>
-        )}
-        <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Assign to dispatcher</label>
-          <DispatcherAssignField
-            value={c.assigned_dispatcher_id}
-            dispatchers={dispatchers}
-            onAssign={(id) => onAssignDispatcher(c.id, id)}
-            bare
-          />
         </div>
-        <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Vehicle</label>
-          <input
-            value={vehicle}
-            onChange={(e) => setVehicle(e.target.value)}
-            placeholder="e.g. 2022 Toyota Tacoma"
-            className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Scheduled (Pacific)</label>
-          <input
-            type="datetime-local"
-            value={when}
-            onChange={(e) => setWhen(e.target.value)}
-            className="w-full rounded border border-line bg-canvas px-2 py-1 text-xs text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-          />
-        </div>
-        <div className="flex items-center gap-1 pt-0.5">
+
+        {/* Footer actions */}
+        <div className="flex flex-wrap items-center gap-2 border-t border-line bg-surface px-5 py-3">
           <button
             type="button"
             onClick={save}
             disabled={saving}
-            className="rounded bg-accent px-2.5 py-1 text-[11px] font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
+            className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
           >
             {saving ? 'Saving…' : 'Save'}
           </button>
           <button
             type="button"
-            onClick={onCancel}
+            onClick={onClose}
             disabled={saving}
-            className="rounded border border-line px-2.5 py-1 text-[11px] font-medium text-ink hover:bg-canvas disabled:opacity-50"
+            className="rounded-md border border-line px-4 py-2 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50"
           >
-            Cancel
+            Close
           </button>
           <button
             type="button"
             onClick={onCancelJob}
             disabled={saving || cancelling}
             title="Cancel this job — it'll disappear from the board"
-            className="ml-auto rounded px-2.5 py-1 text-[11px] font-medium text-port hover:bg-red-50 disabled:opacity-50"
+            className="ml-auto rounded-md px-4 py-2 text-sm font-medium text-port hover:bg-red-50 disabled:opacity-50"
           >
             {cancelling ? 'Cancelling…' : 'Cancel job'}
           </button>
@@ -849,13 +991,13 @@ function JobEditor({ c, onCancel, onSave, onCancelJob, onDeleteJob, cancelling, 
             onClick={onDeleteJob}
             disabled={saving || cancelling}
             title="Permanently delete this job — not just cancel it"
-            className="rounded px-2.5 py-1 text-[11px] font-medium text-port hover:bg-red-50 disabled:opacity-50"
+            className="rounded-md px-4 py-2 text-sm font-medium text-port hover:bg-red-50 disabled:opacity-50"
           >
             Delete job
           </button>
         </div>
       </div>
-    </article>
+    </div>
   )
 }
 
@@ -1079,7 +1221,7 @@ function BillingField({ value, onSave, onInteractStart, onInteractEnd }) {
 // Transport/Dispatch, etc.) -- commits the moment you pick one, same
 // immediate-save shape as BillingField, since choosing a name IS the
 // action here (no separate "save" step to forget). `bare` drops the
-// card-specific spacing/stop-propagation wrapper for use inside JobEditor,
+// card-specific spacing/stop-propagation wrapper for use inside JobDetailModal,
 // which already provides its own label + spacing.
 function DispatcherAssignField({ value, dispatchers, onAssign, onInteractStart, onInteractEnd, bare }) {
   const [saving, setSaving] = useState(false)
