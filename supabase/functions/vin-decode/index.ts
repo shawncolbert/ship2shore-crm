@@ -154,9 +154,11 @@ Deno.serve(async (req: Request) => {
     }
 
     if (decoded.make && decoded.model && decoded.year && vehicle_type && !guessed) {
+      // NHTSA-confirmed -- always wins the cache slot, even over an earlier
+      // manual (dispatcher-guessed) entry for the same make/model/year.
       await supabase.from("vehicle_type_cache")
         .upsert(
-          { make: decoded.make, model: decoded.model, year: decoded.year, body_class: decoded.bodyClass, vehicle_type },
+          { make: decoded.make, model: decoded.model, year: decoded.year, body_class: decoded.bodyClass, vehicle_type, source: "nhtsa" },
           { onConflict: "make,model,year" },
         );
     }
