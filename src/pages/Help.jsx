@@ -238,6 +238,11 @@ const SECTIONS = [
       top of this page instead of guessing — pick the right invoice and click Confirm paid, or Dismiss if it
       wasn't actually a match.
 
+      If a customer emails saying they've already paid, that's a claim, not proof — only a bank's own Zelle
+      notification counts as that. So instead of marking anything paid, a customer saying "I paid it" pops
+      up as a banner at the bottom of the screen while you're in the app (plus an alert in your own inbox),
+      telling you to go check your bank before marking it paid yourself. Dismiss it once you've checked.
+
       "Payment reminders" is its own section, off by default — check "Auto-remind if unpaid" and pick 3
       days, 7 days, or a custom number, and it'll email the customer that reminder every time that many days
       passes while the invoice is still unpaid, starting from when you sent it. It stops the instant the

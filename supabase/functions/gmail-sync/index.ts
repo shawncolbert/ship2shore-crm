@@ -521,6 +521,84 @@ async function handleZellePayment(
   }
 }
 
+// ---------------------------------------------------------------------------
+// "Customer says they paid" claim flagging
+// ---------------------------------------------------------------------------
+//
+// A customer saying "I paid it" in an email reply is NOT proof money moved
+// -- only the bank's own Zelle notification is (see handleZellePayment
+// above), which never auto-marks anything based on this. It just flags the
+// claim so a dispatcher notices it and goes to check the bank themselves,
+// via an in-app popup (while they're using the app) and an internal alert
+// email (for when they're not). Gated on a known contact + a keyword
+// pre-filter before ever calling Claude, same cost-control pattern as the
+// Zelle/board-confirmation detectors above.
+function looksLikePaymentClaim(subject: string, bodyText: string): boolean {
+  const text = `${subject} ${bodyText}`.toLowerCase();
+  return /(i paid|i sent|i've sent|just sent|already sent|already paid|sent the (payment|deposit|money)|payment (is|was) sent|zelle(d)?\s*(it|you|the))/.test(text);
+}
+
+const PAYMENT_CLAIM_SYSTEM = `You read an email from a customer to check whether they're claiming they have ALREADY paid an invoice or deposit -- not asking how to pay, not asking a question about the amount, but stating they already sent the money. If it's not that, respond with exactly {"is_payment_claim": false} and nothing else. Otherwise respond with ONLY valid JSON in this exact shape:
+{"is_payment_claim": true, "snippet": "string"}
+snippet is a short (under 200 characters) quote or paraphrase of the part of the email where they say they paid.`;
+
+async function extractPaymentClaim(subject: string, bodyText: string): Promise<any | null> {
+  if (!ANTHROPIC_API_KEY) return null;
+  const res = await fetch(CLAUDE_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 200,
+      system: PAYMENT_CLAIM_SYSTEM,
+      messages: [{ role: "user", content: `Subject: ${subject}\n\nBody:\n${bodyText}` }],
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error("Claude API error: " + JSON.stringify(data));
+  const raw = (data.content || []).map((b: any) => b.text || "").join("").trim();
+  try {
+    const parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, ""));
+    if (!parsed?.is_payment_claim) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+// Best-guess invoice: this contact's one open invoice, if there's exactly
+// one -- ambiguous (zero or several) is left null, same "don't guess" rule
+// as everywhere else. Doesn't touch the invoice at all either way.
+async function handlePaymentClaim(
+  supabase: any, orgId: string, contactId: string, subject: string, body: string, msgId: string,
+  senderName: string, accessToken: string, selfEmail: string,
+) {
+  const { data: already } = await supabase
+    .from("payment_claims").select("id").eq("org_id", orgId).eq("provider_msg_id", msgId).maybeSingle();
+  if (already) return;
+
+  const info = await extractPaymentClaim(subject, body);
+  if (!info) return;
+
+  const { data: openInvoices } = await supabase
+    .from("invoices")
+    .select("id, opportunity_id")
+    .eq("org_id", orgId).eq("contact_id", contactId).in("status", ["sent", "overdue"]);
+  const list = openInvoices || [];
+  const matched = list.length === 1 ? list[0] : null;
+
+  await supabase.from("payment_claims").insert({
+    org_id: orgId, contact_id: contactId, provider_msg_id: msgId,
+    sender_name: senderName || null, message_snippet: info.snippet || null,
+    invoice_id: matched?.id || null, opportunity_id: matched?.opportunity_id || null,
+    status: "pending",
+  });
+
+  await gmailSendSelf(accessToken, selfEmail,
+    `Customer says they paid — ${senderName || "check inbox"}`,
+    `${senderName || "A customer"} said in an email that they already paid.\n\n"${info.snippet || ""}"\n\nThis isn't confirmed by a bank notification — check your bank and Invoices before marking anything paid.`);
+}
+
 const PLATFORM_TO_BOARD: Record<string, string> = {
   "Super Dispatch": "super_dispatch",
   "Central Dispatch": "central_dispatch",
@@ -745,6 +823,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
   const docs = { stored: 0, matched: 0, review: 0, irrelevant: 0 };
   const dispatches = { detected: 0, opportunitiesCreated: 0 };
   const zelle = { detected: 0 };
+  const paymentClaims = { detected: 0 };
   const errors: any[] = [];
 
   for (const msg of messages) {
@@ -766,7 +845,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
     const subjectHeader = headers.find((h: any) => h.name === "Subject")?.value || "";
     const dateHeader = headers.find((h: any) => h.name === "Date")?.value;
 
-    const { email: fromEmail } = parseFromHeader(fromHeader);
+    const { name: fromName, email: fromEmail } = parseFromHeader(fromHeader);
     const { email: toEmail } = parseFromHeader(toHeader);
     const selfEmail = tokenRow.email.toLowerCase();
 
@@ -821,6 +900,15 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
 
     if (!contactId) { notContact++; continue; }
 
+    if (direction === "inbound" && looksLikePaymentClaim(subjectHeader, body)) {
+      paymentClaims.detected++;
+      try {
+        await handlePaymentClaim(supabase, orgId, contactId, subjectHeader, body, msg.id, fromName, accessToken, tokenRow.email);
+      } catch (e) {
+        errors.push({ paymentClaim: true, msgId: msg.id, detail: String(e) });
+      }
+    }
+
     const { data: existingConvo } = await supabase
       .from("conversations")
       .select("id")
@@ -859,7 +947,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
     else created++;
   }
 
-  return { account: tokenRow.email, scanned: messages.length, created, skipped, non_contact: notContact, documents: docs, dispatches, zelle, errors };
+  return { account: tokenRow.email, scanned: messages.length, created, skipped, non_contact: notContact, documents: docs, dispatches, zelle, paymentClaims, errors };
 }
 
 Deno.serve(async (_req: Request) => {

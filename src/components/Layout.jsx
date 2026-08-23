@@ -7,6 +7,7 @@ import { fetchCustomLinks } from '../lib/customLinks'
 import { isFeatureEnabled } from '../lib/features'
 import { applyTheme, cacheTheme } from '../lib/theme'
 import IdleTimeout from './IdleTimeout'
+import PaymentClaimToast from './PaymentClaimToast'
 
 // `group` only matters for the Aurora layout's sectioned sidebar (see
 // NavItems below) -- every other layout renders this same list flat, in
@@ -290,6 +291,7 @@ export default function Layout({ children }) {
   return (
     <div className="flex h-full flex-col md:flex-row">
       <IdleTimeout />
+      <PaymentClaimToast />
       {/* Mobile top bar */}
       <header className="flex items-center justify-between px-4 py-3 md:hidden" style={{ background: 'var(--sidebar-bg)' }}>
         <Brand />

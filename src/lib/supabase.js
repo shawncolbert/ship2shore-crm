@@ -603,6 +603,31 @@ export async function previewSuggestedPrice({ orgId, serviceCode, value, vehicle
   return data
 }
 
+// A customer email claiming they already paid -- informational only, never
+// auto-marks an invoice paid (only a bank Zelle notification does that, see
+// zelle_payments). Surfaced as a bottom-of-screen popup while a dispatcher
+// is in the app (see PaymentClaimToast in Layout.jsx) and an internal alert
+// email for when they're not.
+export async function fetchPendingPaymentClaims() {
+  const { data, error } = await supabase
+    .from('payment_claims')
+    .select('id, sender_name, message_snippet, invoice_id, opportunity_id, created_at, contacts:contact_id(full_name), invoices:invoice_id(invoice_number)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+// Dismisses the popup once a dispatcher has seen it and checked the bank --
+// never touches the invoice itself.
+export async function acknowledgePaymentClaim(id) {
+  const { error } = await supabase
+    .from('payment_claims')
+    .update({ status: 'acknowledged', resolved_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
 // Contacts tagged as dispatchers (e.g. Warrior Auto Transport, Team Auto
 // Transport/Dispatch) -- the pool a Pipeline job can be handed off to. RLS
 // already scopes contacts to the caller's org, same as every other contacts
