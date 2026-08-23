@@ -7,6 +7,32 @@ import {
 const fmtTime = (d) =>
   d ? new Date(d).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''
 
+// A synced email's body carries the entire prior thread underneath the new
+// text -- either every line prefixed with "> ", or a "On <date>, X wrote:"
+// header introducing it. Left in, a one-line reply reads as a wall of
+// chevrons. Cut at the first such marker; only what's above it is "the
+// message." Whatever trails is still kept (with quote markers stripped) so
+// nothing's lost, just collapsed behind a toggle -- same as Gmail's "…".
+const QUOTE_HEADER_RE = /^\s*on\s.{3,120}\swrote:\s*$/i
+const FORWARD_HEADER_RE = /^\s*-{2,}\s*(original message|forwarded message)\s*-{2,}\s*$/i
+
+function splitQuotedReply(raw) {
+  const lines = (raw || '').replace(/\r\n/g, '\n').split('\n')
+  let cut = lines.length
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*>/.test(lines[i]) || QUOTE_HEADER_RE.test(lines[i]) || FORWARD_HEADER_RE.test(lines[i])) {
+      cut = i
+      break
+    }
+  }
+  const visible = lines.slice(0, cut).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  const quoted = lines.slice(cut).map((l) => l.replace(/^\s*>+\s?/, '')).join('\n').trim()
+  // A message that's entirely quoted content (e.g. a bare forward) still
+  // needs something to show -- fall back to the quoted text as the body,
+  // with no separate toggle since there's nothing else to hide it behind.
+  return visible ? { visible, quoted } : { visible: quoted, quoted: '' }
+}
+
 // Every avatar is a gradient ring built from the org's own two theme
 // accents (--color-accent / --color-brass) rather than a fixed hue -- it
 // automatically reads as "signal amber on navy," "violet on near-black," or
@@ -336,6 +362,33 @@ function DeleteMessageButton({ messageId, conversationId }) {
   )
 }
 
+// Gmail-style "…" — the collapsed quote stays a click away instead of
+// permanently taking up room in every bubble.
+function QuotedToggle({ text, out }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${
+          out ? 'text-white/70 hover:bg-white/15 hover:text-white' : 'text-muted hover:bg-canvas hover:text-ink'
+        }`}
+      >
+        {open ? 'Hide quoted text' : '···'}
+      </button>
+      {open && (
+        <div
+          className={`mt-1 whitespace-pre-wrap border-l-2 pl-2 text-xs ${out ? 'border-white/30 text-white/70' : 'text-muted'}`}
+          style={out ? undefined : { borderColor: 'var(--color-line)' }}
+        >
+          {text}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Thread({ conversation, orgName, onBack, onDelete }) {
   const qc = useQueryClient()
   const [body, setBody] = useState('')
@@ -405,6 +458,7 @@ function Thread({ conversation, orgName, onBack, onDelete }) {
         {messages?.length === 0 && <p className="text-sm text-muted">No messages in this thread yet.</p>}
         {messages?.map((m) => {
           const out = m.direction === 'outbound'
+          const { visible, quoted } = splitQuotedReply(m.body)
           return (
             <div key={m.id} className={`group flex items-center gap-1.5 ${out ? 'justify-end' : 'justify-start'}`}>
               {out && <DeleteMessageButton messageId={m.id} conversationId={conversation.id} />}
@@ -416,7 +470,8 @@ function Thread({ conversation, orgName, onBack, onDelete }) {
                     : { background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)', color: 'var(--color-ink)', border: '1px solid color-mix(in srgb, var(--color-brass) 25%, var(--color-line))' }
                 }
               >
-                <div className="whitespace-pre-wrap">{m.body}</div>
+                <div className="whitespace-pre-wrap">{visible}</div>
+                {quoted && <QuotedToggle text={quoted} out={out} />}
                 <div className={`${hud} mt-1 text-[9px] ${out ? 'text-white/60' : 'text-muted'}`}>
                   {m.ai_generated ? 'AI · ' : ''}{fmtTime(m.created_at)}
                 </div>
