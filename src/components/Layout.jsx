@@ -8,6 +8,7 @@ import { isFeatureEnabled } from '../lib/features'
 import { applyTheme, cacheTheme } from '../lib/theme'
 import IdleTimeout from './IdleTimeout'
 import PaymentClaimToast from './PaymentClaimToast'
+import QuickAccessBar from './QuickAccessBar'
 
 // `group` only matters for the Aurora layout's sectioned sidebar (see
 // NavItems below) -- every other layout renders this same list flat, in
@@ -342,7 +343,10 @@ export default function Layout({ children }) {
 
       {/* Main — min-w-0 lets it shrink in the flex row; overflow-x-hidden keeps
           any stray wide element from shifting the whole page sideways on phones */}
-      <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">{children}</main>
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+        <QuickAccessBar />
+        <div className="min-h-0 flex-1">{children}</div>
+      </main>
     </div>
   )
 }
