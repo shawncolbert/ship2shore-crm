@@ -260,8 +260,11 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
               {confirmedAmount === quote.quoteHigh ? 'Confirmed ✓' : 'Confirm'}
             </button>
           </div>
+          <p className="animate-pulse text-sm font-bold text-ink">
+            Target driver payout: ${quote.targetDriverPayout.toLocaleString()}
+          </p>
           <p className="text-[9px] text-muted">
-            Target driver payout: ${quote.targetDriverPayout.toLocaleString()} · {season} · {miles ? Math.round(miles) : 0} mi
+            {season} · {miles ? Math.round(miles) : 0} mi
             {quote.requiredTransport ? ` · ${quote.requiredTransport} required` : ''}
           </p>
         </div>
