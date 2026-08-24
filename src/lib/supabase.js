@@ -521,8 +521,29 @@ export async function patchOpportunity(id, patch) {
   if ('paid' in patch) allowed.paid = !!patch.paid
   if ('deposit_paid' in patch) allowed.deposit_paid = !!patch.deposit_paid
   if ('paid_on_site' in patch) allowed.paid_on_site = !!patch.paid_on_site
+  if ('assigned_driver_card_id' in patch) allowed.assigned_driver_card_id = patch.assigned_driver_card_id || null
   const { error } = await supabase.from('opportunities').update(allowed).eq('id', id)
   if (error) throw error
+}
+
+// Agent 2 (in-house dispatch assignment): drivers are whichever digital
+// business cards Shawn has marked "offers vehicle transport" -- opting in
+// per card instead of a hardcoded name list, so it stays correct as drivers
+// come and go. openJobCount lets the picker surface whoever's least loaded
+// right now as a plain, honest signal -- not a fabricated "best match"
+// score, since there's no route/proximity data behind this yet.
+export async function fetchTransportDrivers() {
+  const [{ data: cards, error: cErr }, { data: jobs, error: jErr }] = await Promise.all([
+    supabase.from('business_cards').select('id, full_name, phone, sms_number').eq('offers_vehicle_transport', true),
+    supabase.from('opportunities').select('assigned_driver_card_id, status').not('assigned_driver_card_id', 'is', null).neq('status', 'cancelled'),
+  ])
+  if (cErr) throw cErr
+  if (jErr) throw jErr
+  const loadByCard = {}
+  for (const j of jobs || []) loadByCard[j.assigned_driver_card_id] = (loadByCard[j.assigned_driver_card_id] || 0) + 1
+  return (cards || [])
+    .map((c) => ({ ...c, openJobCount: loadByCard[c.id] || 0 }))
+    .sort((a, b) => a.openJobCount - b.openJobCount)
 }
 
 // Edit the core contact fields from the contact detail view. Only the fields

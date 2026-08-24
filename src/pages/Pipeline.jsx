@@ -6,6 +6,7 @@ import {
   updateOpportunity,
   uploadCompletionVideo, fetchCompletionVideo, fetchMyOrgId, fetchLatestJobNote, fetchVehiclePhotoUrl,
   fetchDispatcherContacts, assignDispatcher,
+  fetchTransportDrivers,
   classifyVehicle, previewSuggestedPrice,
   sendContract, fetchLatestContract,
   parseJobBrief,
@@ -701,6 +702,14 @@ function JobDetailModal({
   const [saving, setSaving] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
 
+  // Agent 2 -- in-house drivers only (business cards opted into "offers
+  // vehicle transport"), separate from Assigned dispatcher above (which
+  // hands the whole job off to another business). Sorted lightest-load
+  // first as a plain, honest signal -- never a fabricated "best match"
+  // score, and never a claim that anyone's actually available right now.
+  const { data: drivers } = useQuery({ queryKey: ['transportDrivers'], queryFn: fetchTransportDrivers })
+  const assignedDriver = drivers?.find((d) => d.id === c.assigned_driver_card_id)
+
   // Vehicle classification + auto-pricing. vehicleYear/Make/Model double as
   // the "manual entry" fallback fields -- typing all three (with no VIN)
   // checks vehicle_type_cache the same way a VIN decode does, just without
@@ -1172,6 +1181,32 @@ function JobDetailModal({
                 <div>
                   <label className={label}>Assigned dispatcher</label>
                   <DispatcherAssignField value={c.assigned_dispatcher_id} dispatchers={dispatchers} onAssign={(id) => onAssignDispatcher(c.id, id)} bare />
+                </div>
+                <div>
+                  <label className={label}>Assigned driver (in-house)</label>
+                  <div className="flex gap-1.5">
+                    <select
+                      value={c.assigned_driver_card_id || ''}
+                      onChange={(e) => onPatch({ assigned_driver_card_id: e.target.value || null })}
+                      className={`${field} flex-1`}
+                    >
+                      <option value="">— Unassigned —</option>
+                      {drivers?.map((d, i) => (
+                        <option key={d.id} value={d.id}>
+                          {d.full_name}{i === 0 && d.openJobCount === 0 ? ' (suggested — no open jobs)' : ` (${d.openJobCount} open job${d.openJobCount === 1 ? '' : 's'})`}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!assignedDriver}
+                      title="Never confirms availability -- text the route, then call to actually confirm they can take it"
+                      onClick={() => shareBooking({ summaryText: bookingSummaryFor(c, latestNote, photoUrl), recipientPhone: assignedDriver?.sms_number || assignedDriver?.phone })}
+                      className="shrink-0 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink transition-colors hover:bg-canvas disabled:opacity-40"
+                    >
+                      Text route
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className={label}>Ship billing #</label>

@@ -350,6 +350,21 @@ function BusinessCardEditor({ initialCard, onSaved }) {
 
           <section className={card}>
             <div className="flex items-center justify-between">
+              <h2 className={sectionTitle}>In-house driver</h2>
+              <label className="flex items-center gap-2 text-xs font-medium text-muted">
+                <input type="checkbox" checked={!!form.offers_vehicle_transport} onChange={setBool('offers_vehicle_transport')} />
+                Enabled
+              </label>
+            </div>
+            <p className="text-xs text-muted">
+              When on, this person shows up as a driver you can assign a vehicle-transport job to, right on the
+              Pipeline card -- separate from Assigned dispatcher, which hands the whole job off to another
+              business instead. Off by default; only check this for someone who actually drives for you.
+            </p>
+          </section>
+
+          <section className={card}>
+            <div className="flex items-center justify-between">
               <h2 className={sectionTitle}>Send-info lead form</h2>
               <label className="flex items-center gap-2 text-xs font-medium text-muted">
                 <input type="checkbox" checked={!!form.collect_transport_details} onChange={setBool('collect_transport_details')} />
