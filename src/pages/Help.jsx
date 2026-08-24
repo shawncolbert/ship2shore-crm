@@ -159,6 +159,13 @@ const SECTIONS = [
       ($150 broker fee) and High ($250 fee) — pick whichever you're quoting and click Confirm on that one;
       neither fills Amount by itself.
 
+      One exception: a run that starts at the Long Beach or Wilmington port AND stays inside California,
+      under 300 miles, automatically switches to a separate flat California local rate instead — 0–75 mi
+      is $275/$475, 75–100 mi is $475/$575, and 100–300 mi is $600/$725, no vehicle/season/rural adjustment
+      on any of those. The vehicle/rural/enclosed pickers hide themselves when this kicks in since none of
+      them apply. Past 300 miles (or a drop-off outside California, or a pickup that isn't a CA port), it's
+      back to Val's general locked formula above.
+
       Each job also shows Deposit and Final payment badges — red for unpaid, blue for paid, click either to
       flip it — independent of each other and of the invoice status badges next to them, so you can tell at a
       glance what's actually come in versus what's still outstanding.

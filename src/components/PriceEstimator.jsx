@@ -7,7 +7,11 @@ async function mapboxGeocodeOne(address) {
   const res = await fetch(url)
   if (!res.ok) return null
   const data = await res.json()
-  return data.features?.[0]?.center || null // [lng, lat]
+  const feature = data.features?.[0]
+  if (!feature) return null
+  const regionContext = feature.context?.find((c) => c.id?.startsWith('region'))
+  const regionCode = regionContext?.short_code?.replace(/^US-/, '') || null // e.g. "CA"
+  return { center: feature.center, regionCode } // center is [lng, lat]
 }
 
 async function mapboxDrivingMiles(from, to) {
@@ -120,7 +124,22 @@ function calculateLuxuryExoticQuote({ miles, vehicleCategory = 'Luxury', season 
   }
 }
 
-const EMPTY_AUTO = { loading: false, error: '', miles: null, quote: null }
+// CA local-run flat brackets (2026-08-24) -- Val's separate rate for a run
+// that both starts at the Long Beach/Wilmington port AND stays inside
+// California. Deliberately simpler than the general formula: no vehicle/
+// season/rural/enclosed adjustments, just miles -> a flat Low/High pair.
+// 300+ mi falls through to the general locked formula instead -- there's no
+// "target driver payout" baseline defined for this scheme, only the two
+// customer-facing numbers.
+const CA_PORT_RE = /long beach|wilmington/i
+function calculateCaPortBracket(miles) {
+  if (miles <= 75) return { quoteLow: 275, quoteHigh: 475 }
+  if (miles <= 100) return { quoteLow: 475, quoteHigh: 575 }
+  if (miles <= 300) return { quoteLow: 600, quoteHigh: 725 }
+  return null
+}
+
+const EMPTY_AUTO = { loading: false, error: '', miles: null, quote: null, dropoffRegion: null }
 
 // Staff-only quote helper: the landing page/funnel form only ever collects
 // a plain pickup/dropoff address, nobody outside the org ever sees a rate.
@@ -153,10 +172,10 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
         const [from, to] = await Promise.all([mapboxGeocodeOne(pickup), mapboxGeocodeOne(dropoff)])
         if (cancelled) return
         if (!from || !to) { setAuto({ ...EMPTY_AUTO, error: 'Could not locate one of those addresses.' }); return }
-        const miles = await mapboxDrivingMiles(from, to)
+        const miles = await mapboxDrivingMiles(from.center, to.center)
         if (cancelled) return
         if (miles == null) { setAuto({ ...EMPTY_AUTO, error: 'Could not calculate driving distance.' }); return }
-        setAuto({ loading: false, error: '', miles, quote: null })
+        setAuto({ loading: false, error: '', miles, quote: null, dropoffRegion: to.regionCode })
       } catch {
         if (!cancelled) setAuto({ ...EMPTY_AUTO, error: 'Automatic mileage lookup failed — enter miles manually below.' })
       }
@@ -165,11 +184,16 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
   }, [pickup, dropoff, milesOverride])
 
   const miles = milesOverride !== '' ? Number(milesOverride) : auto.miles
-  const quote = miles > 0
+  // CA local-run brackets only apply off a fresh auto-geocoded distance --
+  // a manually typed mile count means there's no confirmed drop-off state,
+  // so that case always falls through to the general locked formula.
+  const isCaPortLocal = milesOverride === '' && CA_PORT_RE.test(pickup || '') && auto.dropoffRegion === 'CA' && miles > 0 && miles <= 300
+  const caBracket = isCaPortLocal ? calculateCaPortBracket(miles) : null
+  const quote = caBracket || (miles > 0
     ? (isLuxuryExotic
         ? calculateLuxuryExoticQuote({ miles, vehicleCategory: effectiveVehicleType, season, ruralLevel })
         : calculateCrmQuoteMatrix({ miles, vehicleType: effectiveVehicleType, season, ruralLevel, transportMode }))
-    : null
+    : null)
 
   const confirm = (amount) => {
     onUseAmount(amount)
@@ -180,31 +204,37 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
     <div onClick={stop} className="space-y-1.5 rounded border border-line bg-canvas/50 p-2">
       <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted">Price estimator (staff only)</h4>
 
-      <div className="grid grid-cols-3 gap-1.5">
-        <select value={vehicleOverride} onChange={(e) => setVehicleOverride(e.target.value)} className="w-full rounded border border-line bg-canvas px-1.5 py-1 text-[11px] text-ink outline-none focus:border-accent">
-          <option value="auto">Vehicle: auto ({toFormulaVehicleType(vehicleType)})</option>
-          <option value="Sedan">Sedan</option>
-          <option value="SUV">SUV</option>
-          <option value="Truck">Truck</option>
-          <option value="Luxury">Luxury</option>
-          <option value="Exotic">Exotic</option>
-        </select>
-        <select value={ruralLevel} onChange={(e) => setRuralLevel(e.target.value)} className="w-full rounded border border-line bg-canvas px-1.5 py-1 text-[11px] text-ink outline-none focus:border-accent">
-          <option value="none">Rural: none</option>
-          <option value="minor">{`Rural: minor (+$${isLuxuryExotic ? 150 : 100})`}</option>
-          <option value="remote">{`Rural: remote (+$${isLuxuryExotic ? 300 : 225})`}</option>
-        </select>
-        {isLuxuryExotic ? (
-          <div className="flex items-center justify-center rounded border border-line bg-canvas px-1.5 py-1 text-[11px] text-muted" title="Luxury/Exotic always ships enclosed">
-            Enclosed (required)
-          </div>
-        ) : (
-          <select value={transportMode} onChange={(e) => setTransportMode(e.target.value)} className="w-full rounded border border-line bg-canvas px-1.5 py-1 text-[11px] text-ink outline-none focus:border-accent">
-            <option value="open">Open</option>
-            <option value="enclosed">Enclosed (×1.45)</option>
+      {isCaPortLocal ? (
+        <p className="rounded border border-accent/40 bg-accent/8 px-2 py-1 text-[11px] text-ink">
+          California local rate — port pickup, in-state drop-off, under 300 mi. Vehicle/season/rural don't apply to this rate.
+        </p>
+      ) : (
+        <div className="grid grid-cols-3 gap-1.5">
+          <select value={vehicleOverride} onChange={(e) => setVehicleOverride(e.target.value)} className="w-full rounded border border-line bg-canvas px-1.5 py-1 text-[11px] text-ink outline-none focus:border-accent">
+            <option value="auto">Vehicle: auto ({toFormulaVehicleType(vehicleType)})</option>
+            <option value="Sedan">Sedan</option>
+            <option value="SUV">SUV</option>
+            <option value="Truck">Truck</option>
+            <option value="Luxury">Luxury</option>
+            <option value="Exotic">Exotic</option>
           </select>
-        )}
-      </div>
+          <select value={ruralLevel} onChange={(e) => setRuralLevel(e.target.value)} className="w-full rounded border border-line bg-canvas px-1.5 py-1 text-[11px] text-ink outline-none focus:border-accent">
+            <option value="none">Rural: none</option>
+            <option value="minor">{`Rural: minor (+$${isLuxuryExotic ? 150 : 100})`}</option>
+            <option value="remote">{`Rural: remote (+$${isLuxuryExotic ? 300 : 225})`}</option>
+          </select>
+          {isLuxuryExotic ? (
+            <div className="flex items-center justify-center rounded border border-line bg-canvas px-1.5 py-1 text-[11px] text-muted" title="Luxury/Exotic always ships enclosed">
+              Enclosed (required)
+            </div>
+          ) : (
+            <select value={transportMode} onChange={(e) => setTransportMode(e.target.value)} className="w-full rounded border border-line bg-canvas px-1.5 py-1 text-[11px] text-ink outline-none focus:border-accent">
+              <option value="open">Open</option>
+              <option value="enclosed">Enclosed (×1.45)</option>
+            </select>
+          )}
+        </div>
+      )}
 
       {!pickup?.trim() || !dropoff?.trim() ? (
         <p className="text-[11px] text-muted">Enter a pickup and drop-off address to get an automatic mileage estimate, or type miles below.</p>
@@ -260,11 +290,13 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
               {confirmedAmount === quote.quoteHigh ? 'Confirmed ✓' : 'Confirm'}
             </button>
           </div>
-          <p className="animate-pulse text-sm font-bold text-ink">
-            Target driver payout: ${quote.targetDriverPayout.toLocaleString()}
-          </p>
+          {quote.targetDriverPayout != null && (
+            <p className="animate-pulse text-sm font-bold text-ink">
+              Target driver payout: ${quote.targetDriverPayout.toLocaleString()}
+            </p>
+          )}
           <p className="text-[9px] text-muted">
-            {season} · {miles ? Math.round(miles) : 0} mi
+            {isCaPortLocal ? 'CA local rate' : season} · {miles ? Math.round(miles) : 0} mi
             {quote.requiredTransport ? ` · ${quote.requiredTransport} required` : ''}
           </p>
         </div>
