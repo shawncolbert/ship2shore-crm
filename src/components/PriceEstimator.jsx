@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { MAPBOX_TOKEN } from '../lib/mapbox'
+import { logQuote } from '../lib/supabase'
 
 async function mapboxGeocodeOne(address) {
   if (!MAPBOX_TOKEN || !address?.trim()) return null
@@ -149,7 +150,7 @@ const EMPTY_AUTO = { loading: false, error: '', miles: null, quote: null, dropof
 // Shows both quote options -- never fills Amount on its own, same
 // "AI suggests, dispatcher confirms" rule as everywhere else -- the
 // dispatcher picks Low or High and clicks Confirm.
-export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduledAt, onUseAmount }) {
+export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduledAt, onUseAmount, orgId, opportunityId }) {
   const [vehicleOverride, setVehicleOverride] = useState('auto')
   const [ruralLevel, setRuralLevel] = useState('none')
   const [transportMode, setTransportMode] = useState('open')
@@ -195,9 +196,32 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
         : calculateCrmQuoteMatrix({ miles, vehicleType: effectiveVehicleType, season, ruralLevel, transportMode }))
     : null)
 
+  // Reference log only -- every confirmed quote gets recorded (route, date,
+  // vehicle, both numbers, which one was picked) so it can be looked back
+  // on later. Never read back to override a fresh calculation: the locked
+  // formula is already deterministic, so this is purely a history trail.
+  // Best-effort -- a logging failure never blocks confirming the price.
   const confirm = (amount) => {
     onUseAmount(amount)
     setConfirmedAmount(amount)
+    if (orgId) {
+      logQuote({
+        org_id: orgId,
+        opportunity_id: opportunityId || null,
+        pickup_address: pickup || null,
+        dropoff_address: dropoff || null,
+        miles: miles || null,
+        vehicle_type: effectiveVehicleType,
+        season: isCaPortLocal ? null : season,
+        rural_level: isCaPortLocal ? null : ruralLevel,
+        transport_mode: isCaPortLocal || isLuxuryExotic ? null : transportMode,
+        formula_used: isCaPortLocal ? 'ca_port_bracket' : isLuxuryExotic ? 'luxury_exotic' : 'general',
+        quote_low: quote.quoteLow,
+        quote_high: quote.quoteHigh,
+        target_driver_payout: quote.targetDriverPayout ?? null,
+        confirmed_amount: amount,
+      }).catch(() => {})
+    }
   }
 
   return (

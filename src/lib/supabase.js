@@ -503,6 +503,12 @@ export async function setOpportunityBilling(id, billingNumber) {
 
 // Toggle per-job flags (cleared, paid, deposit_paid). Pass only the fields
 // you're changing.
+// Reference log of a confirmed price quote -- see PriceEstimator's confirm().
+export async function logQuote(fields) {
+  const { error } = await supabase.from('quote_history').insert(fields)
+  if (error) throw error
+}
+
 // Invoice Tracking (Agent 4): jobs paid in person, with no invoice ever
 // generated -- still needs to count as revenue collected, just outside the
 // normal invoice table entirely.
