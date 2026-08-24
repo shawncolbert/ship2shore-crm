@@ -20,7 +20,7 @@ async function geocodeOne(address) {
 // signal this shows. onCoordsReady lets the parent grab the same lat/lng
 // (and whatever notes are on file) to fold into "Text route to driver"
 // without a second geocode of its own.
-export default function DropoffPreview({ dropoff, orgId, opportunityId, onCoordsReady }) {
+export default function DropoffPreview({ pickup, dropoff, orgId, opportunityId, onCoordsReady }) {
   const [coords, setCoords] = useState(null)
   const [loading, setLoading] = useState(false)
   const [adding, setAdding] = useState(false)
@@ -73,6 +73,12 @@ export default function DropoffPreview({ dropoff, orgId, opportunityId, onCoords
 
   const staticMapUrl = coords && MAPBOX_TOKEN
     ? `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/pin-s+ff453a(${coords.lng},${coords.lat})/${coords.lng},${coords.lat},17,0/168x120@2x?access_token=${MAPBOX_TOKEN}`
+    : null
+  // Same Google Maps directions link format already used when texting a
+  // driver the job (see shareBooking.js) -- clicking the thumbnail opens
+  // the real driving route, pickup to this drop-off, not just a static pin.
+  const directionsUrl = pickup?.trim() && dropoff?.trim()
+    ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(pickup)}&destination=${encodeURIComponent(dropoff)}`
     : null
 
   return (
@@ -140,16 +146,27 @@ export default function DropoffPreview({ dropoff, orgId, opportunityId, onCoords
         </div>
 
         <div className="w-[84px] shrink-0 sm:w-[168px]">
-          <div className="h-[60px] overflow-hidden rounded border border-line bg-ink/10 sm:h-[120px]">
+          <div className="group relative h-[60px] overflow-hidden rounded border border-line bg-ink/10 sm:h-[120px]">
             {staticMapUrl ? (
-              <img src={staticMapUrl} alt="Satellite view of drop-off" className="h-full w-full object-cover" />
+              directionsUrl ? (
+                <a href={directionsUrl} target="_blank" rel="noreferrer" title="Open driving directions, pickup to drop-off">
+                  <img src={staticMapUrl} alt="Satellite view of drop-off — click for driving directions" className="h-full w-full object-cover" />
+                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-ink/50 text-center text-[9px] font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100">
+                    Open directions →
+                  </span>
+                </a>
+              ) : (
+                <img src={staticMapUrl} alt="Satellite view of drop-off" className="h-full w-full object-cover" />
+              )
             ) : (
               <div className="flex h-full items-center justify-center text-center text-[9px] text-muted">
                 {loading ? 'Locating…' : 'Awaiting address'}
               </div>
             )}
           </div>
-          <p className="mt-0.5 text-center font-[family-name:var(--font-mono)] text-[9px] text-muted">satellite · Mapbox</p>
+          <p className="mt-0.5 text-center font-[family-name:var(--font-mono)] text-[9px] text-muted">
+            {directionsUrl ? 'tap for directions' : 'satellite · Mapbox'}
+          </p>
         </div>
       </div>
     </div>

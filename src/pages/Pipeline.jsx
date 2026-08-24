@@ -1286,7 +1286,7 @@ function JobDetailModal({
               )}
               {dropoffAddress && (
                 <div className="mt-3">
-                  <DropoffPreview dropoff={dropoffAddress} orgId={c.org_id} opportunityId={c.id} onCoordsReady={setDropoffInfo} />
+                  <DropoffPreview pickup={pickupAddress} dropoff={dropoffAddress} orgId={c.org_id} opportunityId={c.id} onCoordsReady={setDropoffInfo} />
                 </div>
               )}
 
