@@ -58,6 +58,15 @@ const PORT_LABEL = {
   other: 'Other',
 }
 
+// Real pickup addresses for each port -- picking one in the Port field
+// below auto-fills Pickup with it instead of the dispatcher typing/looking
+// it up every time. Confirmed against Shawn's own addresses, not guessed.
+const PORT_ADDRESS = {
+  long_beach: '1525 Pier F Ave, Long Beach, CA 90802',
+  wilmington: '250 S Avalon Blvd, Wilmington, CA 90744',
+  matson: '1320 Pier C St, Long Beach, CA 90813',
+}
+
 // Vehicle type bucket used for auto-pricing (matches the DB check constraint
 // and the vin-decode Edge Function's BodyClass mapping).
 const VEHICLE_TYPE_LABEL = {
@@ -1160,7 +1169,15 @@ function JobDetailModal({
                 </div>
                 <div>
                   <label className={label}>Port</label>
-                  <select value={port} onChange={(e) => setPort(e.target.value)} className={field}>
+                  <select
+                    value={port}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setPort(v)
+                      if (PORT_ADDRESS[v]) setPickupAddress(PORT_ADDRESS[v])
+                    }}
+                    className={field}
+                  >
                     <option value="">—</option>
                     {Object.entries(PORT_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                   </select>
