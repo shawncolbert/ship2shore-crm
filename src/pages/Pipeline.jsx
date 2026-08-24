@@ -17,6 +17,7 @@ import NewContactModal from '../components/NewContactModal'
 import Tooltip from '../components/Tooltip'
 import AddressAutocompleteField from '../components/AddressAutocompleteField'
 import PriceEstimator from '../components/PriceEstimator'
+import DropoffPreview from '../components/DropoffPreview'
 
 // Shared by the JobCard quick action and JobDetailModal's full Share button --
 // only the latter has `notes`/`photoUrl` available (fetched while the editor
@@ -719,6 +720,12 @@ function JobDetailModal({
   const { data: drivers } = useQuery({ queryKey: ['transportDrivers'], queryFn: fetchTransportDrivers })
   const assignedDriver = drivers?.find((d) => d.id === c.assigned_driver_card_id)
 
+  // Drop-off access notes -- captured from DropoffPreview once it's
+  // geocoded the address, so "Text route to driver" can fold in any notes
+  // on file without a second geocode call of its own. Driver-facing only:
+  // never appended to the customer-facing Share button above.
+  const [dropoffInfo, setDropoffInfo] = useState(null)
+
   // Vehicle classification + auto-pricing. vehicleYear/Make/Model double as
   // the "manual entry" fallback fields -- typing all three (with no VIN)
   // checks vehicle_type_cache the same way a VIN decode does, just without
@@ -1218,7 +1225,14 @@ function JobDetailModal({
                       type="button"
                       disabled={!assignedDriver}
                       title="Never confirms availability -- text the route, then call to actually confirm they can take it"
-                      onClick={() => shareBooking({ summaryText: bookingSummaryFor(c, latestNote, photoUrl), recipientPhone: assignedDriver?.sms_number || assignedDriver?.phone })}
+                      onClick={() => {
+                        let text = bookingSummaryFor(c, latestNote, photoUrl)
+                        // Driver-facing only -- the customer Share button above never sees these.
+                        if (dropoffInfo?.notes?.length) {
+                          text += '\n\nDrop-off access notes:\n' + dropoffInfo.notes.map((n) => `- ${n.note}`).join('\n')
+                        }
+                        shareBooking({ summaryText: text, recipientPhone: assignedDriver?.sms_number || assignedDriver?.phone })
+                      }}
                       className="shrink-0 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink transition-colors hover:bg-canvas disabled:opacity-40"
                     >
                       Text route
@@ -1268,6 +1282,11 @@ function JobDetailModal({
                     onUseAmount={(v) => { setAmount(v); setPriceConfirmed(false) }}
                     orgId={c.org_id} opportunityId={c.id}
                   />
+                </div>
+              )}
+              {dropoffAddress && (
+                <div className="mt-3">
+                  <DropoffPreview dropoff={dropoffAddress} orgId={c.org_id} opportunityId={c.id} onCoordsReady={setDropoffInfo} />
                 </div>
               )}
 

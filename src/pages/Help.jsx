@@ -173,6 +173,14 @@ const SECTIONS = [
       them the pickup/drop-off/vehicle details through your phone's own share sheet — it never claims they're
       actually available, that's still a phone call you make yourself before promising anything to the customer.
 
+      "Drop-off preview" shows a satellite photo of the drop-off address plus any access notes staff have left on
+      that exact location before — a dirt driveway with no turnaround, a gate code, whatever's worth knowing before
+      a driver shows up. There's no automated risk score here on purpose; a street name can't tell you a truck got
+      stuck there last month, only a person who was actually there can, so it's reports only. Click "+ Add a note"
+      to leave one — it's matched by location, so it'll surface again for that same drop-off no matter how the
+      address is typed next time. Any notes on file also get folded into the driver's "Text route" message
+      automatically, so they see it before they're on the road, not after.
+
       Each job also shows Deposit and Final payment badges — red for unpaid, blue for paid, click either to
       flip it — independent of each other and of the invoice status badges next to them, so you can tell at a
       glance what's actually come in versus what's still outstanding.

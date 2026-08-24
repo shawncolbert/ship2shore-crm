@@ -503,6 +503,35 @@ export async function setOpportunityBilling(id, billingNumber) {
 
 // Toggle per-job flags (cleared, paid, deposit_paid). Pass only the fields
 // you're changing.
+// Drop-off access notes -- matched by rounded coordinates (~11m) rather
+// than exact address text, so "123 Main St" and "123 Main Street, Anytown"
+// still find the same reports.
+const NOTE_TOLERANCE = 0.001
+export async function fetchDropoffNotes(orgId, lat, lng) {
+  const { data, error } = await supabase
+    .from('dropoff_notes')
+    .select('id, note, kind, created_by_name, created_at')
+    .eq('org_id', orgId)
+    .gte('lat', lat - NOTE_TOLERANCE).lte('lat', lat + NOTE_TOLERANCE)
+    .gte('lng', lng - NOTE_TOLERANCE).lte('lng', lng + NOTE_TOLERANCE)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function addDropoffNote({ orgId, opportunityId, address, lat, lng, note, kind, createdByName }) {
+  const { data, error } = await supabase
+    .from('dropoff_notes')
+    .insert({
+      org_id: orgId, opportunity_id: opportunityId || null, address, lat, lng,
+      note: note.trim(), kind: kind || 'warn', created_by_name: createdByName || null,
+    })
+    .select('id, note, kind, created_by_name, created_at')
+    .single()
+  if (error) throw error
+  return data
+}
+
 // Reference log of a confirmed price quote -- see PriceEstimator's confirm().
 export async function logQuote(fields) {
   const { error } = await supabase.from('quote_history').insert(fields)
