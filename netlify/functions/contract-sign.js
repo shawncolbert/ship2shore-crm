@@ -1,5 +1,4 @@
 import { admin } from './_shared/supabaseAdmin.js'
-import { sendInvoiceCore } from './_shared/sendInvoiceCore.js'
 import { sendInternalAlert } from './_shared/email.js'
 
 const json = (statusCode, body) => ({
@@ -9,11 +8,12 @@ const json = (statusCode, body) => ({
 })
 
 // Public, unauthenticated -- the customer's own signature action. Records
-// the signature, then automatically creates and sends the deposit invoice
-// (via the same sendInvoiceCore used by the dispatcher-triggered "Send
-// invoice" button) so signing the agreement and getting the deposit request
-// happen as one step, not two separate things the dispatcher has to
-// remember to do.
+// the signature, then automatically creates the deposit invoice as a draft
+// -- correct customer, correct amount, ready to go -- so the dispatcher
+// isn't starting from a blank form. It stays a draft on purpose: sending it
+// (via the same "Approve"/"Send invoice" action every other invoice uses)
+// is a separate, deliberate step a human takes, not something that fires
+// itself the moment a customer taps sign.
 export const handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { error: 'POST only' })
 
@@ -97,8 +97,6 @@ export const handler = async (event) => {
     quantity: 1, unit_price: contract.deposit_amount, line_total: contract.deposit_amount, sort_order: 0,
   })
 
-  const sendResult = await sendInvoiceCore({ invoice, orgId: contract.org_id, event })
-
   await admin.from('contracts').update({ deposit_invoice_id: invoice.id }).eq('id', id)
 
   await sendInternalAlert({
@@ -108,14 +106,11 @@ export const handler = async (event) => {
       `${name} just signed the booking agreement for ${vehicleDescription}.\n\n` +
       `Booking: ${opp?.booking_number || '—'}\n` +
       `Deposit: $${Number(contract.deposit_amount).toFixed(2)}\n` +
-      `${sendResult.ok && sendResult.emailSent ? 'Deposit invoice sent to the customer.' : `Deposit invoice email did not go out (${sendResult.ok ? sendResult.emailError : sendResult.error}) — check ${invoice.invoice_number} in Invoices.`}`,
+      `A deposit invoice (${invoice.invoice_number}) is drafted and ready — approve it under Invoices to send it to the customer.`,
   })
 
   return json(200, {
     ok: true, status: 'signed',
     depositInvoiceId: invoice.id,
-    publicInvoiceUrl: sendResult.publicUrl,
-    invoiceEmailSent: sendResult.ok ? sendResult.emailSent : false,
-    invoiceError: sendResult.ok ? sendResult.emailError : sendResult.error,
   })
 }

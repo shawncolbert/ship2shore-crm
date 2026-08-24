@@ -5,10 +5,17 @@ const REPLY_SYSTEM = (orgName) => `You are drafting an email reply on behalf of 
 
 You will be given the FULL conversation thread and the CURRENT STATUS OF THE CUSTOMER'S JOB ON FILE. Before drafting, actually use both:
 
-1. Re-read the entire thread and the job status block first. Track everything the customer has already told you or that is already on file (BL/billing number, delivery order, cleared status, payment status, etc.).
+1. Re-read the entire thread and the job status block first. Track everything the customer has already told you or that is already on file (BL/billing number, delivery order, cleared status, payment status, quote, scheduled delivery, etc.).
 2. NEVER ask for something that is already present anywhere in the thread OR already on file in the job status block -- re-reading it there means it was already provided, even if it was a few messages back.
 3. If the customer's latest message provides information that was previously asked for, or the job status block shows something just became available (a BL/billing number, a delivery order, a confirmation), your reply MUST explicitly acknowledge receipt of that specific thing by name and state the concrete next step -- do not default to asking another question. Example: "Thank you -- got the delivery order for TWIC-18009207479. I'll be submitting this for the gate pass and will update you once that's issued."
 4. Only ask a question if the specific thing you'd ask for is genuinely absent from both the thread and the job status block.
+
+Four situations need specific handling -- these are locked rules, not suggestions:
+
+- QUOTES: if the customer asks for a price, or you need to state one, use ONLY the quote already on file in the job status block below. Never calculate, estimate, or invent a number yourself. If no quote is on file yet, say a real quote is being put together and you'll follow up with it -- do not guess a figure to sound helpful.
+- DRIVER AVAILABILITY: if the customer asks whether a driver/truck is available, or asks you to confirm pickup/delivery is locked in, you have no way to actually check that from this thread alone. NEVER say "yes, we have someone" or otherwise confirm availability as a fact. Respond with something like "Let me confirm that and get right back to you" -- a holding reply, not a guess dressed up as a yes or no.
+- "I FOUND IT CHEAPER" OBJECTIONS: if the customer says a competitor quoted them lower, do not just concede the lead. Respond professionally, ask what price they were actually quoted, and note that you'd like to see what can be worked out -- a genuine counter-attempt, never a shrug.
+- DELIVERY STATUS / ETA: if the customer asks where their vehicle is or when it'll arrive, and the job status block does NOT show a real scheduled delivery date, give a professional holding response ("Standby, we'll get you an update shortly") rather than guessing a date or timeframe. If a real scheduled date IS on file, it's fine to state that actual date.
 
 Write a short, professional, friendly reply. Do not invent specific prices, dates, or commitments that aren't already in the thread or on file -- ask a clarifying question instead, but only for things actually missing per rule 4. Sign off as "${orgName}". Output only the email body text, no subject line, no markdown.`
 
@@ -22,7 +29,7 @@ const QUALIFY_SYSTEM = `You summarize a brand-new inbound customer email in one 
 async function fetchJobStatus(contactId) {
   const { data: opp } = await admin
     .from('opportunities')
-    .select('title, bl_number, billing_number, cleared, paid, payment_status, stages(name)')
+    .select('title, bl_number, billing_number, cleared, paid, payment_status, value, confirmed_price, scheduled_at, stages(name)')
     .eq('contact_id', contactId)
     .neq('status', 'cancelled')
     .order('created_at', { ascending: false })
@@ -37,6 +44,9 @@ async function fetchJobStatus(contactId) {
     .eq('contact_id', contactId)
     .eq('kind', 'delivery_order')
 
+  const quote = opp.confirmed_price ?? opp.value
+  const scheduledDate = opp.scheduled_at ? new Date(opp.scheduled_at).toDateString() : null
+
   return [
     `Job: ${opp.title || '(untitled)'}`,
     `Stage: ${opp.stages?.name || 'unknown'}`,
@@ -44,6 +54,8 @@ async function fetchJobStatus(contactId) {
     `Delivery order on file: ${doCount > 0 ? 'Yes' : 'No'}`,
     `Customs cleared: ${opp.cleared ? 'Yes' : 'No'}`,
     `Payment status: ${opp.payment_status}`,
+    `Quote on file: ${quote ? `$${Number(quote).toFixed(2)}` : 'NOT yet set -- do not quote a number'}`,
+    `Scheduled pickup/delivery date on file: ${scheduledDate || 'NOT yet set -- do not state an ETA'}`,
   ].join('\n')
 }
 

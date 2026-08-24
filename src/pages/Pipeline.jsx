@@ -931,6 +931,9 @@ function JobDetailModal({
   }
 
   async function autoDraftInvoices() {
+    // Paid on-site jobs never get an invoice at all -- the driver already
+    // collected in person, so there's nothing left to bill.
+    if (c.paid_on_site) return
     await autoDraftInvoice({ kind: 'deposit', existing: depositInvoice, unitPrice: Number(depositAmount), label: 'Deposit' })
     // Balance invoice: whatever's still owed once the deposit's accounted
     // for. Skipped if that's zero/negative (e.g. fully covered by deposit).
@@ -1337,6 +1340,17 @@ function JobDetailModal({
                   <PaymentBadgeToggle label="Deposit" paid={c.deposit_paid} onToggle={() => onPatch({ deposit_paid: !c.deposit_paid })} />
                   <PaymentBadgeToggle label="Final" paid={c.paid} onToggle={() => onPatch({ paid: !c.paid })} />
                 </div>
+                <label className="mt-2 flex items-center gap-2 text-xs font-medium text-ink">
+                  <input
+                    type="checkbox"
+                    checked={!!c.paid_on_site}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      onPatch(checked ? { paid_on_site: true, deposit_paid: true, paid: true } : { paid_on_site: false })
+                    }}
+                  />
+                  Paid on-site / COD — driver collected in person, no invoice needed
+                </label>
               </div>
             </div>
 

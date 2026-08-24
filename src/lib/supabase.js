@@ -503,11 +503,24 @@ export async function setOpportunityBilling(id, billingNumber) {
 
 // Toggle per-job flags (cleared, paid, deposit_paid). Pass only the fields
 // you're changing.
+// Invoice Tracking (Agent 4): jobs paid in person, with no invoice ever
+// generated -- still needs to count as revenue collected, just outside the
+// normal invoice table entirely.
+export async function fetchPaidOnSiteJobs() {
+  const { data, error } = await supabase
+    .from('opportunities')
+    .select('id, title, value, contacts!contact_id(full_name)')
+    .eq('paid_on_site', true)
+  if (error) throw error
+  return data || []
+}
+
 export async function patchOpportunity(id, patch) {
   const allowed = {}
   if ('cleared' in patch) allowed.cleared = !!patch.cleared
   if ('paid' in patch) allowed.paid = !!patch.paid
   if ('deposit_paid' in patch) allowed.deposit_paid = !!patch.deposit_paid
+  if ('paid_on_site' in patch) allowed.paid_on_site = !!patch.paid_on_site
   const { error } = await supabase.from('opportunities').update(allowed).eq('id', id)
   if (error) throw error
 }

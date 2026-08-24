@@ -4,6 +4,29 @@ Drafts suggested email replies in the unified inbox and suggests a lead
 qualification note on brand-new contacts. **It never sends anything and
 never touches an opportunity's stage.** A human always clicks Send.
 
+## Locked tone rules (2026-08-23)
+
+Four situations get specific, non-negotiable handling in every draft:
+
+- **Quotes** — relays whatever's already on file (`confirmed_price` or
+  `value`), never calculates or invents a number. No quote on file yet →
+  says one's being put together, doesn't guess.
+- **Driver availability** — never states availability as confirmed. There's
+  no live signal for this yet (see Agent 2 below), so every availability
+  question gets a holding reply ("let me confirm and get right back to
+  you"), never a yes/no.
+- **"I found it cheaper"** — always a counter-attempt: asks what price they
+  were quoted, offers to see what can be worked out. Never just lets the
+  lead go.
+- **Delivery status / ETA** — a professional holding message unless a real
+  `scheduled_at` date is on file, in which case it's fine to state it.
+
+All of this stays draft-only for now, including for old/Escort-segment
+clients — the build brief allows autonomous (no-approval) sending for
+escort-side replies once the drafting is proven reliable, but that's a
+separate, deliberate change to make later, not turned on by default the
+moment these rules shipped.
+
 ## What it does
 
 Every 10 minutes, `netlify/functions/ai-draft-reply.js` runs and, for every

@@ -5,6 +5,7 @@ import {
   fetchInvoices, fetchInvoiceBusinessInfo, saveInvoiceBusinessInfo, uploadInvoiceLogo, deleteInvoice,
   fetchZellePaymentFlags, confirmZellePaymentMatch, dismissZellePaymentMatch,
 } from '../lib/invoices'
+import { fetchPaidOnSiteJobs } from '../lib/supabase'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)] space-y-3'
 const btnAccent = 'rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-accent-600'
@@ -92,7 +93,19 @@ export default function Invoices() {
   const [deletingId, setDeletingId] = useState(null)
   const { data: invoices, isLoading } = useQuery({ queryKey: ['invoices'], queryFn: fetchInvoices })
   const { data: zelleFlags } = useQuery({ queryKey: ['zellePaymentFlags'], queryFn: fetchZellePaymentFlags })
+  const { data: paidOnSiteJobs } = useQuery({ queryKey: ['paidOnSiteJobs'], queryFn: fetchPaidOnSiteJobs })
   const openInvoices = (invoices || []).filter((inv) => inv.status === 'sent' || inv.status === 'overdue')
+  const overdueInvoices = (invoices || []).filter((inv) => inv.status === 'overdue')
+  const paidInvoices = (invoices || []).filter((inv) => inv.status === 'paid')
+
+  // Invoice Tracking (Agent 4): paid vs outstanding across every job's
+  // deposit+balance invoices, plus jobs paid on-site that never had an
+  // invoice at all -- those still count as money collected.
+  const trackingPaidTotal =
+    paidInvoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0) +
+    (paidOnSiteJobs || []).reduce((sum, o) => sum + Number(o.value || 0), 0)
+  const trackingPaidCount = paidInvoices.length + (paidOnSiteJobs?.length || 0)
+  const trackingOutstandingTotal = openInvoices.reduce((sum, inv) => sum + Number(inv.amount_due || 0), 0)
 
   const handleDelete = async (e, inv) => {
     e.preventDefault(); e.stopPropagation()
@@ -120,6 +133,26 @@ export default function Invoices() {
           <Link to="/invoices/new" className={btnAccent}>+ New invoice</Link>
         </div>
       </header>
+
+      {!isLoading && (
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className={card}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Paid</p>
+            <p className="text-xl font-bold text-starboard">{money(trackingPaidTotal)}</p>
+            <p className="text-xs text-muted">{trackingPaidCount} job{trackingPaidCount === 1 ? '' : 's'}</p>
+          </div>
+          <div className={card}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Outstanding</p>
+            <p className="text-xl font-bold text-ink">{money(trackingOutstandingTotal)}</p>
+            <p className="text-xs text-muted">{openInvoices.length} invoice{openInvoices.length === 1 ? '' : 's'}</p>
+          </div>
+          <div className={card}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Overdue</p>
+            <p className={`text-xl font-bold ${overdueInvoices.length ? 'text-red-600' : 'text-ink'}`}>{overdueInvoices.length}</p>
+            <p className="text-xs text-muted">unpaid too long</p>
+          </div>
+        </div>
+      )}
 
       {zelleFlags?.length > 0 && (
         <div className="mb-6 space-y-2">
