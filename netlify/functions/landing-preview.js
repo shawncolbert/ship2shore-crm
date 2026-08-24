@@ -25,7 +25,7 @@ export const handler = async (event) => {
 
   const { data: page } = await admin
     .from('landing_pages')
-    .select('title, published')
+    .select('title, meta_description, published')
     .eq('slug', String(slug).trim())
     .maybeSingle()
 
@@ -34,10 +34,11 @@ export const handler = async (event) => {
   }
 
   const pageTitle = page.title || 'Get a Transport Quote'
-  const description = 'Get an instant vehicle transport quote — pickup and delivery across California and the lower 48.'
+  const description = page.meta_description || 'Get an instant vehicle transport quote — pickup and delivery across California and the lower 48.'
   const url = `${origin}/pages/${slug}`
 
   const metaTags = [
+    `<meta name="description" content="${esc(description)}" />`,
     `<meta property="og:title" content="${esc(pageTitle)}" />`,
     `<meta property="og:description" content="${esc(description)}" />`,
     `<meta property="og:url" content="${esc(url)}" />`,
