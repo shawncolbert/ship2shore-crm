@@ -166,6 +166,13 @@ const SECTIONS = [
       them apply. Past 300 miles (or a drop-off outside California, or a pickup that isn't a CA port), it's
       back to Val's general locked formula above.
 
+      "Assigned driver (in-house)" is separate from Assigned dispatcher above — dispatcher hands the whole job
+      off to another business (Warrior Auto Transport, Team Auto Transport/Dispatch); driver is one of your own
+      people, sorted by whoever currently has the fewest open jobs so the suggestion is an honest signal, not a
+      guess. Only shows people whose own business card has "In-house driver" checked on it. "Text route" sends
+      them the pickup/drop-off/vehicle details through your phone's own share sheet — it never claims they're
+      actually available, that's still a phone call you make yourself before promising anything to the customer.
+
       Each job also shows Deposit and Final payment badges — red for unpaid, blue for paid, click either to
       flip it — independent of each other and of the invoice status badges next to them, so you can tell at a
       glance what's actually come in versus what's still outstanding.
