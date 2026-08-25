@@ -1109,15 +1109,26 @@ function JobDetailModal({
             )}
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-white/60">Current job</p>
-              <p className="mt-0.5 truncate text-lg font-bold">
-                {[c.vehicle_year, c.vehicle_make, c.vehicle_model].filter(Boolean).join(' ') || vehicle || c.service_code?.replace(/_/g, ' ') || 'Vehicle transport'}
-              </p>
-              {c.vehicle_vin && <p className={`${mono} text-xs text-white/70`}>VIN {c.vehicle_vin}</p>}
-              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-white/90">
-                <span className="truncate">{c.pickup_address || 'Pickup TBD'}</span>
-                <span aria-hidden="true">→</span>
-                <span className="truncate">{c.dropoff_address || 'Drop-off TBD'}</span>
-              </div>
+              {isPhotographyOrg ? (
+                <>
+                  <p className="mt-0.5 truncate text-lg font-bold">
+                    {c.title || (projectType === 'wedding' ? 'Wedding' : projectType === 'real_estate' ? 'Real estate shoot' : 'Photography project')}
+                  </p>
+                  {venue && <p className="mt-2 truncate text-sm text-white/90">{venue}</p>}
+                </>
+              ) : (
+                <>
+                  <p className="mt-0.5 truncate text-lg font-bold">
+                    {[c.vehicle_year, c.vehicle_make, c.vehicle_model].filter(Boolean).join(' ') || vehicle || c.service_code?.replace(/_/g, ' ') || 'Vehicle transport'}
+                  </p>
+                  {c.vehicle_vin && <p className={`${mono} text-xs text-white/70`}>VIN {c.vehicle_vin}</p>}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-white/90">
+                    <span className="truncate">{c.pickup_address || 'Pickup TBD'}</span>
+                    <span aria-hidden="true">→</span>
+                    <span className="truncate">{c.dropoff_address || 'Drop-off TBD'}</span>
+                  </div>
+                </>
+              )}
             </div>
             <div className="shrink-0 border-t border-white/15 pt-3 text-sm sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-white/60">Scheduled (Pacific)</p>
@@ -1331,6 +1342,7 @@ function JobDetailModal({
                 </div>
               )}
 
+              {!isPhotographyOrg && (
               <div className="mt-4 border-t border-line pt-4">
                 <label className={label}>Vehicle description</label>
                 <input value={vehicle} onChange={(e) => setVehicle(e.target.value)} placeholder="e.g. 2022 Toyota Tacoma" className={field} />
@@ -1417,6 +1429,7 @@ function JobDetailModal({
                   </div>
                 )}
               </div>
+              )}
 
               <div className="mt-4 border-t border-line pt-4">
                 <div className="grid grid-cols-2 gap-3">
