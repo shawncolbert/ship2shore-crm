@@ -49,7 +49,7 @@ async function submitLead(payload) {
   }
 
   const { data: page } = await admin
-    .from('landing_pages').select('id, org_id, title, published').eq('slug', String(slug).trim()).maybeSingle()
+    .from('landing_pages').select('id, org_id, slug, title, published').eq('slug', String(slug).trim()).maybeSingle()
   if (!page || !page.published) return { status: 404, body: { error: 'Page not found.' } }
 
   // Resolve this org's default pipeline + entry stage dynamically -- no
@@ -93,7 +93,7 @@ async function submitLead(payload) {
     .from('opportunities')
     .insert({
       org_id: page.org_id, contact_id: contactId, pipeline_id: pipeline.id, stage_id: stage.id,
-      title: `Website lead — ${page.title}`, status: 'open',
+      title: `Website lead — ${page.title}`, status: 'open', source_board: page.slug,
       pickup_address: pickup_location ? String(pickup_location).trim() : null,
       dropoff_address: delivery_location ? String(delivery_location).trim() : null,
       vehicle: vehicle ? String(vehicle).trim() : null,
