@@ -747,12 +747,12 @@ export async function parseJobBrief(transcript) {
 // drafted so far and gets back a reply plus (once there's enough to work
 // with) an updated draft -- the caller previews it and still has to hit
 // Save, same "AI suggests, human confirms" rule as everything else.
-export async function chatAiStudio({ kind, messages, currentContent }) {
+export async function chatAiStudio({ kind, orgId, messages, currentContent }) {
   const { data: { session } } = await supabase.auth.getSession()
   const res = await fetch('/.netlify/functions/ai-studio-chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-    body: JSON.stringify({ kind, messages, currentContent: currentContent || null }),
+    body: JSON.stringify({ kind, orgId, messages, currentContent: currentContent || null }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'AI Studio could not respond just now.')

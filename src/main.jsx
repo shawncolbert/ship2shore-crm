@@ -136,10 +136,11 @@ function App() {
                 <Route path="funnels" element={<FeatureGate featureKey="funnels"><Funnels /></FeatureGate>} />
                 <Route path="social-posts" element={<FeatureGate featureKey="social_posts"><SocialPosts /></FeatureGate>} />
                 <Route path="agent" element={<FeatureGate featureKey="ai_assistant"><Agent /></FeatureGate>} />
-                {/* No FeatureGate on purpose -- scoped to Ship2Shore's own org by a
-                    hardcoded org-id check inside AiStudio.jsx and the backend
-                    function, not the generic per-org toggle (which defaults new
-                    features to "on" for every tenant). */}
+                {/* No FeatureGate on purpose -- gated by profiles.platform_admin
+                    inside AiStudio.jsx and the backend functions instead, not
+                    the generic per-org toggle (which defaults new features to
+                    "on" for every tenant). This is a cross-org admin tool, not
+                    something any client org's own users get. */}
                 <Route path="ai-studio" element={<AiStudio />} />
                 <Route path="admin/orgs" element={<AdminOrgs />} />
               </Routes>

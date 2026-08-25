@@ -1,16 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  fetchLandingPages, fetchLandingPage, createLandingPage, updateLandingPage,
-  chatAiStudio, fetchMyOrg, fetchMyOrgId,
-} from '../lib/supabase'
-import { fetchMyBusinessCards, createBusinessCard, saveBusinessCard } from '../lib/businessCard'
+import { chatAiStudio, fetchMyOrg, fetchMyProfile } from '../lib/supabase'
+import { fetchOrgs, aiStudioList, aiStudioGet, aiStudioSave } from '../lib/admin'
 import BusinessCardView from '../components/businessCard/BusinessCardView'
-
-// Scoped to Ship2Shore's own org only -- matches the same constant the
-// backend function enforces. This is a UI convenience (hide the page and
-// nav link); the real gate is server-side, since this calls a paid API.
-const AI_STUDIO_ORG_ID = '11111111-1111-1111-1111-111111111111'
 
 const KINDS = [
   { value: 'landing_page', label: 'Landing Page' },
@@ -23,7 +15,15 @@ function landingPagePreviewDoc(html) {
 
 export default function AiStudio() {
   const qc = useQueryClient()
-  const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg })
+  const { data: profile, isLoading: profileLoading } = useQuery({ queryKey: ['myProfile'], queryFn: fetchMyProfile })
+  const { data: myOrg } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg })
+  // Platform-admin only, and works against any org -- this is how a
+  // brand-new client's landing page and business card get pre-built
+  // before the org is even handed over, not just Shawn's own.
+  const { data: orgs } = useQuery({ queryKey: ['adminOrgs'], queryFn: fetchOrgs, enabled: !!profile?.platform_admin })
+
+  const [orgId, setOrgId] = useState('')
+  useEffect(() => { if (!orgId && myOrg?.id) setOrgId(myOrg.id) }, [orgId, myOrg])
 
   const [kind, setKind] = useState('landing_page')
   const [targetId, setTargetId] = useState('') // '' = new
@@ -36,11 +36,43 @@ export default function AiStudio() {
   const [savedInfo, setSavedInfo] = useState(null)
   const bottomRef = useRef(null)
 
-  const { data: landingPages } = useQuery({
-    queryKey: ['landingPages'], queryFn: fetchLandingPages, enabled: kind === 'landing_page',
-  })
-  const { data: businessCards } = useQuery({
-    queryKey: ['myBusinessCards'], queryFn: fetchMyBusinessCards, enabled: kind === 'business_card',
+  // Voice input -- same browser SpeechRecognition API the Pipeline's Audio
+  // Brief field already uses, entirely client-side. It only fills the
+  // textarea; talking never sends anything on its own, same "AI suggests,
+  // human confirms" send step as typing.
+  const [listening, setListening] = useState(false)
+  const recognitionRef = useRef(null)
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) return
+    const rec = new SpeechRecognition()
+    rec.continuous = true
+    rec.interimResults = true
+    rec.lang = 'en-US'
+    rec.onstart = () => setListening(true)
+    rec.onend = () => setListening(false)
+    rec.onerror = () => setListening(false)
+    rec.onresult = (event) => {
+      let finalText = ''
+      for (let i = 0; i < event.results.length; i++) {
+        if (event.results[i].isFinal) finalText += event.results[i][0].transcript + ' '
+      }
+      if (finalText) setInput((prev) => (prev ? prev.trim() + ' ' : '') + finalText.trim())
+    }
+    recognitionRef.current = rec
+    return () => rec.stop()
+  }, [])
+
+  const toggleMic = () => {
+    if (!recognitionRef.current) return
+    if (listening) recognitionRef.current.stop()
+    else recognitionRef.current.start()
+  }
+
+  const { data: existingList } = useQuery({
+    queryKey: ['aiStudioList', orgId, kind],
+    queryFn: () => aiStudioList({ orgId, kind }),
+    enabled: !!orgId,
   })
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, content])
@@ -62,21 +94,23 @@ export default function AiStudio() {
     resetConversation()
     if (!id) return
     try {
+      const page = await aiStudioGet({ orgId, kind, id })
       if (kind === 'landing_page') {
-        const page = await fetchLandingPage(id)
         const html = page.blocks?.find((b) => b.type === 'custom_html')?.html || ''
         setContent({ slug: page.slug, title: page.title, meta_description: page.meta_description || '', schema_json: page.schema_json || '', html })
         setMessages([{ role: 'assistant', content: `Loaded "${page.title}" (/pages/${page.slug}). Tell me what to change.` }])
       } else {
-        const card = (businessCards || []).find((c) => c.id === id)
-        if (card) {
-          setContent(card)
-          setMessages([{ role: 'assistant', content: `Loaded the "${card.brand_name || card.full_name || 'untitled'}" card. Tell me what to change.` }])
-        }
+        setContent(page)
+        setMessages([{ role: 'assistant', content: `Loaded the "${page.brand_name || page.full_name || 'untitled'}" card. Tell me what to change.` }])
       }
     } catch (e) {
       setError(e.message || 'Could not load that.')
     }
+  }
+
+  const changeOrg = (id) => {
+    setOrgId(id)
+    startNew()
   }
 
   const send = async () => {
@@ -88,7 +122,7 @@ export default function AiStudio() {
     setMessages(nextMessages)
     setSending(true)
     try {
-      const res = await chatAiStudio({ kind, messages: nextMessages, currentContent: content })
+      const res = await chatAiStudio({ kind, orgId, messages: nextMessages, currentContent: content })
       setMessages((m) => [...m, { role: 'assistant', content: res.reply }])
       if (res.content) setContent(res.content)
     } catch (e) {
@@ -103,37 +137,14 @@ export default function AiStudio() {
   }
 
   const save = async () => {
-    if (!content) return
+    if (!content || !orgId) return
     setSaving(true)
     setError('')
     try {
-      if (kind === 'landing_page') {
-        const blocks = [{ id: crypto.randomUUID(), type: 'custom_html', html: content.html }]
-        if (targetId) {
-          await updateLandingPage(targetId, {
-            slug: content.slug, title: content.title, meta_description: content.meta_description,
-            schema_json: content.schema_json, blocks,
-          })
-        } else {
-          const created = await createLandingPage({
-            slug: content.slug, title: content.title, published: true, theme: 'classic', blocks,
-            meta_description: content.meta_description, schema_json: content.schema_json,
-          })
-          setTargetId(created.id)
-        }
-        await qc.invalidateQueries({ queryKey: ['landingPages'] })
-        setSavedInfo({ url: `/pages/${content.slug}` })
-      } else {
-        if (targetId) {
-          await saveBusinessCard(targetId, content)
-        } else {
-          const orgId = await fetchMyOrgId()
-          const created = await createBusinessCard(orgId, content)
-          setTargetId(created.id)
-        }
-        await qc.invalidateQueries({ queryKey: ['myBusinessCards'] })
-        setSavedInfo({ url: `/card/${content.slug || ''}` })
-      }
+      const result = await aiStudioSave({ orgId, kind, id: targetId || null, content })
+      setTargetId(result.id)
+      await qc.invalidateQueries({ queryKey: ['aiStudioList', orgId, kind] })
+      setSavedInfo({ url: kind === 'landing_page' ? `/pages/${result.slug}` : `/card/${result.slug || ''}` })
     } catch (e) {
       setError(e.message || 'Could not save.')
     } finally {
@@ -141,15 +152,11 @@ export default function AiStudio() {
     }
   }
 
-  if (org && org.id !== AI_STUDIO_ORG_ID) {
+  if (!profileLoading && !profile?.platform_admin) {
     return (
-      <div className="p-6 text-sm text-gray-500">AI Studio isn't enabled for this organization.</div>
+      <div className="p-6 text-sm text-gray-500">AI Studio isn't enabled for this account.</div>
     )
   }
-
-  const existingList = kind === 'landing_page'
-    ? (landingPages || []).map((p) => ({ id: p.id, label: p.title || p.slug }))
-    : (businessCards || []).map((c) => ({ id: c.id, label: c.brand_name || c.full_name || 'Untitled card' }))
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4 p-4 sm:p-6">
@@ -161,6 +168,18 @@ export default function AiStudio() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        {orgs && orgs.length > 1 && (
+          <select
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
+            value={orgId}
+            onChange={(e) => changeOrg(e.target.value)}
+          >
+            {orgs.map((o) => (
+              <option key={o.id} value={o.id}>{o.name}{o.id === myOrg?.id ? ' (mine)' : ''}</option>
+            ))}
+          </select>
+        )}
+
         <div className="flex rounded-lg border border-gray-200 bg-white p-1">
           {KINDS.map((k) => (
             <button
@@ -182,7 +201,7 @@ export default function AiStudio() {
           onChange={(e) => (e.target.value ? loadExisting(e.target.value) : startNew())}
         >
           <option value="">+ Start a new one</option>
-          {existingList.map((item) => (
+          {(existingList || []).map((item) => (
             <option key={item.id} value={item.id}>Edit: {item.label}</option>
           ))}
         </select>
@@ -216,11 +235,25 @@ export default function AiStudio() {
             <textarea
               rows={2}
               className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400"
-              placeholder="Tell it what you want…"
+              placeholder={listening ? 'Listening…' : 'Tell it what you want…'}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
             />
+            {(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+              <button
+                type="button"
+                onClick={toggleMic}
+                title={listening ? 'Stop listening' : 'Talk instead of typing'}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-base ${
+                  listening
+                    ? 'animate-pulse border-red-300 bg-red-50 text-red-600'
+                    : 'border-gray-200 text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                🎤
+              </button>
+            )}
             <button
               type="button"
               onClick={send}

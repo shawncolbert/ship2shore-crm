@@ -174,11 +174,11 @@ function NavItems({ onNavigate }) {
   // feature flags -- it's how the platform admin manages every org,
   // including turning their own features on/off.
   const visible = nav.filter((item) => isFeatureEnabled(org, item.key))
-  // AI Studio is Shawn's own experimental feature, kept out of the generic
+  // AI Studio is platform-admin only (Shawn) -- kept out of the generic
   // per-org FEATURES list (which defaults new entries to visible for every
-  // tenant) and shown only for Ship2Shore's own org -- same hardcoded check
-  // the page and its backend function both enforce.
-  const withAiStudio = org?.id === '11111111-1111-1111-1111-111111111111'
+  // tenant) since it's a cross-org admin tool, not something any client
+  // org's own users get, same gate its backend function enforces.
+  const withAiStudio = profile?.platform_admin
     ? [...visible, { to: '/ai-studio', label: 'AI Studio', group: 'Marketing' }]
     : visible
   const withAdmin = profile?.platform_admin ? [...withAiStudio, { to: '/admin/orgs', label: 'Organizations' }] : withAiStudio

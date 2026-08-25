@@ -48,3 +48,20 @@ export async function setOrgFeature({ orgId, featureKey, enabled }) {
 export async function removeMember({ orgId, profileId }) {
   return authedFetch('admin-remove-member', { orgId, profileId })
 }
+
+// AI Studio's cross-org data access -- listing/loading/saving a landing
+// page or business card for an org the caller isn't necessarily a member
+// of. See netlify/functions/ai-studio-admin.js.
+export async function aiStudioList({ orgId, kind }) {
+  const { items } = await authedFetch('ai-studio-admin', { action: 'list_content', orgId, kind })
+  return items
+}
+
+export async function aiStudioGet({ orgId, kind, id }) {
+  const { item } = await authedFetch('ai-studio-admin', { action: 'get_content', orgId, kind, id })
+  return item
+}
+
+export async function aiStudioSave({ orgId, kind, id, content }) {
+  return authedFetch('ai-studio-admin', { action: 'save_content', orgId, kind, id: id || null, content })
+}
