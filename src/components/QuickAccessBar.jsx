@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { fetchMyOrg } from '../lib/supabase'
+import { fetchMyOrg, fetchMyProfile } from '../lib/supabase'
 import { isFeatureEnabled } from '../lib/features'
 
 // Persistent row of one-tap shortcuts to the pages people live in all day,
@@ -14,11 +14,23 @@ const BUBBLES = [
   { to: '/contacts', label: 'Contacts', key: 'contacts' },
   { to: '/inbox', label: 'Inbox', key: 'inbox' },
   { to: '/calendar', label: 'Calendar', key: 'calendar' },
+  // A shortcut to the manager page, not to any external site itself -- so
+  // this bar never has to carry a growing, org-specific list of load
+  // boards/dashboards someone's added under Settings > Custom Links.
+  { to: '/settings/custom-links', label: 'Custom Links', key: 'custom_links' },
 ]
 
 export default function QuickAccessBar() {
   const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
-  const bubbles = BUBBLES.filter((b) => isFeatureEnabled(org, b.key))
+  const { data: profile } = useQuery({ queryKey: ['myProfile'], queryFn: fetchMyProfile, staleTime: 5 * 60 * 1000 })
+  const filtered = BUBBLES.filter((b) => isFeatureEnabled(org, b.key))
+  // AI Studio is platform-admin only (see AiStudio.jsx) -- kept out of the
+  // generic FEATURES list on purpose, so it's appended here instead rather
+  // than run through isFeatureEnabled, which defaults an unlisted key to
+  // visible for every org.
+  const bubbles = profile?.platform_admin
+    ? [...filtered, { to: '/ai-studio', label: 'AI Studio' }]
+    : filtered
 
   if (bubbles.length < 2) return null
 
