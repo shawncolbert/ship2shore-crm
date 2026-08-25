@@ -737,6 +737,16 @@ function JobDetailModal({
   const [vehicleType, setVehicleType] = useState(c.vehicle_type || '')
   const [vehicleModification, setVehicleModification] = useState(c.vehicle_modification || 'stock')
   const [vehicleExtended, setVehicleExtended] = useState(!!c.vehicle_extended)
+
+  // Photography job tracking (project_type/gallery_link/custom_fields on
+  // opportunities) -- gated to Tre Colbert Photography's org rather than a
+  // generic FEATURES toggle, same reasoning as Jobline's PRICING_TOOLS_ORG_IDS:
+  // this is one client's workflow, not a feature every transport-dispatch org
+  // using this same board should see.
+  const isPhotographyOrg = c.org_id === 'b438f814-40bf-48d4-9ffe-73b4d6ba5e07'
+  const [projectType, setProjectType] = useState(c.project_type || '')
+  const [galleryLink, setGalleryLink] = useState(c.gallery_link || '')
+  const [venue, setVenue] = useState(c.custom_fields?.venue || '')
   const [classifying, setClassifying] = useState(false)
   const [classifyResult, setClassifyResult] = useState(null)
   const [suggestedPrice, setSuggestedPrice] = useState(c.suggested_price ?? null)
@@ -995,6 +1005,11 @@ function JobDetailModal({
           vehicle_modification: vehicleModification,
           vehicle_extended: vehicleExtended,
           ...(priceConfirmed ? { confirmed_price: suggestedPrice } : {}),
+          ...(isPhotographyOrg ? {
+            project_type: projectType || null,
+            gallery_link: galleryLink.trim() || null,
+            custom_fields: { ...(c.custom_fields || {}), venue: venue.trim() || undefined },
+          } : {}),
         }),
         billingNumber.trim().slice(0, 16) !== (c.billing_number || '') ? onSaveBilling(billingNumber.trim().slice(0, 16)) : null,
       ])
@@ -1287,6 +1302,32 @@ function JobDetailModal({
               {dropoffAddress && (
                 <div className="mt-3">
                   <DropoffPreview pickup={pickupAddress} dropoff={dropoffAddress} orgId={c.org_id} opportunityId={c.id} onCoordsReady={setDropoffInfo} />
+                </div>
+              )}
+
+              {isPhotographyOrg && (
+                <div className="mt-4 border-t border-line pt-4">
+                  <label className={label}>Project type</label>
+                  <select value={projectType} onChange={(e) => setProjectType(e.target.value)} className={field}>
+                    <option value="">— Not set —</option>
+                    <option value="wedding">Wedding</option>
+                    <option value="real_estate">Real estate</option>
+                  </select>
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className={label}>Venue / property address</label>
+                      <input value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Venue name, or the listing address" className={field} />
+                    </div>
+                    <div>
+                      <label className={label}>Gallery link</label>
+                      <input value={galleryLink} onChange={(e) => setGalleryLink(e.target.value)} placeholder="https://…" className={field} />
+                    </div>
+                  </div>
+                  {c.shot_completed_at && (
+                    <p className="mt-2 text-xs text-muted">
+                      Shot completed: <span className="text-ink">{new Date(c.shot_completed_at).toLocaleString()}</span> (stamped automatically when this job moved to the "Shot" stage)
+                    </p>
+                  )}
                 </div>
               )}
 

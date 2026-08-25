@@ -633,6 +633,9 @@ export async function updateOpportunity(id, patch) {
     const n = Number(patch.confirmed_price)
     allowed.confirmed_price = Number.isFinite(n) && n >= 0 ? n : null
   }
+  if ('project_type' in patch) allowed.project_type = patch.project_type || null
+  if ('gallery_link' in patch) allowed.gallery_link = patch.gallery_link?.trim() || null
+  if ('custom_fields' in patch) allowed.custom_fields = patch.custom_fields || {}
   const { data, error } = await supabase
     .from('opportunities').update(allowed).eq('id', id).select('*').single()
   if (error) throw error

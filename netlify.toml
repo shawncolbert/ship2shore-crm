@@ -32,3 +32,10 @@
 # truck instead of being discovered at the tailgate.
 [functions."delivery-payment-reminder"]
   schedule = "0 15 * * *"
+
+# Photography job milestones (Tre Colbert Photography, or any org with
+# project_type set on a job): wedding T-60/T-14 day reminders, real-estate
+# 24h post-shoot check-in, and the gallery-delivery draft once a link is
+# added. Drafts into the Inbox for review -- never auto-sends.
+[functions."photography-reminders"]
+  schedule = "0 15 * * *"
