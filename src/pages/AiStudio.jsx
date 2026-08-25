@@ -177,7 +177,7 @@ export default function AiStudio() {
         </div>
 
         <select
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
           value={targetId}
           onChange={(e) => (e.target.value ? loadExisting(e.target.value) : startNew())}
         >
@@ -215,7 +215,7 @@ export default function AiStudio() {
           <div className="flex items-end gap-2 border-t border-gray-100 p-3">
             <textarea
               rows={2}
-              className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
+              className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400"
               placeholder="Tell it what you want…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
