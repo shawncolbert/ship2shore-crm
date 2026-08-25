@@ -743,6 +743,22 @@ export async function parseJobBrief(transcript) {
   return data
 }
 
+// AI Studio: one chat turn. Sends the conversation plus whatever's been
+// drafted so far and gets back a reply plus (once there's enough to work
+// with) an updated draft -- the caller previews it and still has to hit
+// Save, same "AI suggests, human confirms" rule as everything else.
+export async function chatAiStudio({ kind, messages, currentContent }) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/ai-studio-chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ kind, messages, currentContent: currentContent || null }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'AI Studio could not respond just now.')
+  return data
+}
+
 // "Send contract" action on a pipeline card. Renders and emails the
 // customer a booking agreement to review and sign (contract-send.js); the
 // deposit invoice is created and sent automatically once they sign, not
@@ -1414,11 +1430,14 @@ export async function fetchLandingPage(id) {
   return data
 }
 
-export async function createLandingPage({ slug, title, published, theme, blocks }) {
+export async function createLandingPage({ slug, title, published, theme, blocks, meta_description, schema_json }) {
   const orgId = await fetchMyOrgId()
   const { data, error } = await supabase
     .from('landing_pages')
-    .insert({ org_id: orgId, slug, title, published: !!published, theme: theme || 'classic', blocks: blocks || [] })
+    .insert({
+      org_id: orgId, slug, title, published: !!published, theme: theme || 'classic', blocks: blocks || [],
+      meta_description: meta_description || null, schema_json: schema_json || null,
+    })
     .select('*').single()
   if (error) {
     if (error.code === '23505') throw new Error('That slug is already taken — pick another.')
