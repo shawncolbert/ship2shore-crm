@@ -25,7 +25,7 @@ export const handler = async (event) => {
 
   const { data: page } = await admin
     .from('landing_pages')
-    .select('title, meta_description, published')
+    .select('title, meta_description, schema_json, published')
     .eq('slug', String(slug).trim())
     .maybeSingle()
 
@@ -45,11 +45,19 @@ export const handler = async (event) => {
     `<meta property="og:type" content="website" />`,
     `<meta name="twitter:card" content="summary" />`,
     `<meta name="theme-color" content="#0c1a24" />`,
-  ].join('\n    ')
+  ]
+  // Structured data has to be in the raw HTML a crawler's first fetch sees --
+  // this route is served straight from this function (see public/_redirects),
+  // so a script tag rendered client-side by the React blocks would arrive too
+  // late for a crawler that doesn't run JS. page.schema_json is trusted
+  // (org-authored, same as the rest of the page), so it's inlined as-is.
+  if (page.schema_json) {
+    metaTags.push(`<script type="application/ld+json">${page.schema_json}</script>`)
+  }
 
   shell = shell
     .replace(/<title>.*?<\/title>/, `<title>${esc(pageTitle)}</title>`)
-    .replace('</head>', `    ${metaTags}\n  </head>`)
+    .replace('</head>', `    ${metaTags.join('\n    ')}\n  </head>`)
 
   return { statusCode: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' }, body: shell }
 }
