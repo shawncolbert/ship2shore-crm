@@ -95,14 +95,45 @@ function Brand() {
 function OrgSwitcher() {
   const { data: memberships } = useQuery({ queryKey: ['myMemberships'], queryFn: fetchMyMemberships, staleTime: 5 * 60 * 1000 })
   const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
+  const [switching, setSwitching] = useState(false)
 
   if (!memberships || memberships.length < 2) return null
 
-  const handleChange = async (e) => {
-    const orgId = e.target.value
-    if (!orgId || orgId === org?.id) return
+  const switchTo = async (orgId) => {
+    if (!orgId || orgId === org?.id || switching) return
+    setSwitching(true)
     await switchActiveOrg(orgId)
     window.location.reload()
+  }
+
+  // Exactly two orgs is the common case (Shawn's own org plus one client
+  // org he's pre-building or managing) -- a real flip switch reads as
+  // obviously interactive there, where the old dropdown was easy to miss.
+  // Three-plus memberships falls back to the select below.
+  if (memberships.length === 2) {
+    const [a, b] = memberships
+    const onB = org?.id === b.id
+    const current = onB ? b : a
+    const other = onB ? a : b
+    return (
+      <div className="mt-2">
+        <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">Working in</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={onB}
+          disabled={switching}
+          onClick={() => switchTo(other.id)}
+          title={`Switch to ${other.name}`}
+          className="flex w-full items-center justify-between gap-2 rounded-md border border-white/10 bg-white/10 px-2 py-1.5 text-left transition hover:border-white/20 disabled:opacity-60"
+        >
+          <span className="truncate text-xs font-semibold text-white">{current.name}</span>
+          <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${onB ? 'bg-accent' : 'bg-white/20'}`}>
+            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${onB ? 'translate-x-4' : 'translate-x-1'}`} />
+          </span>
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -110,7 +141,7 @@ function OrgSwitcher() {
       <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">Working in</span>
       <select
         value={org?.id || ''}
-        onChange={handleChange}
+        onChange={(e) => switchTo(e.target.value)}
         className="w-full rounded-md border border-white/10 bg-white/10 px-2 py-1 text-xs text-white/90"
       >
         {memberships.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
