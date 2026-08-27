@@ -12,6 +12,12 @@ import { calculateGeneralQuote, caPortBracket, isCaPortRoute, seasonFor } from '
 // to contain an unescaped *, _, [, or a few other characters, which would
 // silently swallow a real lead alert. Not worth the risk for a bit of bold text.
 
+// Netlify env var changes via the API don't retroactively update an
+// already-warm function container's process.env -- only a fresh deploy
+// (or a cold start) picks up a new value. TELEGRAM_GROUP_CHAT_ID was
+// corrected twice via the API without a deploy in between, so warm
+// containers kept sending to a stale chat_id even after the value looked
+// right in Netlify's dashboard. Forcing a deploy here.
 function siteOrigin() {
   return process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://dispatch.ship2shorebooking.com'
 }
