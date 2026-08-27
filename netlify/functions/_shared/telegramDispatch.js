@@ -99,6 +99,11 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
     quote = null // best-effort -- the alert still goes out without a number
   }
 
+  // The auto-estimate is a starting point for whoever calls the customer,
+  // never something quoted to the customer sight-unseen -- rural pickups,
+  // a lifted truck, running condition, none of that is knowable from the
+  // intake form alone. Nothing here goes out to the customer until a
+  // dispatcher has actually talked to them and set a real price below.
   const lines = [
     '🚨 NEW DISPATCH LEAD',
     '',
@@ -107,7 +112,11 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
     `Vehicle: ${vehicleDesc}`,
     (opp.pickup_address || opp.dropoff_address) ? `Route: ${opp.pickup_address || 'TBD'} → ${opp.dropoff_address || 'TBD'}` : null,
     '',
-    quote ? `Auto-calculated quote: $${quote.amount.toLocaleString()} (${quote.miles} mi${quote.note ? `, ${quote.note}` : ''})` : 'Could not auto-calculate a quote — open the job to price it manually.',
+    quote
+      ? `Starting-point estimate: $${quote.amount.toLocaleString()} (${quote.miles} mi${quote.note ? `, ${quote.note}` : ''}) — confirm with the customer before quoting, rural/lifted/running condition aren't factored in.`
+      : 'Could not auto-estimate — open the job to price it manually.',
+    '',
+    'Call the customer first, then set the real price below.',
   ].filter(Boolean)
 
   // Telegram inline buttons only accept http(s)/tg:// URLs -- a tel: link
@@ -115,11 +124,10 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
   // not just that button (this is why alerts weren't showing up at all).
   // No real loss: the phone number in the text above is auto-linked to
   // tap-to-call by Telegram's own client on mobile.
-  const buttons = []
-  if (quote) {
-    buttons.push([{ text: `✅ Send quote — $${quote.amount.toLocaleString()}`, callback_data: `sq:${opp.id}` }])
-  }
-  buttons.push([{ text: '🔗 Open in CRM', url: `${siteOrigin()}/pipeline?job=${opp.id}` }])
+  const buttons = [
+    [{ text: '✏️ Set price & deposit', callback_data: `sp:${opp.id}` }],
+    [{ text: '🔗 Open in CRM', url: `${siteOrigin()}/pipeline?job=${opp.id}` }],
+  ]
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
