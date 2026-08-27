@@ -150,6 +150,43 @@ function OrgSwitcher() {
   )
 }
 
+// A slim, impossible-to-miss bar across the very top of every page whenever
+// a platform admin is looking at a client org that isn't their own (role
+// isn't 'owner' on the currently active org) -- the sidebar's "Working in"
+// switch already shows this via the org name, but that's read plenty of
+// times as "nothing changed" when the board it's attached to is empty or
+// unfamiliar. This can't be missed or mistaken for the app's normal chrome.
+function ViewingAsBanner() {
+  const { data: memberships } = useQuery({ queryKey: ['myMemberships'], queryFn: fetchMyMemberships, staleTime: 5 * 60 * 1000 })
+  const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
+  const [switching, setSwitching] = useState(false)
+
+  if (!memberships || memberships.length < 2 || !org) return null
+  const home = memberships.find((m) => m.role === 'owner')
+  if (!home || home.id === org.id) return null
+
+  const switchBack = async () => {
+    if (switching) return
+    setSwitching(true)
+    await switchActiveOrg(home.id)
+    window.location.reload()
+  }
+
+  return (
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 bg-accent px-4 py-2 text-xs font-semibold text-ink">
+      <span className="truncate">👀 Viewing <span className="font-bold">{org.name}</span> — this isn't your own org</span>
+      <button
+        type="button"
+        onClick={switchBack}
+        disabled={switching}
+        className="shrink-0 rounded-md bg-black/15 px-2.5 py-1 font-bold hover:bg-black/25 disabled:opacity-60"
+      >
+        {switching ? 'Switching…' : `Back to ${home.name}`}
+      </button>
+    </div>
+  )
+}
+
 const COLLAPSED_GROUPS_KEY = 'sidebarCollapsedGroups'
 
 function loadCollapsedGroups() {
@@ -328,7 +365,9 @@ export default function Layout({ children }) {
   )
 
   return (
-    <div className="flex h-full flex-col md:flex-row">
+    <div className="flex h-full flex-col">
+      <ViewingAsBanner />
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       <IdleTimeout />
       <PaymentClaimToast />
       {/* Mobile top bar */}
@@ -385,6 +424,7 @@ export default function Layout({ children }) {
         <QuickAccessBar />
         <div className="min-h-0 flex-1">{children}</div>
       </main>
+      </div>
     </div>
   )
 }

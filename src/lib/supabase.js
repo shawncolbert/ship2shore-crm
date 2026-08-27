@@ -57,9 +57,9 @@ export async function fetchMyOrgId() {
 export async function fetchMyMemberships() {
   const { data, error } = await supabase
     .from('memberships')
-    .select('org_id, organizations(id, name)')
+    .select('org_id, role, organizations(id, name)')
   if (error) throw error
-  return (data || []).map((m) => ({ id: m.organizations.id, name: m.organizations.name }))
+  return (data || []).map((m) => ({ id: m.organizations.id, name: m.organizations.name, role: m.role }))
 }
 
 // Switches which org fetchMyOrgId()/orgForUser() resolve to for this user.
