@@ -45,13 +45,17 @@ function seasonFor(date) {
 
 const RURAL_FEES = { none: 0, minor: 100, remote: 225 }
 
-// LOCKED pricing formula (2026-08-22) -- this is Val's exact breakdown for
-// what gets charged on every vehicle-dispatch job, ported 1:1 from the
-// Python he provided. Do not adjust the brackets/modifiers/multipliers
-// without him signing off again; only the surrounding integration (how
-// vehicleType/season/ruralLevel/transportMode get fed in) is ours to
-// figure out. Two customer quote options come out ($150 broker fee or
-// $250), not one number -- the dispatcher picks which to send.
+// LOCKED pricing formula (2026-08-22, revised 2026-08-27) -- Val's exact
+// breakdown for what gets charged on every vehicle-dispatch job, ported 1:1
+// from the Python he provided. Do not adjust the brackets/modifiers/
+// multipliers without him signing off again; only the surrounding
+// integration (how vehicleType/season/ruralLevel/transportMode get fed in)
+// is ours to figure out. Used to add a 15% system markup plus a flat $150/
+// $250 broker fee on top, offering the customer a choice of two prices --
+// dropped on Val & Shawn's call (2026-08-27): the carrier-rate brackets
+// already carry the broker's margin, so the extra layers just pushed the
+// customer price too high. The driver's payout IS the customer quote now,
+// one number, no markup stacked on top.
 function calculateCrmQuoteMatrix({ miles, vehicleType = 'Sedan', season = 'other', ruralLevel = 'none', transportMode = 'open' }) {
   // 1. Base carrier cost by distance bracket (origin: SoCal)
   let base
@@ -74,25 +78,20 @@ function calculateCrmQuoteMatrix({ miles, vehicleType = 'Sedan', season = 'other
   // 5. Enclosed trailer multiplier
   if (transportMode === 'enclosed') base *= 1.45
 
-  // 6. System calculation layer (15% system markup on carrier target)
-  const markedUp = base * 1.15
-
-  // 7. Broker fee tiering ($150 low vs $250 high option)
   const round2 = (n) => Math.round(n * 100) / 100
-  return {
-    targetDriverPayout: round2(base),
-    quoteLow: round2(markedUp + 150),
-    quoteHigh: round2(markedUp + 250),
-  }
+  return { targetDriverPayout: round2(base), quote: round2(base) }
 }
 
-// LOCKED enclosed Luxury/Exotic formula (2026-08-22) -- Val's separate
-// breakdown for Luxury/Exotic vehicles specifically. These always ship
-// enclosed (its own, higher per-mile rate table -- not the general
-// formula's base rate with the ×1.45 enclosed multiplier stacked on top),
-// have no SUV/Truck-style flat vehicle modifier (Exotic gets its own +$300
-// instead), and use a different rural fee scale ($150/$300, not $100/$225).
-// There's no Open/Enclosed choice here -- it's enclosed-only by definition.
+// LOCKED enclosed Luxury/Exotic formula (2026-08-22, revised 2026-08-27) --
+// Val's separate breakdown for Luxury/Exotic vehicles specifically. These
+// always ship enclosed (its own, higher per-mile rate table -- not the
+// general formula's base rate with the ×1.45 enclosed multiplier stacked on
+// top), have no SUV/Truck-style flat vehicle modifier (Exotic gets its own
+// +$300 instead), and use a different rural fee scale ($150/$300, not
+// $100/$225). There's no Open/Enclosed choice here -- it's enclosed-only by
+// definition. Same 2026-08-27 change as the general formula above: no more
+// 15% markup + $150/$250 fee stacked on top -- the driver's payout is the
+// customer quote.
 function calculateLuxuryExoticQuote({ miles, vehicleCategory = 'Luxury', season = 'other', ruralLevel = 'none' }) {
   // 1. Enclosed base carrier target (higher per-mile cost for specialized trailers)
   let base
@@ -112,17 +111,8 @@ function calculateLuxuryExoticQuote({ miles, vehicleCategory = 'Luxury', season 
   const ruralFees = { none: 0, minor: 150, remote: 300 }
   base += ruralFees[ruralLevel] ?? 0
 
-  // 5. CRM system calculation layer (15% system markup on the enclosed carrier target)
-  const markedUp = base * 1.15
-
-  // 6. Broker fee tiers ($150 low vs $250 high option)
   const round2 = (n) => Math.round(n * 100) / 100
-  return {
-    requiredTransport: 'Enclosed Trailer',
-    targetDriverPayout: round2(base),
-    quoteLow: round2(markedUp + 150),
-    quoteHigh: round2(markedUp + 250),
-  }
+  return { requiredTransport: 'Enclosed Trailer', targetDriverPayout: round2(base), quote: round2(base) }
 }
 
 // CA local-run flat brackets (2026-08-24) -- Val's separate rate for a run
@@ -216,8 +206,8 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
         rural_level: isCaPortLocal ? null : ruralLevel,
         transport_mode: isCaPortLocal || isLuxuryExotic ? null : transportMode,
         formula_used: isCaPortLocal ? 'ca_port_bracket' : isLuxuryExotic ? 'luxury_exotic' : 'general',
-        quote_low: quote.quoteLow,
-        quote_high: quote.quoteHigh,
+        quote_low: quote.quoteLow ?? null,
+        quote_high: quote.quoteHigh ?? null,
         target_driver_payout: quote.targetDriverPayout ?? null,
         confirmed_amount: amount,
       }).catch(() => {})
@@ -286,38 +276,56 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
 
       {quote && (
         <div className="space-y-1">
-          <div className="flex items-center justify-between rounded bg-accent/10 px-2 py-1.5">
-            <div>
-              <p className="text-[9px] font-semibold uppercase tracking-wide text-muted">Quote — Low ($150 fee)</p>
-              <span className="text-xs font-semibold text-ink">${quote.quoteLow.toLocaleString()}</span>
+          {/* CA port local rate keeps its own separate flat Low/High
+              brackets -- untouched by the 2026-08-27 single-quote change,
+              which only removed the markup+fee stacked on Val's general and
+              luxury/exotic per-mile formulas below. */}
+          {quote.quoteLow != null ? (
+            <>
+              <div className="flex items-center justify-between rounded bg-accent/10 px-2 py-1.5">
+                <div>
+                  <p className="text-[9px] font-semibold uppercase tracking-wide text-muted">Quote — Low</p>
+                  <span className="text-xs font-semibold text-ink">${quote.quoteLow.toLocaleString()}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => confirm(quote.quoteLow)}
+                  disabled={confirmedAmount === quote.quoteLow}
+                  className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
+                >
+                  {confirmedAmount === quote.quoteLow ? 'Confirmed ✓' : 'Confirm'}
+                </button>
+              </div>
+              <div className="flex items-center justify-between rounded bg-accent/10 px-2 py-1.5">
+                <div>
+                  <p className="text-[9px] font-semibold uppercase tracking-wide text-muted">Quote — High</p>
+                  <span className="text-xs font-semibold text-ink">${quote.quoteHigh.toLocaleString()}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => confirm(quote.quoteHigh)}
+                  disabled={confirmedAmount === quote.quoteHigh}
+                  className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
+                >
+                  {confirmedAmount === quote.quoteHigh ? 'Confirmed ✓' : 'Confirm'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-between rounded bg-accent/10 px-2 py-1.5">
+              <div>
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted">Quote</p>
+                <span className="text-xs font-semibold text-ink">${quote.quote.toLocaleString()}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => confirm(quote.quote)}
+                disabled={confirmedAmount === quote.quote}
+                className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
+              >
+                {confirmedAmount === quote.quote ? 'Confirmed ✓' : 'Confirm'}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => confirm(quote.quoteLow)}
-              disabled={confirmedAmount === quote.quoteLow}
-              className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
-            >
-              {confirmedAmount === quote.quoteLow ? 'Confirmed ✓' : 'Confirm'}
-            </button>
-          </div>
-          <div className="flex items-center justify-between rounded bg-accent/10 px-2 py-1.5">
-            <div>
-              <p className="text-[9px] font-semibold uppercase tracking-wide text-muted">Quote — High ($250 fee)</p>
-              <span className="text-xs font-semibold text-ink">${quote.quoteHigh.toLocaleString()}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => confirm(quote.quoteHigh)}
-              disabled={confirmedAmount === quote.quoteHigh}
-              className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
-            >
-              {confirmedAmount === quote.quoteHigh ? 'Confirmed ✓' : 'Confirm'}
-            </button>
-          </div>
-          {quote.targetDriverPayout != null && (
-            <p className="animate-pulse text-sm font-bold text-ink">
-              Target driver payout: ${quote.targetDriverPayout.toLocaleString()}
-            </p>
           )}
           <p className="text-[9px] text-muted">
             {isCaPortLocal ? 'CA local rate' : season} · {miles ? Math.round(miles) : 0} mi

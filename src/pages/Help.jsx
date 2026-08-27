@@ -155,9 +155,9 @@ const SECTIONS = [
       yet — and the season surcharge from the job's scheduled date. Rural destination is always your call,
       so set that before reading the quote. Luxury/Exotic ships enclosed-only (a separate, higher rate table
       Val locked in specifically for those, and the Open/Enclosed pick disappears since there's no other
-      option); everything else gives you the Open/Enclosed choice. Either way it shows two numbers, Low
-      ($150 broker fee) and High ($250 fee) — pick whichever you're quoting and click Confirm on that one;
-      neither fills Amount by itself.
+      option); everything else gives you the Open/Enclosed choice. Either way it shows one quote — the
+      driver's payout itself, broker margin already built into the carrier-rate brackets, no markup or fee
+      stacked on top — click Confirm to use it; it doesn't fill Amount by itself.
 
       One exception: a run that starts at the Long Beach or Wilmington port AND stays inside California,
       under 300 miles, automatically switches to a separate flat California local rate instead — 0–75 mi
