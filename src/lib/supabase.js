@@ -213,6 +213,24 @@ export async function saveOrgCalendlyUrl(url) {
   if (error) throw error
 }
 
+// One tracking link per job -- reuses the existing token if a driver was
+// already sent one (re-texting the route shouldn't invalidate a link
+// they've already opened), otherwise creates the row. The driver-facing
+// page itself never talks to Supabase directly; it's public, so it goes
+// through the tracking-* Netlify functions instead (see DriverTracking.jsx).
+export async function fetchOrCreateTrackingLink(opportunityId) {
+  const { data: existing, error: selectError } = await supabase
+    .from('job_tracking').select('token').eq('opportunity_id', opportunityId).maybeSingle()
+  if (selectError) throw selectError
+  if (existing?.token) return `${window.location.origin}/track/${existing.token}`
+
+  const orgId = await fetchMyOrgId()
+  const { data, error } = await supabase
+    .from('job_tracking').insert({ opportunity_id: opportunityId, org_id: orgId }).select('token').single()
+  if (error) throw error
+  return `${window.location.origin}/track/${data.token}`
+}
+
 // Settings > Appearance -- any org member can change their own org's
 // dashboard theme (the "p_org_members" RLS policy already covers this
 // update). Separate from primary_color/logo_url branding, which stay

@@ -137,3 +137,32 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
   if (!res.ok) return { sent: false, reason: await res.text() }
   return { sent: true }
 }
+
+// Posted by tracking-arrive.js when a driver taps "I've arrived" on their
+// tracking page -- same best-effort, silently-no-ops-if-unconfigured shape
+// as the lead alert above. No buttons needed, this is just a status ping.
+export async function sendTelegramArrivalAlert({ orgId, opportunityId, stage }) {
+  const token = process.env.TELEGRAM_BOT_TOKEN
+  const chatId = process.env.TELEGRAM_GROUP_CHAT_ID
+  if (!token || !chatId) return { sent: false, reason: 'Telegram not configured' }
+
+  const { data: opp, error: oppErr } = await admin
+    .from('opportunities')
+    .select('id, title, vehicle, vehicle_year, vehicle_make, vehicle_model, contacts!opportunities_contact_id_fkey(full_name)')
+    .eq('id', opportunityId).eq('org_id', orgId).maybeSingle()
+  if (oppErr || !opp) return { sent: false, reason: oppErr?.message || 'Job not found' }
+
+  const vehicleDesc = [opp.vehicle_year, opp.vehicle_make, opp.vehicle_model].filter(Boolean).join(' ') || opp.vehicle || opp.title || 'Job'
+  const customerName = opp.contacts?.full_name || 'Unknown'
+  const label = stage === 'dropoff' ? '📦 Driver arrived at DROP-OFF' : '🚗 Driver arrived at PICKUP'
+
+  const text = [label, '', `Client: ${customerName}`, `Vehicle: ${vehicleDesc}`, `🔗 ${siteOrigin()}/pipeline?job=${opp.id}`].join('\n')
+
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  })
+  if (!res.ok) return { sent: false, reason: await res.text() }
+  return { sent: true }
+}

@@ -7,6 +7,7 @@ import {
   uploadCompletionVideo, fetchCompletionVideo, fetchMyOrgId, fetchLatestJobNote, fetchVehiclePhotoUrl,
   fetchDispatcherContacts, assignDispatcher,
   fetchTransportDrivers,
+  fetchOrCreateTrackingLink,
   classifyVehicle, previewSuggestedPrice,
   sendContract, fetchLatestContract,
   parseJobBrief,
@@ -36,6 +37,21 @@ function bookingSummaryFor(c, notes, photoUrl) {
     serviceLabel: c.service_code ? c.service_code.replace(/_/g, ' ') : null,
     notes,
   })
+}
+
+// Driver-facing text for the "Text route" / "Text to another driver"
+// buttons -- adds drop-off access notes and the driver's tracking link on
+// top of the base summary, neither of which the customer-facing Share
+// button above ever sees.
+function driverTextFor(c, notes, photoUrl, dropoffInfo, trackingLink) {
+  let text = bookingSummaryFor(c, notes, photoUrl)
+  if (dropoffInfo?.notes?.length) {
+    text += '\n\nDrop-off access notes:\n' + dropoffInfo.notes.map((n) => `- ${n.note}`).join('\n')
+  }
+  if (trackingLink) {
+    text += `\n\nTap to share your location and confirm pickup/drop-off: ${trackingLink}`
+  }
+  return text
 }
 
 const money = (n) =>
@@ -759,6 +775,16 @@ function JobDetailModal({
   // this is one client's workflow, not a feature every transport-dispatch org
   // using this same board should see.
   const isPhotographyOrg = c.org_id === 'b438f814-40bf-48d4-9ffe-73b4d6ba5e07'
+
+  // Fetched (and created, if this job doesn't have one yet) as soon as the
+  // modal opens rather than on button click -- iOS Safari only allows
+  // navigator.share() to fire synchronously inside the click handler, so an
+  // await right before shareBooking() would silently break the share sheet
+  // there. By the time a dispatcher reaches "Text route" this is already
+  // sitting in cache.
+  const { data: trackingLink } = useQuery({
+    queryKey: ['trackingLink', c.id], queryFn: () => fetchOrCreateTrackingLink(c.id), enabled: !isPhotographyOrg,
+  })
   const [projectType, setProjectType] = useState(c.project_type || '')
   const [galleryLink, setGalleryLink] = useState(c.gallery_link || '')
   const [venue, setVenue] = useState(c.custom_fields?.venue || '')
@@ -1269,11 +1295,7 @@ function JobDetailModal({
                       disabled={!assignedDriver}
                       title="Never confirms availability -- text the route, then call to actually confirm they can take it"
                       onClick={() => {
-                        let text = bookingSummaryFor(c, latestNote, photoUrl)
-                        // Driver-facing only -- the customer Share button above never sees these.
-                        if (dropoffInfo?.notes?.length) {
-                          text += '\n\nDrop-off access notes:\n' + dropoffInfo.notes.map((n) => `- ${n.note}`).join('\n')
-                        }
+                        let text = driverTextFor(c, latestNote, photoUrl, dropoffInfo, trackingLink)
                         shareBooking({ summaryText: text, recipientPhone: assignedDriver?.sms_number || assignedDriver?.phone })
                       }}
                       className="shrink-0 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink transition-colors hover:bg-canvas disabled:opacity-40"
@@ -1281,6 +1303,17 @@ function JobDetailModal({
                       Text route
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    title="For a driver who isn't in your driver list -- a carrier from Super Dispatch/Central Dispatch, or someone new you haven't added yet. Opens your own Messages app so you pick who it goes to."
+                    onClick={() => {
+                      const text = driverTextFor(c, latestNote, photoUrl, dropoffInfo, trackingLink)
+                      shareBooking({ summaryText: text })
+                    }}
+                    className="mt-1.5 text-xs font-medium text-accent hover:underline"
+                  >
+                    Text to another driver (not in system)
+                  </button>
                 </div>
                 <div>
                   <label className={label}>Ship billing #</label>

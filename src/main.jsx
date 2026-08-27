@@ -41,6 +41,7 @@ import PublicUpload from './pages/PublicUpload'
 import PublicBooking from './pages/PublicBooking'
 import LandingPagePublic from './pages/LandingPagePublic'
 import PublicBusinessCard from './pages/PublicBusinessCard'
+import DriverTracking from './pages/DriverTracking'
 import BusinessCardSettings from './pages/BusinessCardSettings'
 import ExternalCardLinks from './pages/ExternalCardLinks'
 import GoRedirect from './pages/GoRedirect'
@@ -81,6 +82,9 @@ function App() {
       <Route path="/card/:slug" element={<PublicBusinessCard />} />
       {/* Trackable link to an externally-hosted digital business card — no auth gate */}
       <Route path="/go/:slug" element={<GoRedirect />} />
+      {/* Public driver tracking page — no auth gate, the link texted to a
+          driver from Pipeline's "Text route" / "Text to another driver" */}
+      <Route path="/track/:token" element={<DriverTracking />} />
       {/* Public funnels — no auth gate */}
       <Route path="/funnel/:slug" element={<PublicFunnel />} />
       {/* Public invoice page — no auth gate, this is the link a customer gets emailed */}
