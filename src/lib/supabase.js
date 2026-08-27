@@ -189,6 +189,24 @@ export async function fetchMyOrg() {
   return data
 }
 
+// Editable outbound-from-California pricing adjustment (Settings >
+// Pricing) -- see PriceEstimator.jsx for where it's applied. `orgId` is
+// passed explicitly (not resolved via fetchMyOrgId) since PriceEstimator
+// is also used by a platform admin pricing a job on behalf of another org.
+export async function fetchOrgPricingAdjustment(orgId) {
+  const { data, error } = await supabase
+    .from('organizations').select('pricing_outbound_ca_adjustment').eq('id', orgId).maybeSingle()
+  if (error) throw error
+  return data?.pricing_outbound_ca_adjustment ?? 0
+}
+
+export async function saveOrgPricingAdjustment(amount) {
+  const orgId = await fetchMyOrgId()
+  const { error } = await supabase
+    .from('organizations').update({ pricing_outbound_ca_adjustment: Number(amount) || 0 }).eq('id', orgId)
+  if (error) throw error
+}
+
 export async function saveOrgCalendlyUrl(url) {
   const orgId = await fetchMyOrgId()
   const { error } = await supabase.from('organizations').update({ calendly_url: url?.trim() || null }).eq('id', orgId)

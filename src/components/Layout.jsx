@@ -38,6 +38,7 @@ const nav = [
   { to: '/settings/document-requests', label: 'Document Requests', key: 'document_requests', group: 'Settings' },
   { to: '/settings/scheduling', label: 'Scheduling', key: 'scheduling', group: 'Clients & Bookings' },
   { to: '/settings/dispatch-assignment', label: 'Dispatch Assignment', key: 'dispatch_assignment', group: 'Clients & Bookings' },
+  { to: '/settings/pricing', label: 'Pricing', key: 'pricing_settings', group: 'Settings' },
   { to: '/landing-pages', label: 'Landing Pages', key: 'landing_pages', group: 'Marketing' },
   { to: '/funnels', label: 'Funnels', key: 'funnels', group: 'Marketing' },
   { to: '/social-posts', label: 'Social Posts', key: 'social_posts', group: 'Marketing' },

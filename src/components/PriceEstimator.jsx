@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { MAPBOX_TOKEN } from '../lib/mapbox'
-import { logQuote } from '../lib/supabase'
+import { logQuote, fetchOrgPricingAdjustment } from '../lib/supabase'
 
 async function mapboxGeocodeOne(address) {
   if (!MAPBOX_TOKEN || !address?.trim()) return null
@@ -130,7 +131,7 @@ function calculateCaPortBracket(miles) {
   return null
 }
 
-const EMPTY_AUTO = { loading: false, error: '', miles: null, quote: null, dropoffRegion: null }
+const EMPTY_AUTO = { loading: false, error: '', miles: null, quote: null, dropoffRegion: null, pickupRegion: null }
 
 // Staff-only quote helper: the landing page/funnel form only ever collects
 // a plain pickup/dropoff address, nobody outside the org ever sees a rate.
@@ -141,6 +142,12 @@ const EMPTY_AUTO = { loading: false, error: '', miles: null, quote: null, dropof
 // "AI suggests, dispatcher confirms" rule as everywhere else -- the
 // dispatcher picks Low or High and clicks Confirm.
 export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduledAt, onUseAmount, orgId, opportunityId }) {
+  // Editable in Settings > Pricing -- outbound (CA -> elsewhere) tends to
+  // run higher than inbound in this lane, per Shawn's call 2026-08-27.
+  // Zero by default, so this is a no-op for any org that hasn't set one.
+  const { data: outboundAdjustment } = useQuery({
+    queryKey: ['orgPricingAdjustment', orgId], queryFn: () => fetchOrgPricingAdjustment(orgId), enabled: !!orgId,
+  })
   const [vehicleOverride, setVehicleOverride] = useState('auto')
   const [ruralLevel, setRuralLevel] = useState('none')
   const [transportMode, setTransportMode] = useState('open')
@@ -166,7 +173,7 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
         const miles = await mapboxDrivingMiles(from.center, to.center)
         if (cancelled) return
         if (miles == null) { setAuto({ ...EMPTY_AUTO, error: 'Could not calculate driving distance.' }); return }
-        setAuto({ loading: false, error: '', miles, quote: null, dropoffRegion: to.regionCode })
+        setAuto({ loading: false, error: '', miles, quote: null, dropoffRegion: to.regionCode, pickupRegion: from.regionCode })
       } catch {
         if (!cancelled) setAuto({ ...EMPTY_AUTO, error: 'Automatic mileage lookup failed — enter miles manually below.' })
       }
@@ -180,11 +187,21 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
   // so that case always falls through to the general locked formula.
   const isCaPortLocal = milesOverride === '' && CA_PORT_RE.test(pickup || '') && auto.dropoffRegion === 'CA' && miles > 0 && miles <= 300
   const caBracket = isCaPortLocal ? calculateCaPortBracket(miles) : null
-  const quote = caBracket || (miles > 0
+  const rawQuote = caBracket || (miles > 0
     ? (isLuxuryExotic
         ? calculateLuxuryExoticQuote({ miles, vehicleCategory: effectiveVehicleType, season, ruralLevel })
         : calculateCrmQuoteMatrix({ miles, vehicleType: effectiveVehicleType, season, ruralLevel, transportMode }))
     : null)
+
+  // Outbound-from-CA adjustment applies to the customer-facing number only
+  // (never targetDriverPayout, which is what the carrier actually gets) --
+  // and never to the CA-port-local bracket, which is already its own
+  // separate inbound-only rate table.
+  const isOutboundFromCa = milesOverride === '' && auto.pickupRegion === 'CA' && auto.dropoffRegion && auto.dropoffRegion !== 'CA'
+  const adjustment = isOutboundFromCa ? Number(outboundAdjustment || 0) : 0
+  const quote = rawQuote && adjustment
+    ? { ...rawQuote, quote: rawQuote.quote != null ? rawQuote.quote + adjustment : rawQuote.quote }
+    : rawQuote
 
   // Reference log only -- every confirmed quote gets recorded (route, date,
   // vehicle, both numbers, which one was picked) so it can be looked back
@@ -330,6 +347,7 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
           <p className="text-[9px] text-muted">
             {isCaPortLocal ? 'CA local rate' : season} · {miles ? Math.round(miles) : 0} mi
             {quote.requiredTransport ? ` · ${quote.requiredTransport} required` : ''}
+            {adjustment ? ` · includes +$${adjustment.toLocaleString()} outbound-CA adjustment` : ''}
           </p>
         </div>
       )}

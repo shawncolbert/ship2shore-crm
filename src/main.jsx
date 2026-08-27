@@ -25,6 +25,7 @@ import CustomLinks from './pages/CustomLinks'
 import DocumentPresets from './pages/DocumentPresets'
 import Scheduling from './pages/Scheduling'
 import DispatchAssignment from './pages/DispatchAssignment'
+import PricingSettings from './pages/PricingSettings'
 import Services from './pages/Services'
 import Invoices from './pages/Invoices'
 import CompletedJobs from './pages/CompletedJobs'
@@ -123,6 +124,7 @@ function App() {
                 <Route path="settings/document-requests" element={<FeatureGate featureKey="document_requests"><DocumentPresets /></FeatureGate>} />
                 <Route path="settings/scheduling" element={<FeatureGate featureKey="scheduling"><Scheduling /></FeatureGate>} />
                 <Route path="settings/dispatch-assignment" element={<FeatureGate featureKey="dispatch_assignment"><DispatchAssignment /></FeatureGate>} />
+                <Route path="settings/pricing" element={<FeatureGate featureKey="pricing_settings"><PricingSettings /></FeatureGate>} />
                 <Route path="services" element={<FeatureGate featureKey="services"><Services /></FeatureGate>} />
                 <Route path="invoices" element={<FeatureGate featureKey="invoices"><Invoices /></FeatureGate>} />
                 <Route path="invoices/new" element={<FeatureGate featureKey="invoices"><InvoiceDetail /></FeatureGate>} />
