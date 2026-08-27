@@ -345,6 +345,7 @@ export default function Pipeline() {
                   <JobCard
                     key={c.id}
                     c={c}
+                    autoOpen={c.id === searchParams.get('job')}
                     isWon={!!stage.is_won}
                     stages={stages}
                     dragId={dragId}
@@ -371,10 +372,13 @@ export default function Pipeline() {
   )
 }
 
-function JobCard({ c, isWon, stages, dragId, setDragId, cancelling, onCancel, onDelete, onSaveBilling, onSaveFields, onPatch, onMoveStage, dispatchers, onAssignDispatcher }) {
+function JobCard({ c, autoOpen, isWon, stages, dragId, setDragId, cancelling, onCancel, onDelete, onSaveBilling, onSaveFields, onPatch, onMoveStage, dispatchers, onAssignDispatcher }) {
   const ref = useRef(null)
   const navigate = useNavigate()
-  const [editing, setEditing] = useState(false)
+  // ?job=<id> (e.g. a "Open in CRM" link from a Telegram lead alert) opens
+  // this card's modal straight away -- only read once on mount, so closing
+  // it afterward doesn't keep snapping back open.
+  const [editing, setEditing] = useState(() => !!autoOpen)
   // A text input inside a draggable=true element can't take focus in Chrome.
   // Flip the card's draggable flag off imperatively the instant the billing
   // field is touched (before focus), and back on when we leave it.

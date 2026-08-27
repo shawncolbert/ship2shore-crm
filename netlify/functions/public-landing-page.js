@@ -1,5 +1,6 @@
 import { admin } from './_shared/supabaseAdmin.js'
 import { autoAssignDispatcher } from './_shared/dispatchAssignment.js'
+import { sendTelegramLeadAlert } from './_shared/telegramDispatch.js'
 
 // Public, unauthenticated -- serves a published landing page by slug, and
 // handles its lead-capture CTA form (creates a contact + opportunity, same
@@ -125,6 +126,14 @@ async function submitLead(payload) {
     await autoAssignDispatcher({ orgId: page.org_id, opportunityId: opp.id })
   } catch (e) {
     console.error('❌ autoAssignDispatcher failed:', e)
+  }
+
+  // Best-effort team-wide push, separate from the dispatcher hand-off above --
+  // no-ops silently for any org that hasn't set up a Telegram bot.
+  try {
+    await sendTelegramLeadAlert({ orgId: page.org_id, opportunityId: opp.id })
+  } catch (e) {
+    console.error('❌ sendTelegramLeadAlert failed:', e)
   }
 
   return { status: 200, body: { ok: true, contact_id: contactId, opportunity_id: opp.id } }
