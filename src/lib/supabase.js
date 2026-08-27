@@ -371,8 +371,13 @@ export async function deleteContact(id) {
 }
 
 export async function fetchDefaultPipeline() {
+  // Scoped by org_id explicitly, not just RLS -- RLS alone allows every org
+  // a user belongs to, so a platform admin who's a member of more than one
+  // org (each with its own is_default pipeline) got a "multiple rows
+  // returned" 406 here the moment they picked up a second membership.
+  const orgId = await fetchMyOrgId()
   const { data: pipeline, error: pErr } = await supabase
-    .from('pipelines').select('id, name').eq('is_default', true).limit(1).single()
+    .from('pipelines').select('id, name').eq('org_id', orgId).eq('is_default', true).limit(1).single()
   if (pErr) throw pErr
 
   const { data: stages, error: sErr } = await supabase
@@ -437,8 +442,9 @@ export async function fetchVehiclePhotoUrl(opportunityId) {
 // (from the public booking widget, a funnel, or the sidebar) and haven't
 // been triaged into Scheduled/In Progress yet. Drives the sidebar nav badge.
 export async function fetchNewBookingCount() {
+  const orgId = await fetchMyOrgId()
   const { data: pipeline, error: pErr } = await supabase
-    .from('pipelines').select('id').eq('is_default', true).limit(1).maybeSingle()
+    .from('pipelines').select('id').eq('org_id', orgId).eq('is_default', true).limit(1).maybeSingle()
   if (pErr) throw pErr
   if (!pipeline) return 0
 
