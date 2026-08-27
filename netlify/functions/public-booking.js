@@ -1,6 +1,7 @@
 import { admin } from './_shared/supabaseAdmin.js'
 import { getDefaultPipeline, getIntakeStage } from './_shared/pipeline.js'
 import { googleAccessToken, buildRaw, gmailSend } from './_shared/google.js'
+import { sendTelegramLeadAlert } from './_shared/telegramDispatch.js'
 
 // Public, unauthenticated native booking widget — an in-app alternative to the
 // Calendly link. A customer picks a service + time slot and this writes the
@@ -415,6 +416,12 @@ async function bookSlot(orgId, payload) {
       pickupAddress: pickup_address, dropoffAddress: dropoff_address, distanceMiles: cleanDistanceMiles,
       vehicleMake: vehicle_make, vehicleModel: vehicle_model, vehicleYear: vehicle_year, vehicleVin: vehicle_vin,
     })
+  }
+
+  try {
+    await sendTelegramLeadAlert({ orgId, opportunityId: opp.id })
+  } catch (e) {
+    console.error('❌ sendTelegramLeadAlert failed:', e)
   }
 
   return { status: 200, body: { ok: true, contact_id: contactId, opportunity_id: opp.id, start_at: startAt.toISOString(), photoSaved: !!photoPath } }

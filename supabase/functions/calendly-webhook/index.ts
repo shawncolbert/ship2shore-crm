@@ -191,6 +191,21 @@ async function handleInviteeCreated(body: any) {
     });
   }
 
+  // Team Telegram alert -- lives as a Netlify function (netlify/functions/
+  // _shared/telegramDispatch.js) since it shares pricing/geocoding logic
+  // with the landing-page and native-booking lead sources, none of which
+  // this Deno runtime can import directly. Best-effort: never blocks or
+  // fails the webhook response Calendly is waiting on.
+  try {
+    await fetch('https://dispatch.ship2shorebooking.com/.netlify/functions/telegram-notify-lead', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId: ORG_ID, opportunityId: opp.id }),
+    });
+  } catch {
+    // best-effort
+  }
+
   return new Response(JSON.stringify({ ok: true, contact_id: contactId, opportunity_id: opp.id, phone_captured: !!phone }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
