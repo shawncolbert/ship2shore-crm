@@ -29,10 +29,15 @@ async function editMessage(token, chatId, messageId, text) {
 }
 
 async function handleSendQuote({ event, token, callbackQuery, opportunityId }) {
-  const { data: opp } = await admin
+  // Same ambiguous-embed trap as telegramDispatch.js -- opportunities has
+  // two FKs into contacts, so a plain contacts(...) embed fails outright
+  // and this silently fell into the "not found" branch below every time,
+  // which is why tapping the button never actually created an invoice.
+  const { data: opp, error: oppErr } = await admin
     .from('opportunities')
-    .select('id, org_id, title, value, confirmed_price, contact_id, contacts(full_name, phone, email)')
+    .select('id, org_id, title, value, confirmed_price, contact_id, contacts!opportunities_contact_id_fkey(full_name, phone, email)')
     .eq('id', opportunityId).maybeSingle()
+  if (oppErr) return answerCallback(token, callbackQuery.id, `Lookup failed: ${oppErr.message}`)
   if (!opp) return answerCallback(token, callbackQuery.id, 'That lead could not be found — it may have been deleted.')
 
   if (!opp.contacts?.email) {
