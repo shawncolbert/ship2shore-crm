@@ -131,7 +131,10 @@ async function submitLead(payload) {
   // Best-effort team-wide push, separate from the dispatcher hand-off above --
   // no-ops silently for any org that hasn't set up a Telegram bot.
   try {
-    await sendTelegramLeadAlert({ orgId: page.org_id, opportunityId: opp.id })
+    const result = await sendTelegramLeadAlert({ orgId: page.org_id, opportunityId: opp.id })
+    if (!result.sent && result.reason !== 'Telegram not configured') {
+      console.error('❌ sendTelegramLeadAlert did not send:', result.reason)
+    }
   } catch (e) {
     console.error('❌ sendTelegramLeadAlert failed:', e)
   }

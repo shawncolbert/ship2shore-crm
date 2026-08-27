@@ -95,13 +95,16 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
     quote ? `Auto-calculated quote: $${quote.amount.toLocaleString()} (${quote.miles} mi${quote.note ? `, ${quote.note}` : ''})` : 'Could not auto-calculate a quote — open the job to price it manually.',
   ].filter(Boolean)
 
+  // Telegram inline buttons only accept http(s)/tg:// URLs -- a tel: link
+  // gets rejected by the API, and that rejection fails the WHOLE message,
+  // not just that button (this is why alerts weren't showing up at all).
+  // No real loss: the phone number in the text above is auto-linked to
+  // tap-to-call by Telegram's own client on mobile.
   const buttons = []
   if (quote) {
     buttons.push([{ text: `✅ Send quote — $${quote.amount.toLocaleString()}`, callback_data: `sq:${opp.id}` }])
   }
-  const row2 = [{ text: '🔗 Open in CRM', url: `${siteOrigin()}/pipeline?job=${opp.id}` }]
-  if (phone) row2.push({ text: '📞 Call customer', url: `tel:${phone}` })
-  buttons.push(row2)
+  buttons.push([{ text: '🔗 Open in CRM', url: `${siteOrigin()}/pipeline?job=${opp.id}` }])
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
