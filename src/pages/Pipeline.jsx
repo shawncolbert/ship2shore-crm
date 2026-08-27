@@ -93,6 +93,17 @@ const SOURCE_BOARD_LABEL = {
   other: 'Other',
 }
 
+// Photography orgs (Tre Colbert Photography) have no load boards -- their
+// leads come from social/word-of-mouth/wedding-industry sites instead.
+const PHOTOGRAPHY_SOURCE_LABEL = {
+  instagram: 'Instagram',
+  the_knot: 'The Knot / WeddingWire',
+  website: 'Website',
+  referral: 'Referral',
+  direct: 'Direct',
+  other: 'Other',
+}
+
 // <input type="datetime-local"> works in the device's local time. Shawn runs
 // Pacific, so this matches the Pacific display on the card.
 const toLocalInput = (iso) => {
@@ -1204,29 +1215,31 @@ function JobDetailModal({
                   <label className={label}>Title</label>
                   <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Job title" className={field} />
                 </div>
-                <div>
-                  <label className={label}>Port</label>
-                  <select
-                    value={port}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      setPort(v)
-                      if (PORT_ADDRESS[v]) setPickupAddress(PORT_ADDRESS[v])
-                    }}
-                    className={field}
-                  >
-                    <option value="">—</option>
-                    {Object.entries(PORT_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                  </select>
-                </div>
+                {!isPhotographyOrg && (
+                  <div>
+                    <label className={label}>Port</label>
+                    <select
+                      value={port}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setPort(v)
+                        if (PORT_ADDRESS[v]) setPickupAddress(PORT_ADDRESS[v])
+                      }}
+                      className={field}
+                    >
+                      <option value="">—</option>
+                      {Object.entries(PORT_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className={label}>Source</label>
                   <select value={sourceBoard} onChange={(e) => setSourceBoard(e.target.value)} className={field}>
                     <option value="">—</option>
-                    {Object.entries(SOURCE_BOARD_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                    {Object.entries(isPhotographyOrg ? PHOTOGRAPHY_SOURCE_LABEL : SOURCE_BOARD_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                   </select>
                 </div>
-                {sourceBoard && sourceBoard !== 'direct' && sourceBoard !== 'referral' && (
+                {!isPhotographyOrg && sourceBoard && sourceBoard !== 'direct' && sourceBoard !== 'referral' && (
                   <div>
                     <label className={label}>Board order #</label>
                     <input value={boardOrderNumber} onChange={(e) => setBoardOrderNumber(e.target.value)} placeholder="e.g. CD-482910" className={field} />
