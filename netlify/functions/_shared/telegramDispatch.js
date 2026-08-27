@@ -67,10 +67,15 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
   const chatId = process.env.TELEGRAM_GROUP_CHAT_ID
   if (!token || !chatId) return { sent: false, reason: 'Telegram not configured' }
 
-  const { data: opp } = await admin
+  // opportunities has two FKs into contacts (contact_id and
+  // assigned_dispatcher_id) -- contacts(...) alone is an ambiguous embed
+  // that Supabase rejects outright, which was silently emptying `opp` below
+  // and killing every alert before it got anywhere near Telegram.
+  const { data: opp, error: oppErr } = await admin
     .from('opportunities')
-    .select('id, title, vehicle, vehicle_year, vehicle_make, vehicle_model, pickup_address, dropoff_address, scheduled_at, contacts(full_name, phone, email)')
+    .select('id, title, vehicle, vehicle_year, vehicle_make, vehicle_model, pickup_address, dropoff_address, scheduled_at, contacts!contact_id(full_name, phone, email)')
     .eq('id', opportunityId).eq('org_id', orgId).maybeSingle()
+  if (oppErr) return { sent: false, reason: `Lookup failed: ${oppErr.message}` }
   if (!opp) return { sent: false, reason: 'Lead not found' }
 
   const vehicleDesc = [opp.vehicle_year, opp.vehicle_make, opp.vehicle_model].filter(Boolean).join(' ') || opp.vehicle || 'Vehicle not specified'
