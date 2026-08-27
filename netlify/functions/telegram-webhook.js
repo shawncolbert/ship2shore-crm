@@ -65,7 +65,15 @@ async function handlePriceReply({ token, chatId, message }) {
   const opportunityId = refMatch[1]
   const numbers = (message.text || '').match(/[\d,]+\.?\d*/g)?.map((n) => Number(n.replace(/,/g, ''))).filter((n) => !Number.isNaN(n))
   if (!numbers || numbers.length < 2) {
-    await telegramApi(token, 'sendMessage', { chat_id: chatId, text: 'Could not read that — reply with two numbers, total then deposit. Example: 1800, 500', reply_to_message_id: message.message_id })
+    // Carries the same Ref + force_reply as the original prompt, so
+    // replying to THIS message also works -- without it, a mistyped
+    // reply was a dead end: this bounce-back had no Ref for handlePriceReply
+    // to find, so replying to it a second time was silently ignored.
+    await telegramApi(token, 'sendMessage', {
+      chat_id: chatId,
+      text: `Could not read that — reply with two numbers, total then deposit. Example: 1800, 500\nRef: ${opportunityId}`,
+      reply_markup: { force_reply: true },
+    })
     return
   }
   const [total, deposit] = numbers
