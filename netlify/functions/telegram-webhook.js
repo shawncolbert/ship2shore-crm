@@ -110,22 +110,28 @@ async function handleTextQuote({ token, chatId, callbackQuery, opportunityId }) 
   if (error) return answerCallback(token, callbackQuery.id, `Lookup failed: ${error.message}`)
   if (!opp) return answerCallback(token, callbackQuery.id, 'That lead could not be found.')
   if (!opp.contacts?.email) return answerCallback(token, callbackQuery.id, 'No email on file for this customer.')
-  if (!opp.value) return answerCallback(token, callbackQuery.id, 'No price set yet — use "Set price & deposit" first.')
+  // == null (not falsy) on purpose -- an escort-only lead has value = 0,
+  // which is a real, deliberately-set price, not "nothing set yet".
+  if (opp.value == null) return answerCallback(token, callbackQuery.id, 'No price set yet — use "Set price & deposit" first.')
 
   const { data: org } = await admin.from('organizations').select('name, invoice_business_phone').eq('id', opp.org_id).maybeSingle()
   const orgName = org?.name || 'our team'
   const phoneLine = org?.invoice_business_phone ? `\n\nCall us at ${org.invoice_business_phone} to lock this in.` : '\n\nGive us a call to lock this in.'
 
-  const depositLine = opp.deposit_amount ? `A deposit of $${Number(opp.deposit_amount).toLocaleString()} books your spot; the balance is due at delivery.` : ''
+  // Escort-only leads have value = 0 (see handleEscortOnly) -- skip the
+  // "$0 transport" line entirely rather than showing a confusing zero.
+  const transportLine = Number(opp.value) > 0 ? `Transport: $${Number(opp.value).toLocaleString()} total.` : null
+  const depositLine = opp.deposit_amount && Number(opp.deposit_amount) > 0 ? `A deposit of $${Number(opp.deposit_amount).toLocaleString()} books your spot; the balance is due at delivery.` : null
   // Escort fee is flat and never carries a deposit -- called out as its own
   // line so the customer isn't surprised it's not folded into the transport
   // total/deposit above.
-  const escortLine = opp.escort_fee ? `Plus a $${Number(opp.escort_fee).toLocaleString()} port escort fee, due in full (no deposit).` : ''
+  const escortLine = opp.escort_fee ? `Port escort fee: $${Number(opp.escort_fee).toLocaleString()}, due in full (no deposit).` : null
 
   const body = [
     `Hi ${opp.contacts.full_name || 'there'},`,
     '',
-    `Here's your transport quote: $${Number(opp.value).toLocaleString()} total.`,
+    `Here's your quote:`,
+    transportLine,
     depositLine,
     escortLine,
     phoneLine,
@@ -148,6 +154,28 @@ async function handleTextQuote({ token, chatId, callbackQuery, opportunityId }) 
   await answerCallback(token, callbackQuery.id, 'Quote texted to customer')
   const msg = callbackQuery.message
   if (msg) await editMessage(token, msg.chat.id, msg.message_id, `${msg.text}\n\n✅ Quote texted — $${Number(opp.value).toLocaleString()}`)
+}
+
+// One-tap alternative to "Set price & deposit" for a port-escort lead that
+// turns out not to want transport at all -- zeroes the transport
+// total/deposit so all that's left is the flat escort_fee already on the
+// job. Doesn't touch escort_fee itself; that was set automatically when
+// the lead came in and stays exactly as-is either way.
+async function handleEscortOnly({ token, chatId, callbackQuery, opportunityId }) {
+  const { data: opp, error } = await fetchLead(opportunityId)
+  if (error) return answerCallback(token, callbackQuery.id, `Lookup failed: ${error.message}`)
+  if (!opp) return answerCallback(token, callbackQuery.id, 'That lead could not be found — it may have been deleted.')
+  if (!opp.escort_fee) return answerCallback(token, callbackQuery.id, "This lead doesn't have an escort fee set.")
+
+  const { error: updErr } = await admin
+    .from('opportunities')
+    .update({ value: 0, deposit_amount: 0 })
+    .eq('id', opportunityId).eq('org_id', opp.org_id)
+  if (updErr) return answerCallback(token, callbackQuery.id, `Couldn't save that: ${updErr.message}`)
+
+  await answerCallback(token, callbackQuery.id, 'Marked escort only')
+  const msg = callbackQuery.message
+  if (msg) await editMessage(token, msg.chat.id, msg.message_id, `${msg.text}\n\n✅ Escort only — $${Number(opp.escort_fee).toLocaleString()} total, no transport.`)
 }
 
 export const handler = async (event) => {
@@ -173,6 +201,8 @@ export const handler = async (event) => {
         await handleSetPrice({ token, chatId, callbackQuery, opportunityId: id })
       } else if (action === 'tq' && id) {
         await handleTextQuote({ token, chatId, callbackQuery, opportunityId: id })
+      } else if (action === 'eo' && id) {
+        await handleEscortOnly({ token, chatId, callbackQuery, opportunityId: id })
       } else {
         await answerCallback(token, callbackQuery.id, 'Unknown action')
       }

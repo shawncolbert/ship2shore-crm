@@ -376,7 +376,7 @@ export async function fetchOpportunityForInvoice(opportunityId) {
   const { data, error } = await supabase
     .from('opportunities')
     .select(`
-      id, title, value, deposit_amount, billing_number, booking_number, contact_id,
+      id, title, value, deposit_amount, escort_fee, billing_number, booking_number, contact_id,
       pickup_address, dropoff_address, vehicle, vehicle_year, vehicle_make, vehicle_model, vehicle_vin,
       contacts!contact_id(id, full_name, company, phone, email, custom_fields)
     `)

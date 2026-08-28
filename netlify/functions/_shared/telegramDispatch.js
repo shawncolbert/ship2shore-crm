@@ -120,7 +120,11 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
     // (that button only ever changes value/deposit_amount, i.e. transport).
     opp.escort_fee ? `Port escort fee: $${opp.escort_fee.toLocaleString()} — flat, due in full, no deposit.` : null,
     '',
-    'Call the customer first, then set the real transport price below.',
+    // Two separate services on this page -- not everyone who wants a port
+    // escort also wants transport. Call first and find out which.
+    opp.escort_fee
+      ? 'Call the customer first — find out if they need transport too, or escort only — then tap the matching button below.'
+      : 'Call the customer first, then set the real transport price below.',
   ].filter(Boolean)
 
   // Telegram inline buttons only accept http(s)/tg:// URLs -- a tel: link
@@ -129,9 +133,14 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
   // No real loss: the phone number in the text above is auto-linked to
   // tap-to-call by Telegram's own client on mobile.
   const buttons = [
-    [{ text: '✏️ Set price & deposit', callback_data: `sp:${opp.id}` }],
+    [{ text: '✏️ Set price & deposit (transport + escort)', callback_data: `sp:${opp.id}` }],
+    // Only offered on port-escort leads -- some customers only want the
+    // escort, not transport, and this skips the "reply with two numbers"
+    // flow for that case: one tap sets transport to $0, leaving just the
+    // $95 escort fee.
+    opp.escort_fee ? [{ text: '🚷 Escort only — no transport', callback_data: `eo:${opp.id}` }] : null,
     [{ text: '🔗 Open in CRM', url: `${siteOrigin()}/pipeline?job=${opp.id}` }],
-  ]
+  ].filter(Boolean)
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',

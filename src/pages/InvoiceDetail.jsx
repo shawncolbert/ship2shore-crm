@@ -154,14 +154,24 @@ export default function InvoiceDetail() {
     }))
     const deposit = Number(opp.deposit_amount) || 0
     const jobLabel = [opp.title, detail].filter(Boolean).join(' — ')
-    setLineItems(
-      invoiceKind === 'deposit'
-        ? [{ service_id: '', quantity: 1, unit_price: deposit, description: `Deposit — ${jobLabel || 'booking'}` }]
-        : [{
-            service_id: '', quantity: 1, unit_price: (Number(opp.value) || 0) - deposit,
-            description: deposit > 0 ? `Balance due — ${jobLabel}` : jobLabel,
-          }]
-    )
+    const transportAmount = (Number(opp.value) || 0) - deposit
+    let items
+    if (invoiceKind === 'deposit') {
+      items = [{ service_id: '', quantity: 1, unit_price: deposit, description: `Deposit — ${jobLabel || 'booking'}` }]
+    } else {
+      items = []
+      // Escort-only job (transport was set to $0 via Telegram's "Escort
+      // only" button) -- skip the $0 transport line, nothing to bill there.
+      if (transportAmount !== 0 || !opp.escort_fee) {
+        items.push({ service_id: '', quantity: 1, unit_price: transportAmount, description: deposit > 0 ? `Balance due — ${jobLabel}` : jobLabel })
+      }
+      // Port escort fee -- flat, always billed in full, never split into a
+      // deposit, so it's its own line rather than folded into the amount above.
+      if (opp.escort_fee) {
+        items.push({ service_id: '', quantity: 1, unit_price: Number(opp.escort_fee), description: `Port escort fee — ${jobLabel || 'booking'}` })
+      }
+    }
+    setLineItems(items)
     setPrefilledFrom(opp.id)
   }
 
