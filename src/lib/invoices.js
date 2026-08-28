@@ -108,9 +108,10 @@ export async function createInvoice({ fields, lineItems }) {
       status: 'draft',
       wave_checkout_url: fields.wave_checkout_url?.trim() || null,
       wave_checkout_link_id: fields.wave_checkout_link_id || null,
-      // Zelle is always on, per policy -- the safest payment route -- and
-      // can't be turned off by any caller, even one that didn't pass it.
-      payment_options: { ...(fields.payment_options || { stripe: true }), zelle: true },
+      // Zelle used to be forced on here regardless of what the caller passed
+      // -- Shawn 2026-08-28: it's a normal checkbox now, same as every other
+      // method, not a policy the invoice enforces on its own.
+      payment_options: fields.payment_options || { stripe: true },
       opportunity_id: fields.opportunity_id || null,
       kind: fields.kind === 'deposit' ? 'deposit' : 'invoice',
       reminder_enabled: !!fields.reminder_enabled,
@@ -152,8 +153,8 @@ export async function updateInvoice(id, { fields, lineItems }) {
       amount_due: fields.status === 'paid' ? 0 : total,
       wave_checkout_url: fields.wave_checkout_url?.trim() || null,
       wave_checkout_link_id: fields.wave_checkout_link_id || null,
-      // Zelle is always on, per policy -- see createInvoice for why.
-      payment_options: { ...(fields.payment_options || { stripe: true }), zelle: true },
+      // See createInvoice -- Zelle is a normal toggleable option now, not forced.
+      payment_options: fields.payment_options || { stripe: true },
       reminder_enabled: !!fields.reminder_enabled,
       reminder_interval_days: fields.reminder_enabled ? Number(fields.reminder_interval_days) || 7 : null,
       updated_at: new Date().toISOString(),

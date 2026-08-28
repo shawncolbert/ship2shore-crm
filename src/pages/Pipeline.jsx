@@ -737,6 +737,7 @@ function JobDetailModal({
   const [when, setWhen] = useState(toLocalInput(c.scheduled_at))
   const [amount, setAmount] = useState(c.value ?? '')
   const [depositAmount, setDepositAmount] = useState(c.deposit_amount ?? '')
+  const [escortFee, setEscortFee] = useState(c.escort_fee ?? '')
   const [sourceBoard, setSourceBoard] = useState(c.source_board || '')
   const [boardOrderNumber, setBoardOrderNumber] = useState(c.board_order_number || '')
   const [billingNumber, setBillingNumber] = useState(c.billing_number || '')
@@ -1036,6 +1037,7 @@ function JobDetailModal({
           scheduled_at: fromLocalInput(when),
           value: amount === '' ? null : amount,
           deposit_amount: depositAmount === '' ? 0 : depositAmount,
+          escort_fee: escortFee === '' ? null : escortFee,
           source_board: sourceBoard || null,
           board_order_number: boardOrderNumber || null,
           vehicle_vin: vehicleVin || null,
@@ -1482,7 +1484,7 @@ function JobDetailModal({
               )}
 
               <div className="mt-4 border-t border-line pt-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className={`grid gap-3 ${isPhotographyOrg ? 'grid-cols-2' : 'grid-cols-3'}`}>
                   <div>
                     <label className={label}>Amount ($)</label>
                     <input
@@ -1495,9 +1497,18 @@ function JobDetailModal({
                     <label className={label}>Deposit collected ($)</label>
                     <input type="number" inputMode="decimal" min="0" step="1" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} placeholder="0" className={`${field} ${mono}`} />
                   </div>
+                  {!isPhotographyOrg && (
+                    <div>
+                      <label className={label} title="Flat port escort fee -- always due in full, never split into a deposit, never part of Amount above.">T.W.I.C. Vehicle Service fee ($)</label>
+                      <input type="number" inputMode="decimal" min="0" step="1" value={escortFee} onChange={(e) => setEscortFee(e.target.value)} placeholder="0" className={`${field} ${mono}`} />
+                    </div>
+                  )}
                 </div>
                 {Number(depositAmount) > 0 && Number(amount) > 0 && (
                   <p className={`${mono} mt-2 text-xs text-muted`}>Balance due at delivery: {money(balance)}</p>
+                )}
+                {Number(escortFee) > 0 && (
+                  <p className={`${mono} mt-1 text-xs text-muted`}>Plus ${Number(escortFee).toLocaleString()} escort fee — flat, due in full, no deposit.</p>
                 )}
                 {suggestedPrice != null && vehicleType && (
                   <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-accent/40 bg-accent/8 px-3 py-2">

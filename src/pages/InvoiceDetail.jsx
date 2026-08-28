@@ -125,7 +125,7 @@ export default function InvoiceDetail() {
           ? existing.lineItems.map((li) => ({ service_id: li.service_id || '', description: li.description, quantity: li.quantity, unit_price: li.unit_price }))
           : [blankLineItem()]
       )
-      setPaymentOptions({ ...DEFAULT_PAYMENT_OPTIONS, ...(inv.payment_options || {}), zelle: true })
+      setPaymentOptions({ ...DEFAULT_PAYMENT_OPTIONS, ...(inv.payment_options || {}) })
       setWaveCheckoutLinkId(inv.wave_checkout_link_id || '')
       setReminderEnabled(!!inv.reminder_enabled)
       setReminderIntervalDays(inv.reminder_interval_days || 7)
@@ -520,18 +520,16 @@ export default function InvoiceDetail() {
 
               {HANDLE_METHODS.map((m) => {
                 const handle = paymentSettings?.[m.field]
-                const locked = m.key === 'zelle'
                 return (
                   <label key={m.key} className={`flex items-center gap-2 text-sm ${handle ? 'text-ink' : 'text-muted'}`}>
                     <input
                       type="checkbox"
-                      checked={locked ? true : paymentOptions[m.key]}
-                      disabled={locked || !handle}
+                      checked={paymentOptions[m.key]}
+                      disabled={!handle}
                       onChange={() => togglePaymentOption(m.key)}
                       className="h-4 w-4 rounded border-line"
                     />
                     {m.label}
-                    {locked && <span className="text-xs text-muted">(always included)</span>}
                     {handle ? <span className="text-xs text-muted">({handle})</span> : <Link to="/payment-settings" className="text-xs text-accent hover:underline">set handle in Payment Settings</Link>}
                   </label>
                 )
