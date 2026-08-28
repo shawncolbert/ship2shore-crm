@@ -41,7 +41,7 @@ async function editMessage(token, chatId, messageId, text) {
 async function fetchLead(opportunityId) {
   return admin
     .from('opportunities')
-    .select('id, org_id, title, value, deposit_amount, escort_fee, contact_id, contacts!opportunities_contact_id_fkey(full_name, phone, email)')
+    .select('id, org_id, title, value, deposit_amount, escort_fee, pickup_address, contact_id, contacts!opportunities_contact_id_fkey(full_name, phone, email)')
     .eq('id', opportunityId).maybeSingle()
 }
 
@@ -116,34 +116,74 @@ async function handleTextQuote({ token, chatId, callbackQuery, opportunityId }) 
 
   const { data: org } = await admin.from('organizations').select('name, invoice_business_phone').eq('id', opp.org_id).maybeSingle()
   const orgName = org?.name || 'our team'
-  const phoneLine = org?.invoice_business_phone ? `\n\nCall us at ${org.invoice_business_phone} to lock this in.` : '\n\nGive us a call to lock this in.'
 
-  // Escort-only leads have value = 0 (see handleEscortOnly) -- skip the
-  // "$0 transport" line entirely rather than showing a confusing zero.
-  const transportLine = Number(opp.value) > 0 ? `Transport: $${Number(opp.value).toLocaleString()} total.` : null
-  const depositLine = opp.deposit_amount && Number(opp.deposit_amount) > 0 ? `A deposit of $${Number(opp.deposit_amount).toLocaleString()} books your spot; the balance is due at delivery.` : null
-  // Escort fee is flat and never carries a deposit -- called out as its own
-  // line so the customer isn't surprised it's not folded into the transport
-  // total/deposit above.
-  const escortLine = opp.escort_fee ? `Port escort fee: $${Number(opp.escort_fee).toLocaleString()}, due in full (no deposit).` : null
+  // Escort-only leads have value = 0 (see handleEscortOnly) -- a fixed,
+  // no-variables $95 is the one case Shawn wants a real self-serve pay link
+  // for (2026-08-28); transport still always requires a call first, since
+  // rural/lifted/running condition can change that number. Wave has no API
+  // to generate a checkout link per quote, so this reuses whatever link was
+  // saved by hand in Payment Settings > Wave Checkout links, matched by
+  // amount -- Shawn creates one for $95 in Wave once, pastes it in, done.
+  const isEscortOnly = Number(opp.value) === 0 && !!opp.escort_fee
+  let escortCheckoutUrl = null
+  if (isEscortOnly) {
+    const { data: link } = await admin
+      .from('wave_checkout_links').select('url').eq('org_id', opp.org_id).eq('amount', opp.escort_fee).limit(1).maybeSingle()
+    escortCheckoutUrl = link?.url || null
+  }
 
-  const body = [
-    `Hi ${opp.contacts.full_name || 'there'},`,
-    '',
-    `Here's your quote:`,
-    transportLine,
-    depositLine,
-    escortLine,
-    phoneLine,
-    '',
-    orgName,
-  ].filter(Boolean).join('\n')
+  let subject, body
+  if (isEscortOnly) {
+    subject = `Port Escort Service Quote — ${orgName}`
+    const lockInLine = escortCheckoutUrl
+      ? `To lock in your escort date & time, click below to pay the flat-rate fee. Once paid, our TWIC-certified port escort team is officially locked in for your terminal gate time.\n\n👉 Pay $${Number(opp.escort_fee).toLocaleString()} escort fee & confirm: ${escortCheckoutUrl}`
+      : org?.invoice_business_phone ? `To lock in your escort date & time, call us at ${org.invoice_business_phone}.` : 'To lock in your escort date & time, give us a call.'
+    body = [
+      `Hi ${opp.contacts.full_name || 'there'},`,
+      '',
+      `Thanks for reaching out to ${orgName} for your port escort requirements.`,
+      '',
+      'Here is your flat-rate quote for the TWIC-certified vehicle escort:',
+      '',
+      'Service: Port Escort / Entry Specialist Service',
+      `Port Escort Fee: $${Number(opp.escort_fee).toLocaleString()}.00 (due in full, no deposit required)`,
+      `Pickup / Location: ${opp.pickup_address || "we'll confirm the exact terminal details with you directly"}`,
+      '',
+      lockInLine,
+      '',
+      `If you need to adjust the terminal schedule or have any questions, reply directly to this email${org?.invoice_business_phone ? ` or call us at ${org.invoice_business_phone}` : ''}.`,
+      '',
+      'Thanks,',
+      orgName,
+    ].filter(Boolean).join('\n')
+  } else {
+    const phoneLine = org?.invoice_business_phone ? `\n\nCall us at ${org.invoice_business_phone} to lock this in.` : '\n\nGive us a call to lock this in.'
+    const transportLine = Number(opp.value) > 0 ? `Transport: $${Number(opp.value).toLocaleString()} total.` : null
+    const depositLine = opp.deposit_amount && Number(opp.deposit_amount) > 0 ? `A deposit of $${Number(opp.deposit_amount).toLocaleString()} books your spot; the balance is due at delivery.` : null
+    // Escort fee is flat and never carries a deposit -- called out as its
+    // own line so the customer isn't surprised it's not folded into the
+    // transport total/deposit above. (Combined jobs still always need a
+    // call -- only the pure escort-only case above gets a pay link.)
+    const escortLine = opp.escort_fee ? `Port escort fee: $${Number(opp.escort_fee).toLocaleString()}, due in full (no deposit).` : null
+    subject = `Your transport quote — ${orgName}`
+    body = [
+      `Hi ${opp.contacts.full_name || 'there'},`,
+      '',
+      `Here's your quote:`,
+      transportLine,
+      depositLine,
+      escortLine,
+      phoneLine,
+      '',
+      orgName,
+    ].filter(Boolean).join('\n')
+  }
 
   try {
     await sendCustomerEmail({
       orgId: opp.org_id,
       to: opp.contacts.email,
-      subject: `Your transport quote — ${orgName}`,
+      subject,
       body,
       contactId: opp.contact_id,
     })
@@ -181,9 +221,12 @@ async function handleEscortOnly({ token, chatId, callbackQuery, opportunityId })
   // without this, there was no way to actually get the price to the
   // customer after tapping "Escort only" -- it saved the number and stopped.
   const canText = !!opp.contacts?.email
+  const { data: link } = await admin
+    .from('wave_checkout_links').select('id').eq('org_id', opp.org_id).eq('amount', opp.escort_fee).limit(1).maybeSingle()
+  const linkNote = link ? '' : ` No $${Number(opp.escort_fee).toLocaleString()} Wave Checkout link saved yet, so the quote email will say "call to lock in" instead of a pay link — add one in Payment Settings for the self-serve version.`
   await telegramApi(token, 'sendMessage', {
     chat_id: chatId,
-    text: `Ready to send — $${Number(opp.escort_fee).toLocaleString()} escort fee, for ${opp.contacts?.full_name || 'this lead'}.${canText ? '' : ' No email on file, so "Text quote" won’t work until one’s added in the CRM.'}`,
+    text: `Ready to send — $${Number(opp.escort_fee).toLocaleString()} escort fee, for ${opp.contacts?.full_name || 'this lead'}.${canText ? '' : ' No email on file, so "Text quote" won’t work until one’s added in the CRM.'}${linkNote}`,
     reply_markup: canText ? { inline_keyboard: [[{ text: '💬 Text quote to customer', callback_data: `tq:${opportunityId}` }]] } : undefined,
   })
 }
