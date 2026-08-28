@@ -41,7 +41,7 @@ async function editMessage(token, chatId, messageId, text) {
 async function fetchLead(opportunityId) {
   return admin
     .from('opportunities')
-    .select('id, org_id, title, value, deposit_amount, contact_id, contacts!opportunities_contact_id_fkey(full_name, phone, email)')
+    .select('id, org_id, title, value, deposit_amount, escort_fee, contact_id, contacts!opportunities_contact_id_fkey(full_name, phone, email)')
     .eq('id', opportunityId).maybeSingle()
 }
 
@@ -94,9 +94,13 @@ async function handlePriceReply({ token, chatId, message }) {
   }
 
   const canText = !!opp.contacts?.email
+  // escort_fee (set automatically for port-escort leads, never touched by
+  // this reply) is called out separately here on purpose -- it's a flat fee
+  // with no deposit, not part of the total/deposit just saved above.
+  const escortNote = opp.escort_fee ? ` Plus the $${opp.escort_fee.toLocaleString()} port escort fee (flat, no deposit) — not affected by this.` : ''
   await telegramApi(token, 'sendMessage', {
     chat_id: chatId,
-    text: `Saved — $${total.toLocaleString()} total, $${deposit.toLocaleString()} deposit, for ${opp.contacts?.full_name || 'this lead'}.${canText ? '' : ' No email on file, so "Text quote" won’t work until one’s added in the CRM.'}`,
+    text: `Saved — $${total.toLocaleString()} transport total, $${deposit.toLocaleString()} deposit, for ${opp.contacts?.full_name || 'this lead'}.${escortNote}${canText ? '' : ' No email on file, so "Text quote" won’t work until one’s added in the CRM.'}`,
     reply_markup: canText ? { inline_keyboard: [[{ text: '💬 Text quote to customer', callback_data: `tq:${opportunityId}` }]] } : undefined,
   })
 }
@@ -113,12 +117,17 @@ async function handleTextQuote({ token, chatId, callbackQuery, opportunityId }) 
   const phoneLine = org?.invoice_business_phone ? `\n\nCall us at ${org.invoice_business_phone} to lock this in.` : '\n\nGive us a call to lock this in.'
 
   const depositLine = opp.deposit_amount ? `A deposit of $${Number(opp.deposit_amount).toLocaleString()} books your spot; the balance is due at delivery.` : ''
+  // Escort fee is flat and never carries a deposit -- called out as its own
+  // line so the customer isn't surprised it's not folded into the transport
+  // total/deposit above.
+  const escortLine = opp.escort_fee ? `Plus a $${Number(opp.escort_fee).toLocaleString()} port escort fee, due in full (no deposit).` : ''
 
   const body = [
     `Hi ${opp.contacts.full_name || 'there'},`,
     '',
     `Here's your transport quote: $${Number(opp.value).toLocaleString()} total.`,
     depositLine,
+    escortLine,
     phoneLine,
     '',
     orgName,

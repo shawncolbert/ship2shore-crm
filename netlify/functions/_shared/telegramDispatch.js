@@ -83,7 +83,7 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
   // this said the first time) does not resolve the same way.
   const { data: opp, error: oppErr } = await admin
     .from('opportunities')
-    .select('id, title, vehicle, vehicle_year, vehicle_make, vehicle_model, pickup_address, dropoff_address, scheduled_at, contacts!opportunities_contact_id_fkey(full_name, phone, email)')
+    .select('id, title, vehicle, vehicle_year, vehicle_make, vehicle_model, pickup_address, dropoff_address, scheduled_at, escort_fee, contacts!opportunities_contact_id_fkey(full_name, phone, email)')
     .eq('id', opportunityId).eq('org_id', orgId).maybeSingle()
   if (oppErr) return { sent: false, reason: `Lookup failed: ${oppErr.message}` }
   if (!opp) return { sent: false, reason: 'Lead not found' }
@@ -113,10 +113,14 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
     (opp.pickup_address || opp.dropoff_address) ? `Route: ${opp.pickup_address || 'TBD'} → ${opp.dropoff_address || 'TBD'}` : null,
     '',
     quote
-      ? `Starting-point estimate: $${quote.amount.toLocaleString()} (${quote.miles} mi${quote.note ? `, ${quote.note}` : ''}) — confirm with the customer before quoting, rural/lifted/running condition aren't factored in.`
-      : 'Could not auto-estimate — open the job to price it manually.',
+      ? `Transport starting-point estimate: $${quote.amount.toLocaleString()} (${quote.miles} mi${quote.note ? `, ${quote.note}` : ''}) — confirm with the customer before quoting, rural/lifted/running condition aren't factored in.`
+      : 'Could not auto-estimate transport — open the job to price it manually.',
+    // Flat port escort fee, entirely separate from the transport number above:
+    // always $95, never has a deposit, and isn't touched by "Set price & deposit"
+    // (that button only ever changes value/deposit_amount, i.e. transport).
+    opp.escort_fee ? `Port escort fee: $${opp.escort_fee.toLocaleString()} — flat, due in full, no deposit.` : null,
     '',
-    'Call the customer first, then set the real price below.',
+    'Call the customer first, then set the real transport price below.',
   ].filter(Boolean)
 
   // Telegram inline buttons only accept http(s)/tg:// URLs -- a tel: link

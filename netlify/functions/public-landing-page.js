@@ -18,6 +18,16 @@ const json = (statusCode, body) => ({
   statusCode, headers: { 'Content-Type': 'application/json', ...cors }, body: JSON.stringify(body),
 })
 
+// Long Beach Port Vehicle Transport / TWIC-Certified Port Escorts -- per
+// Shawn 2026-08-28, every lead off THIS page always carries a flat $95
+// port escort fee on top of (and entirely separate from) the usual vehicle
+// transport quote: no deposit on the escort fee, it's not editable via the
+// Telegram "Set price & deposit" flow (that only ever touches value/
+// deposit_amount, i.e. transport), and it's not run through the pricing
+// formula -- always exactly $95.
+const PORT_ESCORT_LANDING_SLUG = 'port-transport'
+const PORT_ESCORT_FEE = 95
+
 async function getPage(slug) {
   const { data, error } = await admin
     .from('landing_pages')
@@ -98,6 +108,7 @@ async function submitLead(payload) {
       pickup_address: pickup_location ? String(pickup_location).trim() : null,
       dropoff_address: delivery_location ? String(delivery_location).trim() : null,
       vehicle: vehicle ? String(vehicle).trim() : null,
+      escort_fee: page.slug === PORT_ESCORT_LANDING_SLUG ? PORT_ESCORT_FEE : null,
     })
     .select('id').single()
   if (oppErr || !opp) return { status: 500, body: { error: 'Could not create lead.', detail: oppErr?.message } }
