@@ -11,35 +11,36 @@ export function buildBookingSummary({
   vehicleYear, vehicleMake, vehicleModel, vehicleVin, photoUrl,
   serviceLabel, notes, detailUrl,
 }) {
-  const lines = [`New booking${customerName ? ` — ${customerName}` : ''}`]
-  if (bookingNumber) lines.push(`Booking ID: ${bookingNumber}`)
-  if (customerPhone) lines.push(`Phone: ${customerPhone}`)
-  if (pickupAddress) lines.push(`Pickup: ${pickupAddress}`)
-  if (dropoffAddress) lines.push(`Drop-off: ${dropoffAddress}`)
-  // Two legs, not one -- a driver starting from wherever they are needs
-  // directions TO the pickup first, then a separate route from pickup to
-  // drop-off once the vehicle's loaded. A single pickup->dropoff link (the
-  // old behavior) silently skipped the "go get the load" leg entirely.
-  // Built fresh from whatever pickup/dropoff is passed in here, so
-  // re-sharing after correcting an address on the pipeline card links to
-  // the corrected route, not the original one.
+  const lines = [`🚘 New booking${customerName ? ` — ${customerName}` : ''}`]
+  if (bookingNumber) lines.push(`# ${bookingNumber}`)
+  if (customerPhone) lines.push(`📞 ${customerPhone}`)
+  if (pickupAddress) lines.push(`📦 Pickup: ${pickupAddress}`)
+  if (dropoffAddress) lines.push(`🏁 Drop-off: ${dropoffAddress}`)
+  // One link, not four -- current location -> pickup -> drop-off as a
+  // single multi-stop Google Maps route (leaving origin blank makes the
+  // link start from wherever it's opened, and "waypoints" adds the pickup
+  // as a stop before the final destination). Google's link works on any
+  // phone -- opens the app if installed, falls back to the web map
+  // otherwise -- so this replaces the old four-link Google+Apple,
+  // two-separate-legs block that made the text unreadably long. Built
+  // fresh from whatever pickup/dropoff is passed in here, so re-sharing
+  // after correcting an address links to the corrected route, not the
+  // original one.
   if (pickupAddress) {
-    lines.push(`Step 1 — Get to pickup (Google Maps): https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickupAddress)}`)
-    lines.push(`Step 1 — Get to pickup (Apple Maps): https://maps.apple.com/?daddr=${encodeURIComponent(pickupAddress)}&dirflg=d`)
-  }
-  if (pickupAddress && dropoffAddress) {
-    lines.push(`Step 2 — Pickup to delivery (Google Maps): https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(pickupAddress)}&destination=${encodeURIComponent(dropoffAddress)}`)
-    lines.push(`Step 2 — Pickup to delivery (Apple Maps): https://maps.apple.com/?saddr=${encodeURIComponent(pickupAddress)}&daddr=${encodeURIComponent(dropoffAddress)}&dirflg=d`)
+    const routeUrl = dropoffAddress
+      ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dropoffAddress)}&waypoints=${encodeURIComponent(pickupAddress)}`
+      : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickupAddress)}`
+    lines.push(`🗺️ Route: ${routeUrl}`)
   }
 
   const vehicleWords = [vehicleYear, vehicleMake, vehicleModel].filter(Boolean).join(' ')
   const vehicleLine = [vehicleWords, vehicleVin ? `VIN ${vehicleVin}` : ''].filter(Boolean).join(', ')
-  if (vehicleLine) lines.push(`Vehicle: ${vehicleLine}`)
+  if (vehicleLine) lines.push(`🚗 ${vehicleLine}`)
 
   if (serviceLabel) lines.push(`Service: ${serviceLabel}`)
-  if (notes) lines.push(`Notes: ${notes}`)
-  if (photoUrl) lines.push(`Vehicle photo: ${photoUrl}`)
-  if (detailUrl) lines.push(`Full details: ${detailUrl}`)
+  if (notes) lines.push(`📝 ${notes}`)
+  if (photoUrl) lines.push(`📷 Photo: ${photoUrl}`)
+  if (detailUrl) lines.push(`🔗 Full details: ${detailUrl}`)
 
   return lines.join('\n')
 }
