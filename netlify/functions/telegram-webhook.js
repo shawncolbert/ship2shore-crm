@@ -176,6 +176,16 @@ async function handleEscortOnly({ token, chatId, callbackQuery, opportunityId })
   await answerCallback(token, callbackQuery.id, 'Marked escort only')
   const msg = callbackQuery.message
   if (msg) await editMessage(token, msg.chat.id, msg.message_id, `${msg.text}\n\n✅ Escort only — $${Number(opp.escort_fee).toLocaleString()} total, no transport.`)
+
+  // Same gap that existed in handlePriceReply until this button was added:
+  // without this, there was no way to actually get the price to the
+  // customer after tapping "Escort only" -- it saved the number and stopped.
+  const canText = !!opp.contacts?.email
+  await telegramApi(token, 'sendMessage', {
+    chat_id: chatId,
+    text: `Ready to send — $${Number(opp.escort_fee).toLocaleString()} escort fee, for ${opp.contacts?.full_name || 'this lead'}.${canText ? '' : ' No email on file, so "Text quote" won’t work until one’s added in the CRM.'}`,
+    reply_markup: canText ? { inline_keyboard: [[{ text: '💬 Text quote to customer', callback_data: `tq:${opportunityId}` }]] } : undefined,
+  })
 }
 
 export const handler = async (event) => {
