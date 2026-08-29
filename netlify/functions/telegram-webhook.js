@@ -1,5 +1,6 @@
 import { admin } from './_shared/supabaseAdmin.js'
 import { sendCustomerEmail } from './_shared/email.js'
+import { isFlatRateLead } from './_shared/telegramDispatch.js'
 
 // Receives everything from the team's Telegram group (registered as this
 // bot's webhook via Telegram's setWebhook API): button taps AND the plain
@@ -41,7 +42,7 @@ async function editMessage(token, chatId, messageId, text) {
 async function fetchLead(opportunityId) {
   return admin
     .from('opportunities')
-    .select('id, org_id, title, value, deposit_amount, escort_fee, pickup_address, contact_id, contacts!opportunities_contact_id_fkey(full_name, phone, email)')
+    .select('id, org_id, title, value, deposit_amount, escort_fee, pickup_address, dropoff_address, contact_id, contacts!opportunities_contact_id_fkey(full_name, phone, email)')
     .eq('id', opportunityId).maybeSingle()
 }
 
@@ -51,9 +52,16 @@ async function handleSetPrice({ token, chatId, callbackQuery, opportunityId }) {
   if (!opp) return answerCallback(token, callbackQuery.id, 'That lead could not be found — it may have been deleted.')
 
   await answerCallback(token, callbackQuery.id)
+  // A flat-rate catalog lead (TWIC/Hotshot/Semi-Container/Military) has no
+  // deposit concept -- prompting for "total, deposit" and rejecting a
+  // single-number reply was forcing a fake "95, 0" every time. Ask for just
+  // the one number instead.
+  const prompt = isFlatRateLead(opp)
+    ? 'Reply to THIS message with the corrected flat fee -- just one number, no deposit.\nExample: 90\n\nFor:'
+    : PRICE_PROMPT_PREFIX
   await telegramApi(token, 'sendMessage', {
     chat_id: chatId,
-    text: `${PRICE_PROMPT_PREFIX} ${opp.contacts?.full_name || 'Unknown'} — ${opp.title || 'lead'}\nRef: ${opp.id}`,
+    text: `${prompt} ${opp.contacts?.full_name || 'Unknown'} — ${opp.title || 'lead'}\nRef: ${opp.id}`,
     reply_markup: { force_reply: true },
   })
 }
@@ -63,7 +71,44 @@ async function handlePriceReply({ token, chatId, message }) {
   if (!refMatch) return // not a reply to our price prompt -- ignore, could be unrelated group chatter
 
   const opportunityId = refMatch[1]
+  const { data: opp, error } = await fetchLead(opportunityId)
+  if (error || !opp) {
+    await telegramApi(token, 'sendMessage', { chat_id: chatId, text: 'Could not find that lead anymore — it may have been deleted.', reply_to_message_id: message.message_id })
+    return
+  }
+
   const numbers = (message.text || '').match(/[\d,]+\.?\d*/g)?.map((n) => Number(n.replace(/,/g, ''))).filter((n) => !Number.isNaN(n))
+  const flat = isFlatRateLead(opp)
+
+  if (flat) {
+    if (!numbers || numbers.length < 1) {
+      // Carries the same Ref + force_reply as the original prompt, so
+      // replying to THIS message also works.
+      await telegramApi(token, 'sendMessage', {
+        chat_id: chatId,
+        text: `Could not read that — reply with just the flat fee amount. Example: 90\nRef: ${opportunityId}`,
+        reply_markup: { force_reply: true },
+      })
+      return
+    }
+    const [amount] = numbers
+    const { error: updErr } = await admin
+      .from('opportunities')
+      .update({ value: amount })
+      .eq('id', opportunityId).eq('org_id', opp.org_id)
+    if (updErr) {
+      await telegramApi(token, 'sendMessage', { chat_id: chatId, text: `Couldn't save that: ${updErr.message}`, reply_to_message_id: message.message_id })
+      return
+    }
+    const canText = !!opp.contacts?.email
+    await telegramApi(token, 'sendMessage', {
+      chat_id: chatId,
+      text: `Saved — $${amount.toLocaleString()} flat fee for ${opp.contacts?.full_name || 'this lead'}.${canText ? '' : ' No email on file, so "Text quote" won’t work until one’s added in the CRM.'}`,
+      reply_markup: canText ? { inline_keyboard: [[{ text: '💬 Text quote to customer', callback_data: `tq:${opportunityId}` }]] } : undefined,
+    })
+    return
+  }
+
   if (!numbers || numbers.length < 2) {
     // Carries the same Ref + force_reply as the original prompt, so
     // replying to THIS message also works -- without it, a mistyped
@@ -77,12 +122,6 @@ async function handlePriceReply({ token, chatId, message }) {
     return
   }
   const [total, deposit] = numbers
-
-  const { data: opp, error } = await fetchLead(opportunityId)
-  if (error || !opp) {
-    await telegramApi(token, 'sendMessage', { chat_id: chatId, text: 'Could not find that lead anymore — it may have been deleted.', reply_to_message_id: message.message_id })
-    return
-  }
 
   const { error: updErr } = await admin
     .from('opportunities')
@@ -125,6 +164,7 @@ async function handleTextQuote({ token, chatId, callbackQuery, opportunityId }) 
   // saved by hand in Payment Settings > Wave Checkout links, matched by
   // amount -- Shawn creates one for $95 in Wave once, pastes it in, done.
   const isEscortOnly = Number(opp.value) === 0 && !!opp.escort_fee
+  const isFlatCatalog = isFlatRateLead(opp)
   let escortCheckoutUrl = null
   if (isEscortOnly) {
     const { data: link } = await admin
@@ -133,7 +173,24 @@ async function handleTextQuote({ token, chatId, callbackQuery, opportunityId }) 
   }
 
   let subject, body
-  if (isEscortOnly) {
+  if (isFlatCatalog) {
+    // TWIC Vehicle Escort, Hotshot, Semi/Container, Military -- no transport
+    // involved, so this shouldn't read like a mileage quote. The specific
+    // service name isn't on the opportunity itself (only in the CRM's
+    // landing-page intake note), so this names it generically as a
+    // flat-rate service fee rather than guessing which one.
+    const phoneLine = org?.invoice_business_phone ? `\n\nCall us at ${org.invoice_business_phone} to lock this in.` : '\n\nGive us a call to lock this in.'
+    subject = `Your quote — ${orgName}`
+    body = [
+      `Hi ${opp.contacts.full_name || 'there'},`,
+      '',
+      `Here's your quote:`,
+      `Flat-rate service fee: $${Number(opp.value).toLocaleString()} (due in full, no deposit).`,
+      phoneLine,
+      '',
+      orgName,
+    ].filter(Boolean).join('\n')
+  } else if (isEscortOnly) {
     subject = `Port Escort Service Quote — ${orgName}`
     const lockInLine = escortCheckoutUrl
       ? `To lock in your escort date & time, click below to pay the flat-rate fee. Once paid, our TWIC-certified port escort team is officially locked in for your terminal gate time.\n\n👉 Pay $${Number(opp.escort_fee).toLocaleString()} escort fee & confirm: ${escortCheckoutUrl}`

@@ -22,6 +22,20 @@ function siteOrigin() {
   return process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://dispatch.ship2shorebooking.com'
 }
 
+// A flat-rate catalog lead (homepage popup / digital business card: TWIC
+// Vehicle Escort, Hotshot Delivery, Semi/Container, Military/PCS Escort)
+// gets its price the instant the customer picks a service, and never
+// involves transport unless the customer asks for it on the call -- there's
+// no dropoff_address and no separately-tracked escort_fee (that column is
+// reserved for the port-transport landing page's always-on $95, which can
+// coexist with a real transport job). Shared between the alert message
+// below and telegram-webhook.js's price-edit flow so both agree on which
+// leads get the single-number "adjust the flat fee" path instead of the
+// two-number "total, deposit" transport path.
+export function isFlatRateLead(opp) {
+  return opp.value != null && !opp.escort_fee && !opp.dropoff_address
+}
+
 async function mapboxGeocodeOne(address, token) {
   if (!token || !address?.trim()) return null
   const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${token}&autocomplete=false&country=us&types=address,place&limit=1`
@@ -98,7 +112,7 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
   // Real transport leads (booking widget, transport landing pages, Calendly)
   // never carry a value this early, so they still run the mileage estimate
   // exactly as before.
-  const isFlatRate = opp.value != null
+  const isFlatRate = isFlatRateLead(opp)
   let quote = null
   if (!isFlatRate) {
     try {
