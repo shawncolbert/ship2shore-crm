@@ -122,17 +122,24 @@ async function submitLead(payload) {
   const parsedValue = Number(value)
   const cleanValue = value != null && Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : null
 
+  // opportunities.value is NOT NULL DEFAULT 0 -- omit the key entirely when
+  // there's no flat price (every real transport lead) so the column default
+  // applies, instead of explicitly writing NULL over it and failing the
+  // insert outright. Regression from adding flat-rate pricing: this broke
+  // every non-catalog landing-page submission until caught 2026-08-29.
+  const insertRow = {
+    org_id: page.org_id, contact_id: contactId, pipeline_id: pipeline.id, stage_id: stage.id,
+    title: `Website lead — ${page.title}`, status: 'open', source_board: page.slug,
+    pickup_address: pickup_location ? String(pickup_location).trim() : null,
+    dropoff_address: delivery_location ? String(delivery_location).trim() : null,
+    vehicle: vehicle ? String(vehicle).trim() : null,
+    escort_fee: page.slug === PORT_ESCORT_LANDING_SLUG ? PORT_ESCORT_FEE : null,
+  }
+  if (cleanValue != null) insertRow.value = cleanValue
+
   const { data: opp, error: oppErr } = await admin
     .from('opportunities')
-    .insert({
-      org_id: page.org_id, contact_id: contactId, pipeline_id: pipeline.id, stage_id: stage.id,
-      title: `Website lead — ${page.title}`, status: 'open', source_board: page.slug,
-      pickup_address: pickup_location ? String(pickup_location).trim() : null,
-      dropoff_address: delivery_location ? String(delivery_location).trim() : null,
-      vehicle: vehicle ? String(vehicle).trim() : null,
-      escort_fee: page.slug === PORT_ESCORT_LANDING_SLUG ? PORT_ESCORT_FEE : null,
-      value: cleanValue,
-    })
+    .insert(insertRow)
     .select('id').single()
   if (oppErr || !opp) return { status: 500, body: { error: 'Could not create lead.', detail: oppErr?.message } }
 
