@@ -746,6 +746,21 @@ export async function acknowledgePaymentClaim(id) {
   if (error) throw error
 }
 
+// Leads that have sat assigned for 20+ minutes with no reply from the
+// assigned dispatcher's own inbox and no movement on the card (see the
+// unfollowed_lead_alerts view and markAssigned in dispatchAssignment.js).
+// There's deliberately no "dismiss" for this one, unlike payment claims --
+// it clears itself once the dispatcher actually replies or the card moves,
+// not on a click, per Shawn 2026-08-29 ("keep coming up until they responded").
+export async function fetchUnfollowedLeadAlerts() {
+  const { data, error } = await supabase
+    .from('unfollowed_lead_alerts')
+    .select('opportunity_id, title, assigned_at, dispatcher_id, dispatcher_name, dispatcher_company, customer_name')
+    .order('assigned_at', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
 // Contacts tagged as dispatchers (e.g. Warrior Auto Transport, Team Auto
 // Transport/Dispatch) -- the pool a Pipeline job can be handed off to. RLS
 // already scopes contacts to the caller's org, same as every other contacts
@@ -1465,7 +1480,7 @@ export async function deleteAutomationRule(id) {
 export async function fetchLandingPages() {
   const { data, error } = await supabase
     .from('landing_pages')
-    .select('id, slug, title, published, theme, updated_at')
+    .select('id, slug, title, published, theme, updated_at, default_dispatcher_id')
     .order('updated_at', { ascending: false })
   if (error) throw error
   return data || []

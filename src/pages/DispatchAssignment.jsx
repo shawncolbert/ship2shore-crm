@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchMyOrg, fetchMyOrgId } from '../lib/supabase'
+import { fetchMyOrg, fetchMyOrgId, fetchLandingPages, updateLandingPage, fetchDispatcherContacts } from '../lib/supabase'
 import { fetchDispatchRotationCandidates, addToDispatchRotation, removeFromDispatchRotation, saveAutoAssignLeads } from '../lib/dispatchRotation'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
@@ -78,6 +78,59 @@ export default function DispatchAssignment() {
           ))}
         </div>
       </div>
+
+      <div className={`${card} mt-4`}>
+        <h2 className="mb-1 text-sm font-semibold text-ink">Landing pages</h2>
+        <p className="mb-4 text-xs text-muted">
+          Point a specific page's leads straight at one dispatcher instead of the round-robin above --
+          TWIC/Hotshot/Semi-Container/Military leads still always go to you regardless of what's set here.
+        </p>
+        <LandingPageRouting />
+      </div>
+    </div>
+  )
+}
+
+function LandingPageRouting() {
+  const qc = useQueryClient()
+  const { data: pages, isLoading } = useQuery({ queryKey: ['landingPages'], queryFn: fetchLandingPages })
+  const { data: dispatchers } = useQuery({ queryKey: ['dispatcherContacts'], queryFn: fetchDispatcherContacts })
+  const [savingId, setSavingId] = useState(null)
+
+  const setDispatcher = async (pageId, dispatcherId) => {
+    setSavingId(pageId)
+    try {
+      await updateLandingPage(pageId, { default_dispatcher_id: dispatcherId || null })
+      qc.invalidateQueries({ queryKey: ['landingPages'] })
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  if (isLoading) return <p className="text-sm text-muted">Loading…</p>
+  if (!pages?.length) return <p className="text-sm text-muted">No landing pages yet.</p>
+
+  return (
+    <div className="space-y-2">
+      {pages.map((p) => (
+        <div key={p.id} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-canvas/50 px-3 py-2">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-ink">{p.title || p.slug}</p>
+            <p className="truncate text-xs text-muted">/{p.slug}</p>
+          </div>
+          <select
+            value={p.default_dispatcher_id || ''}
+            onChange={(e) => setDispatcher(p.id, e.target.value)}
+            disabled={savingId === p.id}
+            className="shrink-0 rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink"
+          >
+            <option value="">Round robin (default)</option>
+            {dispatchers?.map((d) => (
+              <option key={d.id} value={d.id}>{d.full_name || d.company}</option>
+            ))}
+          </select>
+        </div>
+      ))}
     </div>
   )
 }

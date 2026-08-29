@@ -8,6 +8,7 @@ import { isFeatureEnabled } from '../lib/features'
 import { applyTheme, cacheTheme } from '../lib/theme'
 import IdleTimeout from './IdleTimeout'
 import PaymentClaimToast from './PaymentClaimToast'
+import UnfollowedLeadToast from './UnfollowedLeadToast'
 import QuickAccessBar from './QuickAccessBar'
 
 // `group` only matters for the Aurora layout's sectioned sidebar (see
@@ -371,6 +372,7 @@ export default function Layout({ children }) {
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       <IdleTimeout />
       <PaymentClaimToast />
+      <UnfollowedLeadToast />
       {/* Mobile top bar */}
       <header className="flex items-center justify-between px-4 py-3 md:hidden" style={{ background: 'var(--sidebar-bg)' }}>
         <Brand />

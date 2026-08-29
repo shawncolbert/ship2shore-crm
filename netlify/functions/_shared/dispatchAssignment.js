@@ -54,6 +54,21 @@ function needsOwnerDispatch(opportunity) {
   return !!opportunity.escort_fee || (opportunity.value != null && !opportunity.dropoff_address)
 }
 
+// Stamps the hand-off itself -- assigned_at/assigned_stage_id are the
+// baseline the "unfollowed lead" alert (see the unfollowed_lead_alerts view)
+// compares against later to tell whether anything's actually happened
+// since: if stage_id still matches assigned_stage_id and nobody assigned
+// has replied, it's been sitting untouched since this moment. Every
+// assignment path (owner routing, page-pinned, round-robin, and the manual
+// picker in assign-dispatcher.js) funnels through here so none of them
+// leave the tracking columns stale.
+export async function markAssigned({ orgId, opportunityId, dispatcherId, stageId }) {
+  await admin
+    .from('opportunities')
+    .update({ assigned_dispatcher_id: dispatcherId, assigned_at: new Date().toISOString(), assigned_stage_id: stageId ?? null })
+    .eq('id', opportunityId).eq('org_id', orgId)
+}
+
 // Round-robins a fresh (real transport) lead across whichever dispatcher
 // contacts are marked "in rotation" (dispatcher_rotation), when the org has
 // auto-assign turned on. auto_assign_last_contact_id is the cursor --
@@ -77,7 +92,7 @@ async function assignViaRotation({ orgId, org, opportunity }) {
   const dispatcher = next.contacts
   if (!dispatcher) return null
 
-  await admin.from('opportunities').update({ assigned_dispatcher_id: dispatcher.id }).eq('id', opportunity.id).eq('org_id', orgId)
+  await markAssigned({ orgId, opportunityId: opportunity.id, dispatcherId: dispatcher.id, stageId: opportunity.stage_id })
   await admin.from('organizations').update({ auto_assign_last_contact_id: dispatcher.id }).eq('id', orgId)
 
   const { emailSent, emailError } = await notifyDispatcherOfLead({ orgId, dispatcher, opportunity })
@@ -93,7 +108,7 @@ export async function autoAssignDispatcher({ orgId, opportunityId }) {
 
   const { data: opportunity, error: oppErr } = await admin
     .from('opportunities')
-    .select('id, title, value, escort_fee, vehicle, vehicle_year, vehicle_make, vehicle_model, vehicle_vin, pickup_address, dropoff_address, contact_id, contacts!contact_id(full_name, phone, email)')
+    .select('id, title, value, escort_fee, vehicle, vehicle_year, vehicle_make, vehicle_model, vehicle_vin, pickup_address, dropoff_address, contact_id, stage_id, source_board, contacts!contact_id(full_name, phone, email)')
     .eq('id', opportunityId)
     .eq('org_id', orgId)
     .maybeSingle()
@@ -106,9 +121,29 @@ export async function autoAssignDispatcher({ orgId, opportunityId }) {
     const { data: dispatcher } = await admin
       .from('contacts').select('id, full_name, company, email').eq('id', org.owner_dispatcher_contact_id).maybeSingle()
     if (dispatcher) {
-      await admin.from('opportunities').update({ assigned_dispatcher_id: dispatcher.id }).eq('id', opportunityId).eq('org_id', orgId)
+      await markAssigned({ orgId, opportunityId, dispatcherId: dispatcher.id, stageId: opportunity.stage_id })
       const { emailSent, emailError } = await notifyDispatcherOfLead({ orgId, dispatcher, opportunity })
       return { dispatcherContactId: dispatcher.id, emailSent, emailError }
+    }
+  }
+
+  // A landing page can pin its own leads to one specific dispatcher instead
+  // of the round-robin (Settings > Dispatch Assignment) -- e.g. sending
+  // every nationwide-transport lead straight to Val regardless of whose
+  // turn it is. Checked by source_board, which public-landing-page.js
+  // always sets to the page's own slug. Owner routing above still wins
+  // over this when both would apply.
+  if (opportunity.source_board) {
+    const { data: page } = await admin
+      .from('landing_pages').select('default_dispatcher_id').eq('org_id', orgId).eq('slug', opportunity.source_board).maybeSingle()
+    if (page?.default_dispatcher_id) {
+      const { data: dispatcher } = await admin
+        .from('contacts').select('id, full_name, company, email').eq('id', page.default_dispatcher_id).maybeSingle()
+      if (dispatcher) {
+        await markAssigned({ orgId, opportunityId, dispatcherId: dispatcher.id, stageId: opportunity.stage_id })
+        const { emailSent, emailError } = await notifyDispatcherOfLead({ orgId, dispatcher, opportunity })
+        return { dispatcherContactId: dispatcher.id, emailSent, emailError }
+      }
     }
   }
 

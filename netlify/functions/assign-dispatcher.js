@@ -1,5 +1,5 @@
 import { admin, userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
-import { notifyDispatcherOfLead } from './_shared/dispatchAssignment.js'
+import { notifyDispatcherOfLead, markAssigned } from './_shared/dispatchAssignment.js'
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -34,7 +34,7 @@ export const handler = async (event) => {
 
     const { data: opp, error: oppErr } = await admin
       .from('opportunities')
-      .select('id, title, value, vehicle, vehicle_year, vehicle_make, vehicle_model, vehicle_vin, pickup_address, dropoff_address, contact_id, contacts!contact_id(full_name, phone, email)')
+      .select('id, title, value, vehicle, vehicle_year, vehicle_make, vehicle_model, vehicle_vin, pickup_address, dropoff_address, contact_id, stage_id, contacts!contact_id(full_name, phone, email)')
       .eq('id', opportunityId)
       .eq('org_id', orgId)
       .maybeSingle()
@@ -52,12 +52,16 @@ export const handler = async (event) => {
       dispatcher = data
     }
 
-    const { error: updErr } = await admin
-      .from('opportunities')
-      .update({ assigned_dispatcher_id: dispatcherContactId || null })
-      .eq('id', opportunityId)
-      .eq('org_id', orgId)
-    if (updErr) return json(500, { error: updErr.message })
+    if (dispatcherContactId) {
+      await markAssigned({ orgId, opportunityId, dispatcherId: dispatcherContactId, stageId: opp.stage_id })
+    } else {
+      const { error: updErr } = await admin
+        .from('opportunities')
+        .update({ assigned_dispatcher_id: null, assigned_at: null, assigned_stage_id: null })
+        .eq('id', opportunityId)
+        .eq('org_id', orgId)
+      if (updErr) return json(500, { error: updErr.message })
+    }
 
     let emailSent = false
     let emailError = null
