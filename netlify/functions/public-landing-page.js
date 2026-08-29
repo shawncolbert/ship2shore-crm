@@ -55,7 +55,11 @@ async function submitLead(payload) {
   } = payload
   const full_name = payload.full_name || payload.name
   const suspectedBot = Boolean(payload['bot-field'])
-  if (!slug || !full_name || !email) {
+  // Email used to be required outright -- but a form that only collects a
+  // phone number (e.g. the homepage quick-quote popup) is still a real,
+  // callable lead, and this business runs on calling people back anyway.
+  // Just need ONE reachable channel, not specifically email.
+  if (!slug || !full_name || (!email && !phone)) {
     return { status: 400, body: { error: 'Missing required fields.' } }
   }
 
@@ -76,18 +80,29 @@ async function submitLead(payload) {
     .order('position', { ascending: true }).limit(1).maybeSingle()
   if (!stage) return { status: 500, body: { error: 'This org\'s pipeline has no stages configured.' } }
 
-  const cleanEmail = String(email).trim().toLowerCase()
+  const cleanEmail = email ? String(email).trim().toLowerCase() : null
   const cleanPhone = phone ? String(phone).trim() : null
 
-  const { data: existingContact } = await admin
-    .from('contacts').select('id, phone').eq('org_id', page.org_id).eq('email', cleanEmail).maybeSingle()
+  // Dedupe by whichever channel this submission actually has -- email when
+  // present (the more reliable key), phone otherwise.
+  let existingContact = null
+  if (cleanEmail) {
+    const { data } = await admin
+      .from('contacts').select('id, phone, email').eq('org_id', page.org_id).eq('email', cleanEmail).maybeSingle()
+    existingContact = data
+  } else if (cleanPhone) {
+    const { data } = await admin
+      .from('contacts').select('id, phone, email').eq('org_id', page.org_id).eq('phone', cleanPhone).maybeSingle()
+    existingContact = data
+  }
 
   let contactId
   if (existingContact) {
     contactId = existingContact.id
-    if (cleanPhone && !existingContact.phone) {
-      await admin.from('contacts').update({ phone: cleanPhone }).eq('id', contactId)
-    }
+    const fill = {}
+    if (cleanPhone && !existingContact.phone) fill.phone = cleanPhone
+    if (cleanEmail && !existingContact.email) fill.email = cleanEmail
+    if (Object.keys(fill).length) await admin.from('contacts').update(fill).eq('id', contactId)
   } else {
     const { data: newContact, error: contactErr } = await admin
       .from('contacts')
