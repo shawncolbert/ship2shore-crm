@@ -119,7 +119,13 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
     `Client: ${customerName}`,
     phone ? `Phone: ${phone}` : null,
     `Vehicle: ${vehicleDesc}`,
-    (opp.pickup_address || opp.dropoff_address) ? `Route: ${opp.pickup_address || 'TBD'} → ${opp.dropoff_address || 'TBD'}` : null,
+    // Flat-rate catalog leads only ever carry a pickup (the port, for an
+    // escort/hotshot/etc.) -- "Route: X → TBD" reads like a transport job
+    // that's missing its destination. Only show a Route line once there's
+    // an actual dropoff to route to.
+    opp.dropoff_address
+      ? `Route: ${opp.pickup_address || 'TBD'} → ${opp.dropoff_address}`
+      : opp.pickup_address ? `Location: ${opp.pickup_address}` : null,
     '',
     isFlatRate
       ? `💵 Flat rate: $${opp.value.toLocaleString()} — already set from the website request. Tap below only if it needs adjusting.`
@@ -131,11 +137,16 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
     // (that button only ever changes value/deposit_amount, i.e. transport).
     opp.escort_fee ? `Port escort fee: $${opp.escort_fee.toLocaleString()} — flat, due in full, no deposit.` : null,
     '',
-    // Two separate services on this page -- not everyone who wants a port
-    // escort also wants transport. Call first and find out which.
+    // Two separate services on the port-transport landing page -- not
+    // everyone who wants a port escort also wants transport. Call first
+    // and find out which. A flat-rate catalog lead never involves
+    // transport at all unless the customer asks for it on the call, so
+    // its wording doesn't mention transport up front either.
     opp.escort_fee
       ? 'Call the customer first — find out if they need transport too, or escort only — then tap the matching button below.'
-      : 'Call the customer first, then set the real transport price below.',
+      : isFlatRate
+        ? 'Call the customer to confirm the job. Tap below only if the price needs adjusting.'
+        : 'Call the customer first, then set the real transport price below.',
   ].filter(Boolean)
 
   // Telegram inline buttons only accept http(s)/tg:// URLs -- a tel: link
@@ -144,7 +155,7 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
   // No real loss: the phone number in the text above is auto-linked to
   // tap-to-call by Telegram's own client on mobile.
   const buttons = [
-    [{ text: '✏️ Set price & deposit (transport + escort)', callback_data: `sp:${opp.id}` }],
+    [{ text: isFlatRate ? '✏️ Adjust price' : '✏️ Set price & deposit (transport + escort)', callback_data: `sp:${opp.id}` }],
     // Only offered on port-escort leads -- some customers only want the
     // escort, not transport, and this skips the "reply with two numbers"
     // flow for that case: one tap sets transport to $0, leaving just the
