@@ -40,19 +40,28 @@ export async function notifyDispatcherOfLead({ orgId, dispatcher, opportunity })
   }
 }
 
-// Round-robins a fresh lead across whichever dispatcher contacts are marked
-// "in rotation" (dispatcher_rotation), when the org has auto-assign turned
-// on. auto_assign_last_contact_id is the cursor -- whoever got the last
-// lead -- so the rotation picks up after them rather than always starting
-// from the top. No-ops (returns null) when auto-assign is off or nobody's
-// in the rotation, leaving the job unassigned for manual pick, same as
-// before this existed.
-export async function autoAssignDispatcher({ orgId, opportunityId }) {
-  const { data: org } = await admin
-    .from('organizations')
-    .select('auto_assign_leads, auto_assign_last_contact_id')
-    .eq('id', orgId)
-    .maybeSingle()
+// TWIC Vehicle Escort, Hotshot, Semi/Container, and Military/PCS Escort
+// (the flat-rate catalog leads -- value set, no dropoff, so there's no real
+// transport route) and the port-transport landing page's escort component
+// (escort_fee) all require Shawn's own TWIC certification -- per Shawn
+// 2026-08-29, these always go to him directly, never into the round-robin.
+// Shares the "no real transport route yet" half of this test with
+// telegramDispatch.js's isFlatRateLead -- kept separate (escort_fee alone
+// also qualifies here, which isFlatRateLead deliberately excludes) since
+// the two checks answer different questions: this is "does this job need
+// the owner's cert," that's "is there nothing left to estimate."
+function needsOwnerDispatch(opportunity) {
+  return !!opportunity.escort_fee || (opportunity.value != null && !opportunity.dropoff_address)
+}
+
+// Round-robins a fresh (real transport) lead across whichever dispatcher
+// contacts are marked "in rotation" (dispatcher_rotation), when the org has
+// auto-assign turned on. auto_assign_last_contact_id is the cursor --
+// whoever got the last lead -- so the rotation picks up after them rather
+// than always starting from the top. No-ops (returns null) when auto-assign
+// is off or nobody's in the rotation, leaving the job unassigned for manual
+// pick, same as before this existed.
+async function assignViaRotation({ orgId, org, opportunity }) {
   if (!org?.auto_assign_leads) return null
 
   const { data: rotation } = await admin
@@ -68,17 +77,40 @@ export async function autoAssignDispatcher({ orgId, opportunityId }) {
   const dispatcher = next.contacts
   if (!dispatcher) return null
 
+  await admin.from('opportunities').update({ assigned_dispatcher_id: dispatcher.id }).eq('id', opportunity.id).eq('org_id', orgId)
+  await admin.from('organizations').update({ auto_assign_last_contact_id: dispatcher.id }).eq('id', orgId)
+
+  const { emailSent, emailError } = await notifyDispatcherOfLead({ orgId, dispatcher, opportunity })
+  return { dispatcherContactId: dispatcher.id, emailSent, emailError }
+}
+
+export async function autoAssignDispatcher({ orgId, opportunityId }) {
+  const { data: org } = await admin
+    .from('organizations')
+    .select('auto_assign_leads, auto_assign_last_contact_id, owner_dispatcher_contact_id')
+    .eq('id', orgId)
+    .maybeSingle()
+
   const { data: opportunity, error: oppErr } = await admin
     .from('opportunities')
-    .select('id, title, value, vehicle, vehicle_year, vehicle_make, vehicle_model, vehicle_vin, pickup_address, dropoff_address, contact_id, contacts!contact_id(full_name, phone, email)')
+    .select('id, title, value, escort_fee, vehicle, vehicle_year, vehicle_make, vehicle_model, vehicle_vin, pickup_address, dropoff_address, contact_id, contacts!contact_id(full_name, phone, email)')
     .eq('id', opportunityId)
     .eq('org_id', orgId)
     .maybeSingle()
   if (oppErr || !opportunity) return null
 
-  await admin.from('opportunities').update({ assigned_dispatcher_id: dispatcher.id }).eq('id', opportunityId).eq('org_id', orgId)
-  await admin.from('organizations').update({ auto_assign_last_contact_id: dispatcher.id }).eq('id', orgId)
+  // Owner routing is a hard business rule, not part of the round-robin --
+  // it applies even if auto-assign is toggled off for everything else, and
+  // never touches the rotation cursor.
+  if (needsOwnerDispatch(opportunity) && org?.owner_dispatcher_contact_id) {
+    const { data: dispatcher } = await admin
+      .from('contacts').select('id, full_name, company, email').eq('id', org.owner_dispatcher_contact_id).maybeSingle()
+    if (dispatcher) {
+      await admin.from('opportunities').update({ assigned_dispatcher_id: dispatcher.id }).eq('id', opportunityId).eq('org_id', orgId)
+      const { emailSent, emailError } = await notifyDispatcherOfLead({ orgId, dispatcher, opportunity })
+      return { dispatcherContactId: dispatcher.id, emailSent, emailError }
+    }
+  }
 
-  const { emailSent, emailError } = await notifyDispatcherOfLead({ orgId, dispatcher, opportunity })
-  return { dispatcherContactId: dispatcher.id, emailSent, emailError }
+  return assignViaRotation({ orgId, org, opportunity })
 }
