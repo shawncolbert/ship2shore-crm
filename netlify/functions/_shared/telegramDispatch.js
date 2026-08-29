@@ -83,7 +83,7 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
   // this said the first time) does not resolve the same way.
   const { data: opp, error: oppErr } = await admin
     .from('opportunities')
-    .select('id, title, vehicle, vehicle_year, vehicle_make, vehicle_model, pickup_address, dropoff_address, scheduled_at, escort_fee, contacts!opportunities_contact_id_fkey(full_name, phone, email)')
+    .select('id, title, vehicle, vehicle_year, vehicle_make, vehicle_model, pickup_address, dropoff_address, scheduled_at, escort_fee, value, contacts!opportunities_contact_id_fkey(full_name, phone, email)')
     .eq('id', opportunityId).eq('org_id', orgId).maybeSingle()
   if (oppErr) return { sent: false, reason: `Lookup failed: ${oppErr.message}` }
   if (!opp) return { sent: false, reason: 'Lead not found' }
@@ -92,11 +92,20 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
   const customerName = opp.contacts?.full_name || 'Unknown'
   const phone = opp.contacts?.phone || ''
 
+  // Flat-rate catalog leads (homepage popup, digital business card) already
+  // know their price the instant the customer picks a service -- it's on
+  // opp.value before this alert ever fires, so there's nothing to estimate.
+  // Real transport leads (booking widget, transport landing pages, Calendly)
+  // never carry a value this early, so they still run the mileage estimate
+  // exactly as before.
+  const isFlatRate = opp.value != null
   let quote = null
-  try {
-    quote = await estimateLeadQuote({ pickupAddress: opp.pickup_address, dropoffAddress: opp.dropoff_address, scheduledAt: opp.scheduled_at })
-  } catch {
-    quote = null // best-effort -- the alert still goes out without a number
+  if (!isFlatRate) {
+    try {
+      quote = await estimateLeadQuote({ pickupAddress: opp.pickup_address, dropoffAddress: opp.dropoff_address, scheduledAt: opp.scheduled_at })
+    } catch {
+      quote = null // best-effort -- the alert still goes out without a number
+    }
   }
 
   // The auto-estimate is a starting point for whoever calls the customer,
@@ -112,9 +121,11 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
     `Vehicle: ${vehicleDesc}`,
     (opp.pickup_address || opp.dropoff_address) ? `Route: ${opp.pickup_address || 'TBD'} → ${opp.dropoff_address || 'TBD'}` : null,
     '',
-    quote
-      ? `Transport starting-point estimate: $${quote.amount.toLocaleString()} (${quote.miles} mi${quote.note ? `, ${quote.note}` : ''}) — confirm with the customer before quoting, rural/lifted/running condition aren't factored in.`
-      : 'Could not auto-estimate transport — open the job to price it manually.',
+    isFlatRate
+      ? `💵 Flat rate: $${opp.value.toLocaleString()} — already set from the website request. Tap below only if it needs adjusting.`
+      : quote
+        ? `Transport starting-point estimate: $${quote.amount.toLocaleString()} (${quote.miles} mi${quote.note ? `, ${quote.note}` : ''}) — confirm with the customer before quoting, rural/lifted/running condition aren't factored in.`
+        : 'Could not auto-estimate transport — open the job to price it manually.',
     // Flat port escort fee, entirely separate from the transport number above:
     // always $95, never has a deposit, and isn't touched by "Set price & deposit"
     // (that button only ever changes value/deposit_amount, i.e. transport).

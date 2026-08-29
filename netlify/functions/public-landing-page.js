@@ -51,7 +51,7 @@ async function submitLead(payload) {
   // the lead, just marked for a human to sanity-check.
   const {
     slug, email, phone, notes,
-    pickup_location, delivery_location, vehicle, ship_date, condition, trailer_type,
+    pickup_location, delivery_location, vehicle, ship_date, condition, trailer_type, value,
   } = payload
   const full_name = payload.full_name || payload.name
   const suspectedBot = Boolean(payload['bot-field'])
@@ -115,6 +115,13 @@ async function submitLead(payload) {
     contactId = newContact.id
   }
 
+  // Flat-rate catalog services (homepage popup, digital business card) know
+  // their price the moment the customer picks a service -- no per-mile
+  // estimate to run. Passed through as opportunities.value so the Telegram
+  // alert can show it pre-set instead of "estimate this manually".
+  const parsedValue = Number(value)
+  const cleanValue = value != null && Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : null
+
   const { data: opp, error: oppErr } = await admin
     .from('opportunities')
     .insert({
@@ -124,6 +131,7 @@ async function submitLead(payload) {
       dropoff_address: delivery_location ? String(delivery_location).trim() : null,
       vehicle: vehicle ? String(vehicle).trim() : null,
       escort_fee: page.slug === PORT_ESCORT_LANDING_SLUG ? PORT_ESCORT_FEE : null,
+      value: cleanValue,
     })
     .select('id').single()
   if (oppErr || !opp) return { status: 500, body: { error: 'Could not create lead.', detail: oppErr?.message } }
