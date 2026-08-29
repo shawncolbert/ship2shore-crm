@@ -14,6 +14,7 @@ const BUBBLES = [
   { to: '/contacts', label: 'Contacts', key: 'contacts' },
   { to: '/inbox', label: 'Inbox', key: 'inbox' },
   { to: '/calendar', label: 'Calendar', key: 'calendar' },
+  { to: '/documents', label: 'Documents', key: 'documents' },
   // A shortcut to the manager page, not to any external site itself -- so
   // this bar never has to carry a growing, org-specific list of load
   // boards/dashboards someone's added under Settings > Custom Links.
