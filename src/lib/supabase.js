@@ -182,7 +182,7 @@ export async function fetchMyOrg() {
   const orgId = await fetchMyOrgId()
   const { data, error } = await supabase
     .from('organizations')
-    .select('id, name, slug, logo_url, tagline, primary_color, enabled_features, theme_mode, theme_preset, calendly_url, idle_timeout_enabled, idle_timeout_minutes, auto_assign_leads')
+    .select('id, name, slug, logo_url, tagline, primary_color, enabled_features, theme_mode, theme_preset, calendly_url, idle_timeout_enabled, idle_timeout_minutes, auto_assign_leads, telegram_bot_username')
     .eq('id', orgId)
     .single()
   if (error) throw error

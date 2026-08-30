@@ -1,7 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchMyOrg, fetchMyOrgId, fetchLandingPages, updateLandingPage, fetchDispatcherContacts } from '../lib/supabase'
-import { fetchDispatchRotationCandidates, addToDispatchRotation, removeFromDispatchRotation, saveAutoAssignLeads } from '../lib/dispatchRotation'
+import {
+  fetchDispatchRotationCandidates, addToDispatchRotation, removeFromDispatchRotation, saveAutoAssignLeads,
+  generateTelegramLinkCode, unlinkTelegramChat, saveTelegramBotUsername,
+} from '../lib/dispatchRotation'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
 
@@ -59,12 +62,15 @@ export default function DispatchAssignment() {
         </button>
       </div>
 
+      <TelegramBotSettings org={org} />
+
       <div className={card}>
         <h2 className="mb-1 text-sm font-semibold text-ink">Dispatchers</h2>
         <p className="mb-4 text-xs text-muted">
           These are your contacts tagged as dispatchers. Check the ones who should be in the auto-assign
           rotation — {inRotationCount === 0 ? "none marked yet" : `${inRotationCount} marked`}. Anyone
           left unchecked can still be assigned to a job by hand on Pipeline, just not automatically.
+          Link each one's own Telegram chat below so their leads stop posting to the shared group.
         </p>
 
         {isLoading && <p className="text-sm text-muted">Loading…</p>}
@@ -74,7 +80,7 @@ export default function DispatchAssignment() {
 
         <div className="space-y-2">
           {candidates?.map((d) => (
-            <DispatcherRow key={d.id} dispatcher={d} onChanged={refresh} />
+            <DispatcherRow key={d.id} dispatcher={d} botUsername={org?.telegram_bot_username} onChanged={refresh} />
           ))}
         </div>
       </div>
@@ -86,6 +92,63 @@ export default function DispatchAssignment() {
           TWIC/Hotshot/Semi-Container/Military leads still always go to you regardless of what's set here.
         </p>
         <LandingPageRouting />
+      </div>
+    </div>
+  )
+}
+
+// One-time org setting -- the bot's own @username, shown next to every
+// "Get link code" button below so Shawn (or whoever's on this page) never
+// has to go dig it out of BotFather to tell a dispatcher who to message.
+function TelegramBotSettings({ org }) {
+  const qc = useQueryClient()
+  const [value, setValue] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [savedValue, setSavedValue] = useState('')
+
+  useEffect(() => {
+    if (org?.telegram_bot_username) {
+      setValue(org.telegram_bot_username)
+      setSavedValue(org.telegram_bot_username)
+    }
+  }, [org?.telegram_bot_username])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const orgId = await fetchMyOrgId()
+      await saveTelegramBotUsername(orgId, value)
+      setSavedValue(value.trim().replace(/^@/, ''))
+      qc.invalidateQueries({ queryKey: ['myOrg'] })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className={`${card} mb-4`}>
+      <h2 className="mb-1 text-sm font-semibold text-ink">Telegram bot</h2>
+      <p className="mb-3 text-xs text-muted">
+        The @username of the bot posting your lead alerts. Needed so the "Get link code" button below can
+        tell a dispatcher exactly who to message.
+      </p>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted">@</span>
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="YourBotUsername"
+          className="w-56 rounded-md border border-line bg-canvas px-2 py-1.5 text-sm text-ink"
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving || value.trim().replace(/^@/, '') === savedValue}
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-ink disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
       </div>
     </div>
   )
@@ -135,8 +198,10 @@ function LandingPageRouting() {
   )
 }
 
-function DispatcherRow({ dispatcher, onChanged }) {
+function DispatcherRow({ dispatcher, botUsername, onChanged }) {
   const [saving, setSaving] = useState(false)
+  const [linking, setLinking] = useState(false)
+  const [code, setCode] = useState(null)
 
   const toggle = async () => {
     setSaving(true)
@@ -153,22 +218,75 @@ function DispatcherRow({ dispatcher, onChanged }) {
     }
   }
 
+  const getCode = async () => {
+    setLinking(true)
+    try {
+      setCode(await generateTelegramLinkCode(dispatcher.id))
+    } finally {
+      setLinking(false)
+    }
+  }
+
+  const unlink = async () => {
+    setLinking(true)
+    try {
+      await unlinkTelegramChat(dispatcher.id)
+      setCode(null)
+      onChanged()
+    } finally {
+      setLinking(false)
+    }
+  }
+
+  const codeExpired = dispatcher.telegram_link_code_expires_at && new Date(dispatcher.telegram_link_code_expires_at) < new Date()
+  const activeCode = code || (!codeExpired ? dispatcher.telegram_link_code : null)
+
   return (
-    <label className="flex items-center gap-3 rounded-lg border border-line bg-canvas/50 px-3 py-2 hover:border-accent">
-      <input
-        type="checkbox"
-        checked={dispatcher.inRotation}
-        onChange={toggle}
-        disabled={saving}
-        className="h-4 w-4 rounded border-line text-accent focus:ring-accent"
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-ink">{dispatcher.full_name || dispatcher.company}</p>
-        <p className="truncate text-xs text-muted">{dispatcher.company && dispatcher.full_name ? `${dispatcher.company} · ` : ''}{dispatcher.email || 'No email on file'}</p>
+    <div className="rounded-lg border border-line bg-canvas/50 px-3 py-2 hover:border-accent">
+      <label className="flex items-center gap-3">
+        <input
+          type="checkbox"
+          checked={dispatcher.inRotation}
+          onChange={toggle}
+          disabled={saving}
+          className="h-4 w-4 rounded border-line text-accent focus:ring-accent"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-ink">{dispatcher.full_name || dispatcher.company}</p>
+          <p className="truncate text-xs text-muted">{dispatcher.company && dispatcher.full_name ? `${dispatcher.company} · ` : ''}{dispatcher.email || 'No email on file'}</p>
+        </div>
+        {dispatcher.inRotation && (
+          <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-ink ring-1 ring-inset ring-accent/40">In rotation</span>
+        )}
+      </label>
+
+      <div className="mt-2 flex items-center gap-2 pl-7">
+        {dispatcher.telegram_chat_id ? (
+          <>
+            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-500/40">
+              Telegram linked — private chat
+            </span>
+            <button type="button" onClick={unlink} disabled={linking} className="text-xs text-muted underline-offset-2 hover:underline">
+              Unlink
+            </button>
+          </>
+        ) : activeCode ? (
+          <p className="text-xs text-muted">
+            Text <span className="font-mono font-semibold text-ink">{activeCode}</span> to
+            {botUsername ? <> <span className="font-semibold text-ink">@{botUsername}</span></> : ' your bot'} on Telegram — expires in 30 min.
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={getCode}
+            disabled={linking || !botUsername}
+            title={!botUsername ? 'Set the bot username above first' : undefined}
+            className="rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-ink hover:border-accent disabled:opacity-50"
+          >
+            {linking ? 'Generating…' : 'Get Telegram link code'}
+          </button>
+        )}
       </div>
-      {dispatcher.inRotation && (
-        <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-ink ring-1 ring-inset ring-accent/40">In rotation</span>
-      )}
-    </label>
+    </div>
   )
 }

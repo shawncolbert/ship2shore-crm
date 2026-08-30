@@ -288,6 +288,42 @@ async function handleEscortOnly({ token, chatId, callbackQuery, opportunityId })
   })
 }
 
+// Links a dispatcher's own private Telegram chat to their contact record --
+// they text the 6-digit code from "Get Telegram link code" (Settings >
+// Dispatch Assignment) straight to the bot, and sendTelegramLeadAlert
+// (telegramDispatch.js) then routes their leads here instead of the shared
+// group. Only fires in a private (1-on-1) chat -- never in the shared
+// group, where this text pattern could show up in unrelated chatter.
+async function handleLinkCodeMessage({ token, chatId, message }) {
+  const text = (message.text || '').trim()
+  if (!/^\d{6}$/.test(text)) return // doesn't look like a link code -- ignore silently, not every DM is one
+
+  const { data: contact, error } = await admin
+    .from('contacts')
+    .select('id, full_name, company')
+    .eq('telegram_link_code', text)
+    .gt('telegram_link_code_expires_at', new Date().toISOString())
+    .maybeSingle()
+
+  if (error || !contact) {
+    await telegramApi(token, 'sendMessage', {
+      chat_id: chatId,
+      text: "That code wasn't recognized or has expired — ask for a fresh one in Settings > Dispatch Assignment.",
+    })
+    return
+  }
+
+  await admin
+    .from('contacts')
+    .update({ telegram_chat_id: chatId, telegram_link_code: null, telegram_link_code_expires_at: null })
+    .eq('id', contact.id)
+
+  await telegramApi(token, 'sendMessage', {
+    chat_id: chatId,
+    text: `✅ Linked, ${contact.full_name || contact.company || 'there'} — your leads will post here privately from now on instead of the shared group.`,
+  })
+}
+
 export const handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'POST only' }
 
@@ -318,6 +354,8 @@ export const handler = async (event) => {
       }
     } else if (update.message?.reply_to_message) {
       await handlePriceReply({ token, chatId: update.message.chat.id, message: update.message })
+    } else if (update.message?.chat?.type === 'private' && update.message?.text) {
+      await handleLinkCodeMessage({ token, chatId: update.message.chat.id, message: update.message })
     }
   } catch (e) {
     console.error('❌ telegram-webhook failed:', e)

@@ -84,8 +84,8 @@ export async function estimateLeadQuote({ pickupAddress, dropoffAddress, schedul
 
 export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
   const token = process.env.TELEGRAM_BOT_TOKEN
-  const chatId = process.env.TELEGRAM_GROUP_CHAT_ID
-  if (!token || !chatId) return { sent: false, reason: 'Telegram not configured' }
+  const groupChatId = process.env.TELEGRAM_GROUP_CHAT_ID
+  if (!token || !groupChatId) return { sent: false, reason: 'Telegram not configured' }
 
   // opportunities has two FKs into contacts (contact_id and
   // assigned_dispatcher_id) -- contacts(...) alone is an ambiguous embed
@@ -97,10 +97,23 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
   // this said the first time) does not resolve the same way.
   const { data: opp, error: oppErr } = await admin
     .from('opportunities')
-    .select('id, title, vehicle, vehicle_year, vehicle_make, vehicle_model, pickup_address, dropoff_address, scheduled_at, escort_fee, value, contacts!opportunities_contact_id_fkey(full_name, phone, email)')
+    .select('id, title, vehicle, vehicle_year, vehicle_make, vehicle_model, pickup_address, dropoff_address, scheduled_at, escort_fee, value, assigned_dispatcher_id, contacts!opportunities_contact_id_fkey(full_name, phone, email)')
     .eq('id', opportunityId).eq('org_id', orgId).maybeSingle()
   if (oppErr) return { sent: false, reason: `Lookup failed: ${oppErr.message}` }
   if (!opp) return { sent: false, reason: 'Lead not found' }
+
+  // If the assigned dispatcher has linked their own private Telegram chat
+  // (Settings > Dispatch Assignment > "Get Telegram link code"), their
+  // leads go there instead of the shared group -- that's the whole point,
+  // so Val and Paul stop seeing each other's leads. Fetched separately
+  // (rather than embedded) to sidestep the same ambiguous-FK problem noted
+  // above for a second contacts relationship in the same query.
+  let chatId = groupChatId
+  if (opp.assigned_dispatcher_id) {
+    const { data: dispatcherContact } = await admin
+      .from('contacts').select('telegram_chat_id').eq('id', opp.assigned_dispatcher_id).maybeSingle()
+    if (dispatcherContact?.telegram_chat_id) chatId = dispatcherContact.telegram_chat_id
+  }
 
   const vehicleDesc = [opp.vehicle_year, opp.vehicle_make, opp.vehicle_model].filter(Boolean).join(' ') || opp.vehicle || 'Vehicle not specified'
   const customerName = opp.contacts?.full_name || 'Unknown'
