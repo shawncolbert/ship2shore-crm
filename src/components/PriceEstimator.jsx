@@ -141,7 +141,7 @@ const EMPTY_AUTO = { loading: false, error: '', miles: null, quote: null, dropof
 // Shows both quote options -- never fills Amount on its own, same
 // "AI suggests, dispatcher confirms" rule as everywhere else -- the
 // dispatcher picks Low or High and clicks Confirm.
-export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduledAt, onUseAmount, orgId, opportunityId }) {
+export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduledAt, onUseAmount, orgId, opportunityId, onMilesKnown }) {
   // Editable in Settings > Pricing -- outbound (CA -> elsewhere) tends to
   // run higher than inbound in this lane, per Shawn's call 2026-08-27.
   // Zero by default, so this is a no-op for any org that hasn't set one.
@@ -182,6 +182,10 @@ export default function PriceEstimator({ pickup, dropoff, vehicleType, scheduled
   }, [pickup, dropoff, milesOverride])
 
   const miles = milesOverride !== '' ? Number(milesOverride) : auto.miles
+
+  useEffect(() => {
+    onMilesKnown?.(miles > 0 ? miles : null)
+  }, [miles, onMilesKnown])
   // CA local-run brackets only apply off a fresh auto-geocoded distance --
   // a manually typed mile count means there's no confirmed drop-off state,
   // so that case always falls through to the general locked formula.

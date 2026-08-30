@@ -807,6 +807,46 @@ export async function requestCarrierQuote(opportunityId) {
   return data
 }
 
+// A driver's quote history -- every carrier_quote_requests row that came
+// back matched to this contact (see carrier-quote.js's phone match on
+// submit). Only ever the ones that actually got a price back; a link
+// that's still sitting unanswered isn't part of anyone's rate history yet.
+// "Has a driver already quoted a route like this one before?" -- Pipeline's
+// job-edit panel calls this once mileage is known, so a driver who ran a
+// similar lane before (same rough mileage -- pickup/dropoff addresses
+// rarely match exactly even on a repeat lane, so mileage is the only
+// reliable numeric signal) surfaces automatically instead of Shawn having
+// to remember who quoted what. Tolerance: whichever is bigger, 20% of the
+// distance or 20 miles flat -- tight enough that a 400-mile and a 40-mile
+// run never get treated as "similar."
+export async function fetchSimilarRouteQuotes(miles, { excludeOpportunityId } = {}) {
+  if (!miles || miles <= 0) return []
+  const tolerance = Math.max(miles * 0.2, 20)
+  let query = supabase
+    .from('carrier_quote_requests')
+    .select('id, opportunity_id, contact_id, pickup_address, dropoff_address, miles, quoted_amount, quoted_at, driver_name, contacts(full_name)')
+    .eq('status', 'quoted')
+    .gte('miles', miles - tolerance)
+    .lte('miles', miles + tolerance)
+    .order('quoted_at', { ascending: false })
+    .limit(5)
+  if (excludeOpportunityId) query = query.neq('opportunity_id', excludeOpportunityId)
+  const { data, error } = await query
+  if (error) throw error
+  return (data || []).map((q) => ({ ...q, driverLabel: q.contacts?.full_name || q.driver_name || 'Unknown driver' }))
+}
+
+export async function fetchCarrierQuotesForContact(contactId) {
+  const { data, error } = await supabase
+    .from('carrier_quote_requests')
+    .select('id, pickup_address, dropoff_address, miles, system_estimate, quoted_amount, quoted_at')
+    .eq('contact_id', contactId)
+    .eq('status', 'quoted')
+    .order('quoted_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
 // Audio Brief: turns a dispatcher's spoken job description (already
 // transcribed to text client-side) into structured job fields via Claude.
 // Never saves anything -- the caller fills the form with whatever comes

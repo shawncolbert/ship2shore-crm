@@ -5,7 +5,7 @@ import {
   fetchContact, fetchContacts, fetchMyOrgId, fetchMyOrg, fetchAttachments, uploadDeliveryOrder,
   signedAttachmentUrl, deleteAttachment, createUploadLink, updateContact,
   sendEmail, markAttachmentViewed, deleteAppointment, renameAttachment, fetchSignedUrls,
-  deleteContact,
+  deleteContact, fetchCarrierQuotesForContact,
 } from '../lib/supabase'
 import { fetchConnections, addConnection, deleteConnection } from '../lib/prospecting'
 import { fetchDocumentPresets, renderPresetBody } from '../lib/documentPresets'
@@ -178,6 +178,10 @@ export default function ContactDetail() {
         <DeliveryOrders contact={contact} jobs={jobs} />
       </div>
 
+      <div className="mt-6">
+        <CarrierQuotes contactId={contact.id} />
+      </div>
+
       {/* Live Calendly booking, prefilled -- only for orgs that have connected
           their own Calendly link (Settings > Scheduling). Never falls back to
           another org's calendar. */}
@@ -340,6 +344,44 @@ function Connections({ contactId }) {
               <button onClick={() => remove(c)} title="Remove connection" className="shrink-0 rounded p-1 text-muted hover:bg-red-50 hover:text-red-500">🗑️</button>
             </li>
           ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// Every quote this driver has actually sent back through "Ask driver for
+// quote" (Pipeline.jsx), matched to them by phone at submit time -- see
+// carrier-quote.js. Read-only: quotes only ever arrive by a driver
+// answering a link, never entered here by hand.
+function CarrierQuotes({ contactId }) {
+  const { data: quotes, isLoading } = useQuery({ queryKey: ['carrierQuotes', contactId], queryFn: () => fetchCarrierQuotesForContact(contactId) })
+
+  return (
+    <div className={card}>
+      <h2 className={h2}>Carrier quotes</h2>
+      {isLoading && <p className="text-sm text-muted">Loading…</p>}
+      {!isLoading && !quotes?.length && (
+        <p className="text-sm text-muted">No quotes on file yet from this driver.</p>
+      )}
+      {!!quotes?.length && (
+        <ul className="space-y-3">
+          {quotes.map((q) => {
+            const diff = q.system_estimate != null ? Number(q.quoted_amount) - Number(q.system_estimate) : null
+            return (
+              <li key={q.id} className="rounded-lg border border-line bg-canvas/50 p-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-semibold text-ink">{money(q.quoted_amount)}</span>
+                  <span className="text-xs text-muted">{fmtDate(q.quoted_at)}</span>
+                </div>
+                <p className="mt-1 text-xs text-muted">{q.pickup_address} → {q.dropoff_address}</p>
+                <p className="mt-0.5 text-xs text-muted">
+                  {q.miles ? `${Math.round(q.miles)} mi` : 'Mileage not recorded'}
+                  {diff != null && diff !== 0 && ` · ${diff > 0 ? '+' : ''}$${Math.round(diff).toLocaleString()} vs system estimate`}
+                </p>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

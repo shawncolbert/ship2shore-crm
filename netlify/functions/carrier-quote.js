@@ -89,6 +89,20 @@ async function submitQuote(payload) {
     .from('carrier_quote_requests').select('*').eq('token', String(token).trim()).maybeSingle()
   if (fetchErr || !request) return { status: 404, body: { error: 'Quote request not found.' } }
 
+  // Matches the driver's phone to a saved contact (e.g. a regular driver
+  // like "Samor Ali") so this quote shows up on their contact page instead
+  // of only ever existing as a Telegram message that scrolls away. Last-10-
+  // digit comparison, not an exact string match -- phones on file are a mix
+  // of "+16305204242" and "+1 509-221-9979" formatting, and a plain .eq()
+  // would silently miss most of them.
+  let contactId = null
+  const cleanPhone = driver_phone ? String(driver_phone).replace(/\D/g, '').slice(-10) : null
+  if (cleanPhone) {
+    const { data: candidates } = await admin.from('contacts').select('id, phone').eq('org_id', request.org_id).not('phone', 'is', null)
+    const match = (candidates || []).find((c) => String(c.phone).replace(/\D/g, '').slice(-10) === cleanPhone)
+    if (match) contactId = match.id
+  }
+
   const { error: updErr } = await admin
     .from('carrier_quote_requests')
     .update({
@@ -96,6 +110,7 @@ async function submitQuote(payload) {
       driver_name: String(driver_name).trim(),
       driver_phone: driver_phone ? String(driver_phone).trim() : null,
       quoted_amount: amount,
+      contact_id: contactId,
     })
     .eq('token', request.token)
   if (updErr) return { status: 500, body: { error: updErr.message } }

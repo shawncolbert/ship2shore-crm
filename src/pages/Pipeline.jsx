@@ -8,7 +8,7 @@ import {
   fetchDispatcherContacts, assignDispatcher,
   fetchTransportDrivers,
   fetchOrCreateTrackingLink,
-  requestCarrierQuote,
+  requestCarrierQuote, fetchSimilarRouteQuotes,
   classifyVehicle, previewSuggestedPrice,
   sendContract, fetchLatestContract,
   parseJobBrief,
@@ -800,6 +800,7 @@ function JobDetailModal({
   const { data: contract } = useQuery({ queryKey: ['jobContract', c.id], queryFn: () => fetchLatestContract(c.id) })
   const [sendingContract, setSendingContract] = useState(false)
   const [requestingQuote, setRequestingQuote] = useState(false)
+  const [estimatedMiles, setEstimatedMiles] = useState(null)
   const qc = useQueryClient()
   const hasVehicleDetails = c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin
 
@@ -1385,7 +1386,9 @@ function JobDetailModal({
                     pickup={pickupAddress} dropoff={dropoffAddress} vehicleType={vehicleType} scheduledAt={fromLocalInput(when)}
                     onUseAmount={(v) => { setAmount(v); setPriceConfirmed(false) }}
                     orgId={c.org_id} opportunityId={c.id}
+                    onMilesKnown={setEstimatedMiles}
                   />
+                  <SimilarRouteQuotes miles={estimatedMiles} excludeOpportunityId={c.id} />
                 </div>
               )}
               {dropoffAddress && (
@@ -1652,6 +1655,38 @@ function JobDetailModal({
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// "Has a driver already quoted a route like this before?" -- fires once
+// PriceEstimator has resolved mileage for the current pickup/drop-off.
+// Per Shawn 2026-08-30: pickup/drop-off addresses on a repeat lane rarely
+// match exactly even when it's the same route, so mileage is the matching
+// signal (see fetchSimilarRouteQuotes's tolerance), not the address text --
+// the actual routes are shown so Shawn can eyeball whether it's really the
+// same lane before trusting the price.
+function SimilarRouteQuotes({ miles, excludeOpportunityId }) {
+  const { data: matches } = useQuery({
+    queryKey: ['similarRouteQuotes', Math.round(miles || 0), excludeOpportunityId],
+    queryFn: () => fetchSimilarRouteQuotes(miles, { excludeOpportunityId }),
+    enabled: !!miles,
+  })
+
+  if (!matches?.length) return null
+
+  return (
+    <div className="mt-2 rounded border border-accent/40 bg-accent/8 p-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-ink">💡 Drivers who've quoted a similar route before</p>
+      <ul className="mt-1.5 space-y-1.5">
+        {matches.map((m) => (
+          <li key={m.id} className="text-[11px] text-ink">
+            <span className="font-semibold">{m.driverLabel}</span> — <span className="font-semibold">${Number(m.quoted_amount).toLocaleString()}</span>
+            {m.miles ? ` (${Math.round(m.miles)} mi)` : ''}
+            <span className="block text-muted">{m.pickup_address} → {m.dropoff_address}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
