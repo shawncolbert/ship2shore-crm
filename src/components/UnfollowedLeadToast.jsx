@@ -17,6 +17,14 @@ function minutesAgo(iso) {
   return `${hrs} hr${hrs === 1 ? '' : 's'}`
 }
 
+// The raw opportunity title ("Website lead — Homepage Quick Quote Popup")
+// is internal bookkeeping, not something worth a glance's worth of a
+// notification's limited space -- the vehicle is what actually identifies
+// the job at a glance, same as the Telegram alert already shows.
+function vehicleDescOf(a) {
+  return [a.vehicle_year, a.vehicle_make, a.vehicle_model].filter(Boolean).join(' ') || a.vehicle || null
+}
+
 // A lead that's sat assigned for 20+ minutes with no reply from the
 // dispatcher's own inbox and no movement on the card -- see
 // unfollowed_lead_alerts (the view) and markAssigned (dispatchAssignment.js)
@@ -61,7 +69,7 @@ export default function UnfollowedLeadToast() {
             {visible.length > 1 ? ` — ${visible.length} leads waiting` : ''}
           </p>
           <p className="mt-1 truncate text-xs text-red-800">
-            {alert.customer_name || 'Customer'}{alert.title ? ` — ${alert.title}` : ''}
+            {alert.customer_name || 'Customer'}{vehicleDescOf(alert) ? ` — ${vehicleDescOf(alert)}` : ''}
           </p>
           <p className="mt-1 text-xs text-red-700">Assigned {minutesAgo(alert.assigned_at)} ago, no reply yet.</p>
         </div>

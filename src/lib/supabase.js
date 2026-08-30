@@ -755,7 +755,7 @@ export async function acknowledgePaymentClaim(id) {
 export async function fetchUnfollowedLeadAlerts() {
   const { data, error } = await supabase
     .from('unfollowed_lead_alerts')
-    .select('opportunity_id, title, assigned_at, dispatcher_id, dispatcher_name, dispatcher_company, customer_name')
+    .select('opportunity_id, title, assigned_at, dispatcher_id, dispatcher_name, dispatcher_company, customer_name, vehicle, vehicle_year, vehicle_make, vehicle_model')
     .order('assigned_at', { ascending: true })
   if (error) throw error
   return data || []

@@ -12,7 +12,7 @@ import { sendPushToOrgOwners } from './_shared/webPush.js'
 export const handler = async () => {
   const { data: alerts, error } = await admin
     .from('unfollowed_lead_alerts')
-    .select('opportunity_id, org_id, title, dispatcher_name, dispatcher_company, customer_name, assigned_at')
+    .select('opportunity_id, org_id, title, dispatcher_name, dispatcher_company, customer_name, assigned_at, vehicle, vehicle_year, vehicle_make, vehicle_model')
   if (error) {
     console.error('❌ check-unfollowed-leads: could not read alerts:', error)
     return { statusCode: 200, body: 'ok' }
@@ -33,11 +33,18 @@ export const handler = async () => {
 
   for (const a of due) {
     const dispatcherLabel = a.dispatcher_name || a.dispatcher_company || 'A dispatcher'
+    // Vehicle, not the raw opportunity title ("Website lead — Homepage
+    // Quick Quote Popup") -- that's internal bookkeeping, not something
+    // worth a phone notification's limited space. Minutes-since-assigned
+    // instead of a generic "untouched" so the read is "how overdue is
+    // this," matching the in-app toast's own wording.
+    const vehicleDesc = [a.vehicle_year, a.vehicle_make, a.vehicle_model].filter(Boolean).join(' ') || a.vehicle || null
+    const minutesAgo = Math.round((Date.now() - new Date(a.assigned_at).getTime()) / 60_000)
     try {
       await sendPushToOrgOwners({
         orgId: a.org_id,
         title: `${dispatcherLabel} hasn't followed up`,
-        body: `${a.customer_name || 'A lead'}${a.title ? ` — ${a.title}` : ''} — assigned and untouched.`,
+        body: `${a.customer_name || 'A lead'}${vehicleDesc ? ` — ${vehicleDesc}` : ''} — assigned ${minutesAgo} min ago, no reply yet.`,
         url: `/pipeline?job=${a.opportunity_id}`,
       })
       await admin.from('opportunities').update({ unfollowed_push_sent_at: new Date().toISOString() }).eq('id', a.opportunity_id)
