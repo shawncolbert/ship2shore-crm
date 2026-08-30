@@ -1071,6 +1071,52 @@ export async function fetchJobsByStage(stageId, stageName) {
   }))
 }
 
+// New-lead volume per dispatcher over the window -- lets Shawn see how many
+// leads are actually flowing to Val/Paul/himself even though their Telegram
+// alerts now go to separate private chats he can't see into directly (see
+// dispatchAssignment.js). "Unassigned" catches anything auto-assign hasn't
+// picked up yet. Counts leads by CREATION date, not assignment date -- a
+// lead reassigned later still counts under whoever has it now.
+export async function fetchLeadsByDispatcher(days) {
+  const since = new Date(Date.now() - days * 864e5).toISOString()
+  const [{ data: opps, error: oErr }, { data: dispatchers, error: dErr }] = await Promise.all([
+    supabase.from('opportunities').select('assigned_dispatcher_id').gte('created_at', since).neq('status', 'cancelled'),
+    supabase.from('contacts').select('id, full_name, company').eq('segment', 'dispatcher'),
+  ])
+  if (oErr) throw oErr
+  if (dErr) throw dErr
+
+  const nameById = Object.fromEntries((dispatchers || []).map((d) => [d.id, d.full_name || d.company || 'Unnamed']))
+  const counts = new Map()
+  for (const o of opps || []) {
+    const key = o.assigned_dispatcher_id || null
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+
+  const rows = Array.from(counts.entries()).map(([id, count]) => ({
+    id, name: id ? (nameById[id] || 'Former dispatcher') : 'Unassigned', count,
+  }))
+  rows.sort((a, b) => b.count - a.count)
+  return rows
+}
+
+export async function fetchLeadsForDispatcher(dispatcherId, days) {
+  const since = new Date(Date.now() - days * 864e5).toISOString()
+  let query = supabase
+    .from('opportunities')
+    .select('id, title, value, created_at, contact_id, contacts!opportunities_contact_id_fkey(full_name)')
+    .gte('created_at', since)
+    .neq('status', 'cancelled')
+    .order('created_at', { ascending: false })
+  query = dispatcherId ? query.eq('assigned_dispatcher_id', dispatcherId) : query.is('assigned_dispatcher_id', null)
+  const { data, error } = await query
+  if (error) throw error
+  return (data || []).map((o) => ({
+    id: o.id, contactId: o.contact_id, contactName: o.contacts?.full_name || 'Unnamed contact',
+    jobTitle: o.title, stageName: null, date: o.created_at, value: o.value,
+  }))
+}
+
 /* ------------------------------------------------------------------ */
 /* Inbox helpers                                                       */
 /* ------------------------------------------------------------------ */

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchDashboardStats, fetchOpenPipelineJobs, fetchClosedJobs, fetchNewLeadsList, fetchJobsByStage,
-  fetchNewCustomerFiles, markAttachmentViewed, fetchMyOrg,
+  fetchNewCustomerFiles, markAttachmentViewed, fetchMyOrg, fetchLeadsByDispatcher, fetchLeadsForDispatcher,
 } from '../lib/supabase'
 import { fetchMyExternalCards } from '../lib/externalCards'
 import { fetchCustomLinks } from '../lib/customLinks'
@@ -88,6 +88,11 @@ export default function Dashboard() {
     refetchInterval: 60_000,
   })
   const { data: customLinks } = useQuery({ queryKey: ['customLinks'], queryFn: fetchCustomLinks, staleTime: 5 * 60 * 1000 })
+  // Their Telegram alerts now go to separate private chats (see
+  // dispatchAssignment.js / the Telegram-linking work) that Shawn can't see
+  // into -- this is his replacement view for "how many leads are actually
+  // coming in and who's getting them."
+  const { data: leadsByDispatcher } = useQuery({ queryKey: ['leadsByDispatcher'], queryFn: () => fetchLeadsByDispatcher(7) })
   const cardClicks = (externalCards || []).reduce((sum, c) => sum + (c.click_count || 0), 0)
   // { kind } for the stat cards, or { kind: 'stage', stageId, stageName } for a per-stage row.
   const [drillDown, setDrillDown] = useState(null)
@@ -95,14 +100,17 @@ export default function Dashboard() {
 
   const openDrillDown = (kind) => setDrillDown({ kind })
   const openStageDrillDown = (stageId, stageName) => setDrillDown({ kind: 'stage', stageId, stageName })
+  const openDispatcherDrillDown = (dispatcherId, dispatcherName) => setDrillDown({ kind: 'dispatcher', dispatcherId, dispatcherName })
   const closeDrillDown = () => setDrillDown(null)
 
   const config = drillDown?.kind === 'stage'
     ? { title: `Jobs in ${drillDown.stageName}`, subtitle: null, emptyMessage: 'No jobs in this stage.', fetch: () => fetchJobsByStage(drillDown.stageId, drillDown.stageName) }
-    : drillDown ? DRILLDOWNS[drillDown.kind] : null
+    : drillDown?.kind === 'dispatcher'
+      ? { title: `${drillDown.dispatcherName} — leads · 7 days`, subtitle: null, emptyMessage: 'No leads in this window.', fetch: () => fetchLeadsForDispatcher(drillDown.dispatcherId, 7) }
+      : drillDown ? DRILLDOWNS[drillDown.kind] : null
 
   const drillQuery = useQuery({
-    queryKey: ['dashboardDrillDown', drillDown?.kind, drillDown?.stageId],
+    queryKey: ['dashboardDrillDown', drillDown?.kind, drillDown?.stageId, drillDown?.dispatcherId],
     queryFn: config?.fetch,
     enabled: !!drillDown,
   })
@@ -231,6 +239,41 @@ export default function Dashboard() {
                         />
                       </div>
                       <span className="w-6 text-right text-sm font-medium text-ink">{s.count}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Leads by dispatcher · 7 days
+              </h2>
+              <span className="text-xs text-muted">{leadsByDispatcher?.reduce((s, d) => s + d.count, 0) ?? 0} total</span>
+            </div>
+            {!leadsByDispatcher?.length ? (
+              <p className="text-sm text-muted">
+                No leads in the last 7 days.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {leadsByDispatcher.map((d) => {
+                  const max = Math.max(...leadsByDispatcher.map((x) => x.count), 1)
+                  return (
+                    <button
+                      key={d.id || 'unassigned'}
+                      type="button"
+                      onClick={() => openDispatcherDrillDown(d.id, d.name)}
+                      disabled={d.count === 0}
+                      className="flex w-full items-center gap-3 rounded-md text-left transition-colors hover:bg-canvas disabled:cursor-default disabled:hover:bg-transparent"
+                    >
+                      <span className="w-28 shrink-0 truncate text-sm text-ink">{d.name}</span>
+                      <div className="h-2 flex-1 rounded-full bg-canvas">
+                        <div className="h-2 rounded-full bg-accent" style={{ width: `${(d.count / max) * 100}%` }} />
+                      </div>
+                      <span className="w-6 text-right text-sm font-medium text-ink">{d.count}</span>
                     </button>
                   )
                 })}
