@@ -20,6 +20,13 @@
 [functions."tiktok-publish"]
   schedule = "*/10 * * * *"
 
+# Push notification to the org owner's phone for any lead the
+# unfollowed_lead_alerts view flags (10+ min assigned, no reply, no
+# movement) -- the phone-notification counterpart to UnfollowedLeadToast,
+# which only fires while the CRM is open in a browser tab.
+[functions."check-unfollowed-leads"]
+  schedule = "*/5 * * * *"
+
 # Email a payment reminder for any invoice with reminders opted in
 # (invoices.reminder_enabled) once its interval has elapsed and it's still
 # unpaid. Day-granularity logic, so once a day is plenty.

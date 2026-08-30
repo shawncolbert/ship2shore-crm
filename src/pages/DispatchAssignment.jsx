@@ -5,6 +5,7 @@ import {
   fetchDispatchRotationCandidates, addToDispatchRotation, removeFromDispatchRotation, saveAutoAssignLeads,
   generateTelegramLinkCode, unlinkTelegramChat, saveTelegramBotUsername,
 } from '../lib/dispatchRotation'
+import { pushSupported, isPushSubscribed, subscribeToPush } from '../lib/pushNotifications'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
 
@@ -38,6 +39,8 @@ export default function DispatchAssignment() {
           handed to them automatically or wait for you to assign them by hand on Pipeline.
         </p>
       </header>
+
+      <PushNotificationSettings />
 
       <div className={`${card} mb-4 flex items-center justify-between gap-3`}>
         <div>
@@ -93,6 +96,68 @@ export default function DispatchAssignment() {
         </p>
         <LandingPageRouting />
       </div>
+    </div>
+  )
+}
+
+// Gets Shawn's phone buzzing directly from the CRM -- separate from
+// Telegram entirely. Once subscribed, check-unfollowed-leads.js can push a
+// notification straight to this device when a lead assigned to Val or Paul
+// has sat 10+ minutes with no reply and no movement. Per-device (a phone
+// and a laptop are two separate subscriptions), so this only ever
+// describes THIS browser's own state, not the account's as a whole.
+function PushNotificationSettings() {
+  const [status, setStatus] = useState('checking') // checking | unsupported | off | on | denied
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!pushSupported()) { setStatus('unsupported'); return }
+    if (Notification.permission === 'denied') { setStatus('denied'); return }
+    isPushSubscribed().then((on) => setStatus(on ? 'on' : 'off'))
+  }, [])
+
+  const enable = async () => {
+    setError('')
+    try {
+      await subscribeToPush()
+      setStatus('on')
+    } catch (e) {
+      setStatus(Notification.permission === 'denied' ? 'denied' : 'off')
+      setError(e.message || 'Could not enable notifications.')
+    }
+  }
+
+  if (status === 'unsupported') return null // e.g. desktop Safari -- nothing useful to show
+
+  return (
+    <div className={`${card} mb-4`}>
+      <h2 className="mb-1 text-sm font-semibold text-ink">Notifications on this device</h2>
+      <p className="mb-3 text-xs text-muted">
+        Get a push notification right on your phone when a lead assigned to Val or Paul has gone 10+
+        minutes with no reply. Only affects this browser/device — enable it separately on your phone and
+        your computer if you want both.
+      </p>
+      {status === 'on' && (
+        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-500/40">
+          Enabled on this device
+        </span>
+      )}
+      {status === 'off' && (
+        <button
+          type="button"
+          onClick={enable}
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-ink"
+        >
+          Enable notifications
+        </button>
+      )}
+      {status === 'denied' && (
+        <p className="text-xs text-muted">
+          Notifications are blocked for this site in your browser settings — enable them there, then
+          reload this page.
+        </p>
+      )}
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </div>
   )
 }

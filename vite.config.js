@@ -10,6 +10,13 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/favicon-32.png'],
+      // injectManifest (a custom src/sw.js) instead of the default
+      // generateSW -- generateSW builds the whole service worker for you
+      // but leaves no room to add our own push/notificationclick handlers,
+      // which the "ping my phone on a new/unfollowed lead" feature needs.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
       manifest: {
         name: 'Ship2Shore Dispatch',
         short_name: 'Ship2Shore',
@@ -25,13 +32,6 @@ export default defineConfig({
           { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
           { src: '/icons/maskable-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
-      },
-      // Only precache the built app shell -- Netlify functions and Supabase
-      // calls stay live network requests, never served from a stale cache.
-      // This app is read/write dispatch data, not content that's safe to
-      // show days-old while offline.
-      workbox: {
-        navigateFallbackDenylist: [/^\/\.netlify\//],
       },
     }),
   ],
