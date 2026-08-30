@@ -45,6 +45,19 @@ export function buildBookingSummary({
   return lines.join('\n')
 }
 
+// "Ask driver for quote" -- for any driver, saved contact or not, since
+// this is just a text with a link, not tied to a CRM record on their end.
+export function buildCarrierQuoteAsk({ pickupAddress, dropoffAddress, url }) {
+  return [
+    '🚚 Quick job — need a quote',
+    '',
+    `📍 Pickup: ${pickupAddress}`,
+    `🏁 Drop-off: ${dropoffAddress}`,
+    '',
+    `What would you charge to run this? Quote it here: ${url}`,
+  ].join('\n')
+}
+
 const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent)
 
 // Tries the native share sheet first (Messages, WhatsApp, email, etc., same

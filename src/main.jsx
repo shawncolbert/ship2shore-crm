@@ -42,6 +42,7 @@ import PublicBooking from './pages/PublicBooking'
 import LandingPagePublic from './pages/LandingPagePublic'
 import PublicBusinessCard from './pages/PublicBusinessCard'
 import DriverTracking from './pages/DriverTracking'
+import CarrierQuotePublic from './pages/CarrierQuotePublic'
 import BusinessCardSettings from './pages/BusinessCardSettings'
 import ExternalCardLinks from './pages/ExternalCardLinks'
 import GoRedirect from './pages/GoRedirect'
@@ -85,6 +86,7 @@ function App() {
       {/* Public driver tracking page — no auth gate, the link texted to a
           driver from Pipeline's "Text route" / "Text to another driver" */}
       <Route path="/track/:token" element={<DriverTracking />} />
+      <Route path="/carrier-quote/:token" element={<CarrierQuotePublic />} />
       {/* Public funnels — no auth gate */}
       <Route path="/funnel/:slug" element={<PublicFunnel />} />
       {/* Public invoice page — no auth gate, this is the link a customer gets emailed */}

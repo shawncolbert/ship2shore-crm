@@ -791,6 +791,22 @@ export async function assignDispatcher(opportunityId, dispatcherContactId) {
   return data
 }
 
+// "Ask driver for quote" (Pipeline.jsx) -- generates a one-time public link
+// for a job's route that any driver can open, see the pickup/drop-off and
+// mileage, and quote a price on. Routed through a Netlify function since
+// the mileage estimate needs the server-side Mapbox token.
+export async function requestCarrierQuote(opportunityId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/create-carrier-quote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ opportunityId }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Failed to create quote request')
+  return data
+}
+
 // Audio Brief: turns a dispatcher's spoken job description (already
 // transcribed to text client-side) into structured job fields via Claude.
 // Never saves anything -- the caller fills the form with whatever comes

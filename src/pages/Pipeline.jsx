@@ -8,12 +8,13 @@ import {
   fetchDispatcherContacts, assignDispatcher,
   fetchTransportDrivers,
   fetchOrCreateTrackingLink,
+  requestCarrierQuote,
   classifyVehicle, previewSuggestedPrice,
   sendContract, fetchLatestContract,
   parseJobBrief,
 } from '../lib/supabase'
 import { createInvoice } from '../lib/invoices'
-import { buildBookingSummary, shareBooking } from '../lib/shareBooking'
+import { buildBookingSummary, buildCarrierQuoteAsk, shareBooking } from '../lib/shareBooking'
 import NewContactModal from '../components/NewContactModal'
 import Tooltip from '../components/Tooltip'
 import AddressAutocompleteField from '../components/AddressAutocompleteField'
@@ -798,6 +799,7 @@ function JobDetailModal({
   const { data: photoUrl } = useQuery({ queryKey: ['jobPhoto', c.id], queryFn: () => fetchVehiclePhotoUrl(c.id) })
   const { data: contract } = useQuery({ queryKey: ['jobContract', c.id], queryFn: () => fetchLatestContract(c.id) })
   const [sendingContract, setSendingContract] = useState(false)
+  const [requestingQuote, setRequestingQuote] = useState(false)
   const qc = useQueryClient()
   const hasVehicleDetails = c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin
 
@@ -1020,6 +1022,30 @@ function JobDetailModal({
 
   function handleShare() {
     shareBooking({ summaryText: bookingSummaryFor(c, latestNote, photoUrl), recipientPhone: c.contacts?.phone })
+  }
+
+  // Works for any driver, saved contact or not -- prompts for whatever
+  // number to text it to, same one-off entry Shawn asked for, since a
+  // driver being asked for a quote usually isn't in the system yet.
+  async function handleAskDriverForQuote() {
+    if (!c.pickup_address || !c.dropoff_address) {
+      alert('This job needs both a pickup and drop-off address first — add them above, hit Save, then try again.')
+      return
+    }
+    setRequestingQuote(true)
+    try {
+      const { url } = await requestCarrierQuote(c.id)
+      const phone = window.prompt("Driver's phone number to text this to (leave blank to just open Messages):") || ''
+      shareBooking({
+        summaryText: buildCarrierQuoteAsk({ pickupAddress: c.pickup_address, dropoffAddress: c.dropoff_address, url }),
+        recipientPhone: phone,
+        title: 'Quote Request',
+      })
+    } catch (e) {
+      alert(e.message || 'Could not create the quote request.')
+    } finally {
+      setRequestingQuote(false)
+    }
   }
 
   const save = async () => {
@@ -1566,6 +1592,12 @@ function JobDetailModal({
               </button>
               <button type="button" onClick={handleShare} className="mt-2 w-full rounded-md bg-brand px-3 py-2 text-xs font-semibold text-white hover:bg-brand-600">
                 📱 Text driver / share booking
+              </button>
+              <button
+                type="button" onClick={handleAskDriverForQuote} disabled={requestingQuote}
+                className="mt-2 w-full rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent disabled:opacity-50"
+              >
+                {requestingQuote ? 'Creating link…' : '🚚 Ask driver for quote'}
               </button>
               {isWon && (
                 <div className="mt-3">
