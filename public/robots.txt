@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /
+Allow: /pages/
+
+Sitemap: https://dispatch.ship2shorebooking.com/sitemap.xml
