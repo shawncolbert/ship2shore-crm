@@ -14,7 +14,7 @@ import {
   parseJobBrief,
 } from '../lib/supabase'
 import { createInvoice } from '../lib/invoices'
-import { buildBookingSummary, buildCarrierQuoteAsk, shareBooking } from '../lib/shareBooking'
+import { buildBookingSummary, buildCarrierQuoteAsk, shareBooking, copyToClipboard } from '../lib/shareBooking'
 import NewContactModal from '../components/NewContactModal'
 import Tooltip from '../components/Tooltip'
 import AddressAutocompleteField from '../components/AddressAutocompleteField'
@@ -744,6 +744,7 @@ function JobDetailModal({
   const [billingNumber, setBillingNumber] = useState(c.billing_number || '')
   const [saving, setSaving] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
+  const [copiedRoute, setCopiedRoute] = useState(false)
 
   // Agent 2 -- in-house drivers only (business cards opted into "offers
   // vehicle transport"), separate from Assigned dispatcher above (which
@@ -1330,6 +1331,18 @@ function JobDetailModal({
                       className="shrink-0 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink transition-colors hover:bg-canvas disabled:opacity-40"
                     >
                       Text route
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!assignedDriver}
+                      title="On a computer, 'Text route' often can't open Messages -- this copies the same text so you can paste it into iMessage, WhatsApp, or an email instead."
+                      onClick={async () => {
+                        const text = driverTextFor(c, latestNote, photoUrl, dropoffInfo, trackingLink)
+                        if (await copyToClipboard(text)) { setCopiedRoute(true); setTimeout(() => setCopiedRoute(false), 2000) }
+                      }}
+                      className="shrink-0 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink transition-colors hover:bg-canvas disabled:opacity-40"
+                    >
+                      {copiedRoute ? 'Copied ✓' : '📋 Copy'}
                     </button>
                   </div>
                   <button

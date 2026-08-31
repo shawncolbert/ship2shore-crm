@@ -58,6 +58,21 @@ export function buildCarrierQuoteAsk({ pickupAddress, dropoffAddress, url }) {
   ].join('\n')
 }
 
+// Desktop fallback for the buttons below -- navigator.share is mobile-only
+// and the sms: link silently does nothing on a Mac/PC unless Messages'
+// Continuity handoff happens to be set up, so "Text route" can look broken
+// from a desktop browser with no error at all. This copies the same
+// message text to the clipboard so it can be pasted into iMessage,
+// WhatsApp, email, whatever's actually open.
+export async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
 const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent)
 
 // Tries the native share sheet first (Messages, WhatsApp, email, etc., same
