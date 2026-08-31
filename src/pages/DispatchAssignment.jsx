@@ -219,6 +219,50 @@ function TelegramBotSettings({ org }) {
   )
 }
 
+// Two rounds of "search @username and send this code" went unused by both
+// Paul and Val -- per Shawn 2026-09-01, a direct t.me/ link that opens
+// straight into the bot's chat (no searching required) removes one whole
+// step most people aren't used to doing. "Copy message" builds the same
+// generic, no-name text Shawn asked for earlier so one button covers
+// texting either dispatcher.
+function LinkCodeInstructions({ code, botUsername, dispatcherName }) {
+  const [copied, setCopied] = useState(false)
+  const directLink = botUsername ? `https://t.me/${botUsername}` : null
+
+  const copyMessage = async () => {
+    const text = directLink
+      ? `Tap this to message me on Telegram: ${directLink}\n\nThen send this code: ${code}\n\nTakes 10 seconds — this links your leads to show up automatically.`
+      : `Message @${botUsername} on Telegram, then send this code: ${code}`
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      window.prompt('Copy this text:', text)
+    }
+  }
+
+  return (
+    <div className="space-y-1.5 text-xs text-muted">
+      <p>
+        {dispatcherName ? `For ${dispatcherName}: ` : ''}code <span className="font-mono font-semibold text-ink">{code}</span> — expires in 30 min.
+      </p>
+      {directLink && (
+        <p>
+          Direct link: <a href={directLink} target="_blank" rel="noreferrer" className="text-accent hover:underline">{directLink}</a>
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={copyMessage}
+        className="rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-ink hover:border-accent"
+      >
+        {copied ? 'Copied ✓' : '📋 Copy message to text them'}
+      </button>
+    </div>
+  )
+}
+
 function LandingPageRouting() {
   const qc = useQueryClient()
   const { data: pages, isLoading } = useQuery({ queryKey: ['landingPages'], queryFn: fetchLandingPages })
@@ -336,10 +380,7 @@ function DispatcherRow({ dispatcher, botUsername, onChanged }) {
             </button>
           </>
         ) : activeCode ? (
-          <p className="text-xs text-muted">
-            Text <span className="font-mono font-semibold text-ink">{activeCode}</span> to
-            {botUsername ? <> <span className="font-semibold text-ink">@{botUsername}</span></> : ' your bot'} on Telegram — expires in 30 min.
-          </p>
+          <LinkCodeInstructions code={activeCode} botUsername={botUsername} dispatcherName={dispatcher.full_name || dispatcher.company} />
         ) : (
           <button
             type="button"
