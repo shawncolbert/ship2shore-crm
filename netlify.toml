@@ -46,3 +46,10 @@
 # added. Drafts into the Inbox for review -- never auto-sends.
 [functions."photography-reminders"]
   schedule = "0 15 * * *"
+
+# Lead-gen Phase 6 (2026-09-01): every job that's reached Delivered (or
+# further -- Invoiced/Paid) gets a one-time "how did we do" email --
+# thanks, a Google review ask (once Settings > Appearance has a review
+# link set), and a referral ask. Never sends twice per job.
+[functions."send-review-requests"]
+  schedule = "0 15 * * *"

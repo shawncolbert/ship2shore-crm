@@ -182,7 +182,7 @@ export async function fetchMyOrg() {
   const orgId = await fetchMyOrgId()
   const { data, error } = await supabase
     .from('organizations')
-    .select('id, name, slug, logo_url, tagline, primary_color, enabled_features, theme_mode, theme_preset, calendly_url, idle_timeout_enabled, idle_timeout_minutes, auto_assign_leads, telegram_bot_username')
+    .select('id, name, slug, logo_url, tagline, primary_color, enabled_features, theme_mode, theme_preset, calendly_url, idle_timeout_enabled, idle_timeout_minutes, auto_assign_leads, telegram_bot_username, google_review_link')
     .eq('id', orgId)
     .single()
   if (error) throw error
@@ -255,6 +255,18 @@ export async function saveIdleTimeout({ enabled, minutes }) {
   const { error } = await supabase
     .from('organizations')
     .update({ idle_timeout_enabled: !!enabled, idle_timeout_minutes: Math.max(1, Number(minutes) || 60) })
+    .eq('id', orgId)
+  if (error) throw error
+}
+
+// The link send-review-requests.js drops into the automated "how did we
+// do" email once a job hits Delivered -- blank until Google Business
+// Profile is live, at which point this is that listing's review link.
+export async function saveGoogleReviewLink(url) {
+  const orgId = await fetchMyOrgId()
+  const { error } = await supabase
+    .from('organizations')
+    .update({ google_review_link: url ? String(url).trim() : null })
     .eq('id', orgId)
   if (error) throw error
 }

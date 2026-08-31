@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchMyOrg, updateMyOrgTheme, saveIdleTimeout } from '../lib/supabase'
+import { fetchMyOrg, updateMyOrgTheme, saveIdleTimeout, saveGoogleReviewLink } from '../lib/supabase'
 import { applyTheme, cacheTheme, THEME_MODES, THEME_PRESETS } from '../lib/theme'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
@@ -126,6 +126,63 @@ export default function Appearance() {
         </div>
 
         <IdleTimeoutSettings org={org} />
+        <GoogleReviewLinkSettings org={org} />
+      </div>
+    </div>
+  )
+}
+
+// Once Shawn's Google Business Profile is live, this link goes into the
+// automated "how did we do" email every job gets after Delivered (see
+// send-review-requests.js). Blank until then -- the email still sends,
+// just without the review-ask line.
+function GoogleReviewLinkSettings({ org }) {
+  const qc = useQueryClient()
+  const [url, setUrl] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (org) setUrl(org.google_review_link || '')
+  }, [org])
+
+  const dirty = org && url.trim() !== (org.google_review_link || '')
+
+  async function save() {
+    setSaving(true); setErr(''); setSaved(false)
+    try {
+      await saveGoogleReviewLink(url)
+      await qc.invalidateQueries({ queryKey: ['myOrg'] })
+      setSaved(true)
+    } catch (e) {
+      setErr(e.message || String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className={card}>
+      <h2 className={h2}>Google review link</h2>
+      <p className="mb-3 text-sm text-muted">
+        Once your Google Business Profile is live, paste its review link here — the "Write a review" link from
+        your listing. Every job that reaches Delivered automatically gets a one-time "how did we do" email; this
+        is what it links to. Left blank, that email still sends, just without the review ask.
+      </p>
+      {err && <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
+      <input
+        type="url"
+        value={url}
+        onChange={(e) => { setUrl(e.target.value); setSaved(false) }}
+        placeholder="https://g.page/r/.../review"
+        className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+      />
+      <div className="mt-4 flex items-center justify-end gap-3">
+        {saved && !dirty && <span className="text-sm text-starboard">Saved ✓</span>}
+        <button onClick={save} disabled={saving || !dirty} className={btnAccent}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
       </div>
     </div>
   )
