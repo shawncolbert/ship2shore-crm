@@ -1,5 +1,6 @@
 import { admin } from './supabaseAdmin.js'
 import { calculateGeneralQuote, caPortBracket, isCaPortRoute, seasonFor } from './pricingFormula.js'
+import { sendTelegramMessage } from './telegramSend.js'
 
 // Posts a new-lead alert into the team's Telegram group with a one-tap
 // "Send Quote" action, so the team doesn't have to be staring at the CRM to
@@ -191,13 +192,10 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
     [{ text: '🔗 Open in CRM', url: `${siteOrigin()}/pipeline?job=${opp.id}` }],
   ].filter(Boolean)
 
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: lines.join('\n'), reply_markup: { inline_keyboard: buttons } }),
+  return sendTelegramMessage({
+    orgId, chatId, text: lines.join('\n'), context: 'lead_alert',
+    replyMarkup: { inline_keyboard: buttons },
   })
-  if (!res.ok) return { sent: false, reason: await res.text() }
-  return { sent: true }
 }
 
 // Posted by tracking-arrive.js when a driver taps "I've arrived" on their
@@ -220,11 +218,5 @@ export async function sendTelegramArrivalAlert({ orgId, opportunityId, stage }) 
 
   const text = [label, '', `Client: ${customerName}`, `Vehicle: ${vehicleDesc}`, `🔗 ${siteOrigin()}/pipeline?job=${opp.id}`].join('\n')
 
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text }),
-  })
-  if (!res.ok) return { sent: false, reason: await res.text() }
-  return { sent: true }
+  return sendTelegramMessage({ orgId, chatId, text, context: 'arrival_alert' })
 }

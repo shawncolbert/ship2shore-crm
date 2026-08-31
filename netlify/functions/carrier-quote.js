@@ -1,4 +1,5 @@
 import { admin } from './_shared/supabaseAdmin.js'
+import { sendTelegramMessage } from './_shared/telegramSend.js'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -37,9 +38,8 @@ async function getQuoteRequest(token) {
 // below what the mileage formula guessed -- without the driver ever having
 // seen that number themselves.
 async function notifyOwnerOfQuote(request) {
-  const token = process.env.TELEGRAM_BOT_TOKEN
   const groupChatId = process.env.TELEGRAM_GROUP_CHAT_ID
-  if (!token || !groupChatId) return
+  if (!groupChatId) return
 
   const { data: org } = await admin
     .from('organizations').select('owner_dispatcher_contact_id').eq('id', request.org_id).maybeSingle()
@@ -71,11 +71,7 @@ async function notifyOwnerOfQuote(request) {
     diffLine,
   ].filter(Boolean)
 
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: lines.join('\n') }),
-  })
+  await sendTelegramMessage({ orgId: request.org_id, chatId, text: lines.join('\n'), context: 'carrier_quote' })
 }
 
 async function submitQuote(payload) {
