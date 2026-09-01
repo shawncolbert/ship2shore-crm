@@ -75,13 +75,23 @@ export async function copyToClipboard(text) {
 
 const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent)
 
-// Tries the native share sheet first (Messages, WhatsApp, email, etc., same
-// as the card share buttons); falls back to a plain sms: link pre-filled
-// with the message body (and the recipient, if their number is known) when
-// navigator.share isn't available. Returns false only when the person
-// cancelled the native share sheet -- the caller has nothing to do either way.
+// When the recipient's phone number is already known (e.g. "Text route" to
+// the assigned driver), this goes straight to a pre-addressed sms: link --
+// skipping the OS share sheet entirely, since a share sheet has to fetch
+// link previews for every URL in the message (route link, tracking link,
+// vehicle photo) before it'll even open. Per a 2026-09-01 report, that
+// preview-fetching step can hang the whole page for a stretch on a slow
+// connection with no error and no way out. Going straight to Messages,
+// already addressed to the right person, is also just a better flow than
+// making a dispatcher pick a target from a generic share sheet when the
+// CRM already knows exactly who this is going to.
+//
+// Only "Text to another driver (not in system)" -- no known number -- still
+// uses navigator.share, since there's no address to go straight to.
 export async function shareBooking({ summaryText, recipientPhone, title = 'Booking Details' }) {
-  if (navigator.share) {
+  const body = encodeURIComponent(summaryText)
+
+  if (!recipientPhone && navigator.share) {
     try {
       await navigator.share({ title, text: summaryText })
       return true
@@ -92,7 +102,6 @@ export async function shareBooking({ summaryText, recipientPhone, title = 'Booki
       // dispatcher with no way to send the message at all.
     }
   }
-  const body = encodeURIComponent(summaryText)
   const phone = recipientPhone ? String(recipientPhone).replace(/[^\d+]/g, '') : ''
   window.location.href = isIOS() ? `sms:${phone}&body=${body}` : `sms:${phone}?body=${body}`
   return true
