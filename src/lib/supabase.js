@@ -545,6 +545,40 @@ export async function deleteOpportunity(id) {
   if (error) throw error
 }
 
+// Per-2026-09-01 audit -- a lightweight "who changed what" trail for the
+// actions that cause disputes: price/deposit/escort fee edits, stage moves,
+// driver/dispatcher (re)assignment, job deletion. Best-effort and
+// fire-and-forget on purpose: a logging failure should never block the
+// actual save it's trying to record, so callers don't await/throw on this.
+// user_id/org_id are stamped server-side (auth.uid(), RLS), not passed in,
+// so this can't be spoofed to attribute a change to someone else.
+export async function logAudit({ orgId, entityType, entityId, action, field, oldValue, newValue }) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    await supabase.from('audit_logs').insert({
+      org_id: orgId, entity_type: entityType, entity_id: entityId, action, field,
+      old_value: oldValue == null ? null : String(oldValue),
+      new_value: newValue == null ? null : String(newValue),
+      user_email: user?.email || null,
+    })
+  } catch (e) {
+    console.error('logAudit failed (non-fatal):', e)
+  }
+}
+
+// Recent activity for one job's detail view -- newest first, capped since
+// this is a quick "what happened here" glance, not a full export.
+export async function fetchAuditLogsForEntity(entityType, entityId, limit = 15) {
+  const { data, error } = await supabase
+    .from('audit_logs')
+    .select('id, action, field, old_value, new_value, user_email, source, created_at')
+    .eq('entity_type', entityType).eq('entity_id', entityId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return data || []
+}
+
 // Ship billing number that rides along with a job. Capped at 16 chars;
 // blank clears it. Stays on the opportunity through every stage.
 export async function setOpportunityBilling(id, billingNumber) {

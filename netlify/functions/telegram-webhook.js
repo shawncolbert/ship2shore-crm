@@ -18,6 +18,25 @@ import { isFlatRateLead } from './_shared/telegramDispatch.js'
 
 const PRICE_PROMPT_PREFIX = 'Reply to THIS message with the total price and deposit, separated by a comma.\nExample: 1800, 500\n\nFor:'
 
+// Per-2026-09-01 audit -- price changes made from Telegram (reply-to-prompt,
+// "Escort only") need the same "who changed this" trail as ones made in the
+// CRM itself. No user_id here (this runs on the service-role key, no auth
+// context) -- source: 'telegram' distinguishes it from a web-made change,
+// which is the honest answer to "who" when the change came from a group
+// chat rather than a logged-in dispatcher.
+async function logAudit({ orgId, entityId, field, oldValue, newValue }) {
+  try {
+    await admin.from('audit_logs').insert({
+      org_id: orgId, entity_type: 'opportunity', entity_id: entityId, action: 'price_change', field,
+      old_value: oldValue == null ? 'not set' : String(oldValue),
+      new_value: newValue == null ? 'not set' : String(newValue),
+      source: 'telegram',
+    })
+  } catch (e) {
+    console.error('❌ logAudit (telegram-webhook) failed:', e)
+  }
+}
+
 async function telegramApi(token, method, body) {
   const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
     method: 'POST',
@@ -100,6 +119,7 @@ async function handlePriceReply({ token, chatId, message }) {
       await telegramApi(token, 'sendMessage', { chat_id: chatId, text: `Couldn't save that: ${updErr.message}`, reply_to_message_id: message.message_id })
       return
     }
+    await logAudit({ orgId: opp.org_id, entityId: opportunityId, field: 'value', oldValue: opp.value, newValue: amount })
     const canText = !!opp.contacts?.email
     await telegramApi(token, 'sendMessage', {
       chat_id: chatId,
@@ -131,6 +151,8 @@ async function handlePriceReply({ token, chatId, message }) {
     await telegramApi(token, 'sendMessage', { chat_id: chatId, text: `Couldn't save that: ${updErr.message}`, reply_to_message_id: message.message_id })
     return
   }
+  await logAudit({ orgId: opp.org_id, entityId: opportunityId, field: 'value', oldValue: opp.value, newValue: total })
+  await logAudit({ orgId: opp.org_id, entityId: opportunityId, field: 'deposit_amount', oldValue: opp.deposit_amount, newValue: deposit })
 
   const canText = !!opp.contacts?.email
   // escort_fee (set automatically for port-escort leads, never touched by
@@ -269,6 +291,8 @@ async function handleEscortOnly({ token, chatId, callbackQuery, opportunityId })
     .update({ value: 0, deposit_amount: 0 })
     .eq('id', opportunityId).eq('org_id', opp.org_id)
   if (updErr) return answerCallback(token, callbackQuery.id, `Couldn't save that: ${updErr.message}`)
+  await logAudit({ orgId: opp.org_id, entityId: opportunityId, field: 'value', oldValue: opp.value, newValue: 0 })
+  if (opp.deposit_amount) await logAudit({ orgId: opp.org_id, entityId: opportunityId, field: 'deposit_amount', oldValue: opp.deposit_amount, newValue: 0 })
 
   await answerCallback(token, callbackQuery.id, 'Marked escort only')
   const msg = callbackQuery.message

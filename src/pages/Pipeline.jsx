@@ -12,6 +12,7 @@ import {
   classifyVehicle, previewSuggestedPrice,
   sendContract, fetchLatestContract,
   parseJobBrief,
+  logAudit, fetchAuditLogsForEntity,
 } from '../lib/supabase'
 import { createInvoice } from '../lib/invoices'
 import { buildBookingSummary, buildCarrierQuoteAsk, shareBooking, copyToClipboard } from '../lib/shareBooking'
@@ -155,6 +156,14 @@ export default function Pipeline() {
     queryFn: fetchDispatcherContacts,
   })
 
+  // Same query key JobCard's detail view uses for the driver dropdown --
+  // React Query dedupes this to one shared cache entry, so keeping a
+  // reference here (just for audit-log display names) doesn't cost a
+  // second network call once that view has also loaded it.
+  const { data: driversForLog } = useQuery({ queryKey: ['transportDrivers'], queryFn: fetchTransportDrivers })
+  const driverName = (id) => driversForLog?.find((d) => d.id === id)?.full_name || (id ? 'Unknown driver' : 'Unassigned')
+  const stageName = (id) => data?.stages?.find((s) => s.id === id)?.name || id
+
   const onCancel = async (id) => {
     setCancelling(id)
     qc.setQueryData(['pipeline'], (prev) => {
@@ -165,6 +174,7 @@ export default function Pipeline() {
       await cancelOpportunity(id)
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
+      qc.invalidateQueries({ queryKey: ['auditLogs'] })
       setCancelling(null)
     }
   }
@@ -172,6 +182,7 @@ export default function Pipeline() {
   // Hard delete -- distinct from onCancel's soft status change. Same
   // optimistic-remove-then-refetch shape.
   const onDelete = async (id) => {
+    const prevOpp = data?.opportunities?.find((o) => o.id === id)
     setCancelling(id)
     qc.setQueryData(['pipeline'], (prev) => {
       if (!prev) return prev
@@ -179,14 +190,26 @@ export default function Pipeline() {
     })
     try {
       await deleteOpportunity(id)
+      if (prevOpp) {
+        fetchMyOrgId().then((orgId) => logAudit({
+          orgId, entityType: 'opportunity', entityId: id, action: 'deleted',
+          oldValue: prevOpp.title || prevOpp.contacts?.full_name || id,
+        }))
+      }
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
+      qc.invalidateQueries({ queryKey: ['auditLogs'] })
       setCancelling(null)
     }
   }
 
   // Toggle a per-job flag (cleared / paid) with an optimistic card update.
+  // Also the choke point for the driver-assignment dropdown (JobCard passes
+  // a { assigned_driver_card_id } patch here) -- logged separately from the
+  // plain paid/deposit_paid toggles below since a wrong driver assignment is
+  // exactly the kind of thing Jim's audit flagged ("who unassigned this?").
   const onPatch = async (id, patch) => {
+    const prevOpp = data?.opportunities?.find((o) => o.id === id)
     qc.setQueryData(['pipeline'], (prev) => {
       if (!prev) return prev
       return {
@@ -198,8 +221,15 @@ export default function Pipeline() {
     })
     try {
       await patchOpportunity(id, patch)
+      if ('assigned_driver_card_id' in patch && prevOpp && prevOpp.assigned_driver_card_id !== patch.assigned_driver_card_id) {
+        fetchMyOrgId().then((orgId) => logAudit({
+          orgId, entityType: 'opportunity', entityId: id, action: 'driver_assigned', field: 'assigned_driver_card_id',
+          oldValue: driverName(prevOpp.assigned_driver_card_id), newValue: driverName(patch.assigned_driver_card_id),
+        }))
+      }
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
+      qc.invalidateQueries({ queryKey: ['auditLogs'] })
     }
   }
 
@@ -219,6 +249,7 @@ export default function Pipeline() {
       await updateOpportunity(id, patch)
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
+      qc.invalidateQueries({ queryKey: ['auditLogs'] })
     }
   }
 
@@ -237,6 +268,7 @@ export default function Pipeline() {
       await setOpportunityBilling(id, value)
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
+      qc.invalidateQueries({ queryKey: ['auditLogs'] })
     }
   }
 
@@ -246,6 +278,7 @@ export default function Pipeline() {
   // optimistically, so a failure (e.g. dispatcher has no email on file)
   // still surfaces even though the assignment itself already stuck.
   const onAssignDispatcher = async (id, dispatcherId) => {
+    const prevOpp = data?.opportunities?.find((o) => o.id === id)
     const dispatcher = dispatcherId ? dispatchers?.find((d) => d.id === dispatcherId) : null
     qc.setQueryData(['pipeline'], (prev) => {
       if (!prev) return prev
@@ -259,10 +292,19 @@ export default function Pipeline() {
     try {
       const result = await assignDispatcher(id, dispatcherId)
       if (result.emailError) alert(result.emailError)
+      if (prevOpp && prevOpp.assigned_dispatcher_id !== (dispatcherId || null)) {
+        const oldDispatcher = prevOpp.assigned_dispatcher_id ? dispatchers?.find((d) => d.id === prevOpp.assigned_dispatcher_id) : null
+        fetchMyOrgId().then((orgId) => logAudit({
+          orgId, entityType: 'opportunity', entityId: id, action: 'dispatcher_assigned', field: 'assigned_dispatcher_id',
+          oldValue: oldDispatcher?.full_name || oldDispatcher?.company || 'Unassigned',
+          newValue: dispatcher?.full_name || dispatcher?.company || 'Unassigned',
+        }))
+      }
     } catch (e) {
       alert(e.message || 'Failed to assign dispatcher')
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
+      qc.invalidateQueries({ queryKey: ['auditLogs'] })
     }
   }
 
@@ -270,6 +312,7 @@ export default function Pipeline() {
   // job view's progress bar) -- same optimistic-then-refetch shape as
   // onDrop, just without any drag state to clear.
   const onMoveStage = async (id, stageId) => {
+    const prevOpp = data?.opportunities?.find((o) => o.id === id)
     qc.setQueryData(['pipeline'], (prev) => {
       if (!prev) return prev
       return {
@@ -281,8 +324,15 @@ export default function Pipeline() {
     })
     try {
       await moveOpportunity(id, stageId)
+      if (prevOpp && prevOpp.stage_id !== stageId) {
+        fetchMyOrgId().then((orgId) => logAudit({
+          orgId, entityType: 'opportunity', entityId: id, action: 'stage_change', field: 'stage_id',
+          oldValue: stageName(prevOpp.stage_id), newValue: stageName(stageId),
+        }))
+      }
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
+      qc.invalidateQueries({ queryKey: ['auditLogs'] })
     }
   }
 
@@ -291,6 +341,7 @@ export default function Pipeline() {
     const id = dragId
     setDragId(null)
     if (!id) return
+    const prevOpp = data?.opportunities?.find((o) => o.id === id)
 
     // optimistic update
     qc.setQueryData(['pipeline'], (prev) => {
@@ -304,8 +355,15 @@ export default function Pipeline() {
     })
     try {
       await moveOpportunity(id, stageId)
+      if (prevOpp && prevOpp.stage_id !== stageId) {
+        fetchMyOrgId().then((orgId) => logAudit({
+          orgId, entityType: 'opportunity', entityId: id, action: 'stage_change', field: 'stage_id',
+          oldValue: stageName(prevOpp.stage_id), newValue: stageName(stageId),
+        }))
+      }
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
+      qc.invalidateQueries({ queryKey: ['auditLogs'] })
     }
   }
 
@@ -1008,6 +1066,7 @@ function JobDetailModal({
         lineItems: [{ description: `${label} — ${vehicleDesc || title.trim() || 'vehicle transport'}`, quantity: 1, unit_price: unitPrice }],
       })
       qc.invalidateQueries({ queryKey: ['pipeline'] })
+      qc.invalidateQueries({ queryKey: ['auditLogs'] })
     } catch { /* best-effort -- the invoice buttons still work by hand */ }
   }
 
@@ -1050,6 +1109,30 @@ function JobDetailModal({
     }
   }
 
+  // Money-field changes get their own audit entries (per the 2026-09-01
+  // "who changed this rate" audit) -- diffed against the job's value as it
+  // was when this modal opened, since the big Save button bundles price
+  // together with unrelated fields like title/vehicle/addresses.
+  const logPriceChanges = () => {
+    const newAmount = amount === '' ? null : Number(amount)
+    const newDeposit = depositAmount === '' ? 0 : Number(depositAmount)
+    const newEscort = escortFee === '' ? null : Number(escortFee)
+    const changes = [
+      Number(c.value ?? null) !== newAmount ? ['value', c.value, newAmount] : null,
+      Number(c.deposit_amount ?? 0) !== newDeposit ? ['deposit_amount', c.deposit_amount, newDeposit] : null,
+      Number(c.escort_fee ?? null) !== newEscort ? ['escort_fee', c.escort_fee, newEscort] : null,
+    ].filter(Boolean)
+    if (!changes.length) return
+    fetchMyOrgId().then((orgId) => {
+      for (const [field, oldValue, newValue] of changes) {
+        logAudit({
+          orgId, entityType: 'opportunity', entityId: c.id, action: 'price_change', field,
+          oldValue: oldValue == null ? 'not set' : money(oldValue), newValue: newValue == null ? 'not set' : money(newValue),
+        })
+      }
+    })
+  }
+
   const save = async () => {
     if (saving) return
     setSaving(true)
@@ -1084,6 +1167,7 @@ function JobDetailModal({
         }),
         billingNumber.trim().slice(0, 16) !== (c.billing_number || '') ? onSaveBilling(billingNumber.trim().slice(0, 16)) : null,
       ])
+      logPriceChanges()
       await autoDraftInvoices()
       setJustSaved(true)
     } finally {
@@ -1362,6 +1446,14 @@ function JobDetailModal({
                   <input value={billingNumber} onChange={(e) => setBillingNumber(e.target.value.slice(0, 16))} maxLength={16} placeholder="Ship billing #" className={`${field} ${mono}`} />
                 </div>
               </div>
+            </div>
+
+            {/* Per-2026-09-01 audit -- "who changed this and when" for
+                price/deposit/escort fee edits, stage moves, and
+                driver/dispatcher (re)assignment. Own section since it spans
+                changes made in every other section above. */}
+            <div className={panel}>
+              <JobActivityLog opportunityId={c.id} />
             </div>
 
             {/* Section 2 -- Logistics & Pricing: addresses, vehicle, and
@@ -1701,6 +1793,52 @@ function SimilarRouteQuotes({ miles, excludeOpportunityId }) {
         ))}
       </ul>
     </div>
+  )
+}
+
+const ACTION_LABELS = {
+  price_change: 'Price changed',
+  stage_change: 'Stage changed',
+  driver_assigned: 'Driver reassigned',
+  dispatcher_assigned: 'Dispatcher reassigned',
+  deleted: 'Job deleted',
+}
+
+// Per-2026-09-01 audit -- "who changed this and when" for the actions that
+// cause disputes. Read-only, newest first; there's no undo here, this is
+// just a record so a disagreement has an answer.
+function JobActivityLog({ opportunityId }) {
+  const { data: entries, isLoading } = useQuery({
+    queryKey: ['auditLogs', 'opportunity', opportunityId],
+    queryFn: () => fetchAuditLogsForEntity('opportunity', opportunityId),
+  })
+
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer text-sm font-bold text-ink">
+        Activity {entries?.length ? `(${entries.length})` : ''}
+      </summary>
+      <div className="mt-2">
+        {isLoading && <p className="text-muted">Loading…</p>}
+        {!isLoading && !entries?.length && <p className="text-muted">No changes logged yet.</p>}
+        {!!entries?.length && (
+          <ul className="space-y-1.5">
+            {entries.map((e) => (
+              <li key={e.id} className="border-b border-line/60 pb-1.5 last:border-0">
+                <span className="font-medium text-ink">{ACTION_LABELS[e.action] || e.action}</span>
+                {e.field ? <span className="text-muted"> ({e.field})</span> : null}
+                {e.old_value != null || e.new_value != null ? (
+                  <span className="text-muted">: {e.old_value ?? '—'} → {e.new_value ?? '—'}</span>
+                ) : null}
+                <span className="block text-muted">
+                  {e.source === 'telegram' ? 'via Telegram' : (e.user_email || 'Unknown user')} · {new Date(e.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </details>
   )
 }
 
