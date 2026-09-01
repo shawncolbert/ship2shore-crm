@@ -21,12 +21,21 @@ const json = (statusCode, body) => ({
   statusCode, headers: { 'Content-Type': 'application/json', ...cors }, body: JSON.stringify(body),
 })
 
+// Per-2026-09-01 audit: this link never expired, even years after a job
+// delivered -- low real risk (the token's a 128-bit random value, not
+// guessable) but sloppy. 48h past drop-off, a link that's already served
+// its purpose gets treated the same as one that never existed, matching
+// the "Tracking link not found"/"no longer valid" messaging the driver
+// page already shows for a bad token.
+const EXPIRY_MS = 48 * 60 * 60 * 1000
+const isExpired = (dropoffArrivedAt) => !!dropoffArrivedAt && Date.now() - new Date(dropoffArrivedAt).getTime() > EXPIRY_MS
+
 async function getJob(token) {
   const { data: jt, error } = await admin
     .from('job_tracking')
     .select('opportunity_id, org_id, pickup_arrived_at, dropoff_arrived_at')
     .eq('token', token).maybeSingle()
-  if (error || !jt) return null
+  if (error || !jt || isExpired(jt.dropoff_arrived_at)) return null
 
   const { data: opp } = await admin
     .from('opportunities')
@@ -61,6 +70,9 @@ export const handler = async (event) => {
     if (action === 'ping') {
       const { lat, lng } = payload
       if (typeof lat !== 'number' || typeof lng !== 'number') return json(400, { error: 'Missing lat/lng' })
+      const { data: jt, error: selectError } = await admin
+        .from('job_tracking').select('dropoff_arrived_at').eq('token', token).maybeSingle()
+      if (selectError || !jt || isExpired(jt.dropoff_arrived_at)) return json(404, { error: 'Tracking link not found' })
       const { error } = await admin
         .from('job_tracking')
         .update({ last_lat: lat, last_lng: lng, last_ping_at: new Date().toISOString() })
@@ -74,8 +86,8 @@ export const handler = async (event) => {
       if (stage !== 'pickup' && stage !== 'dropoff') return json(400, { error: 'stage must be pickup or dropoff' })
 
       const { data: jt, error: selectError } = await admin
-        .from('job_tracking').select('opportunity_id, org_id').eq('token', token).maybeSingle()
-      if (selectError || !jt) return json(404, { error: 'Tracking link not found' })
+        .from('job_tracking').select('opportunity_id, org_id, dropoff_arrived_at').eq('token', token).maybeSingle()
+      if (selectError || !jt || isExpired(jt.dropoff_arrived_at)) return json(404, { error: 'Tracking link not found' })
 
       const column = stage === 'pickup' ? 'pickup_arrived_at' : 'dropoff_arrived_at'
       const { error: updateError } = await admin

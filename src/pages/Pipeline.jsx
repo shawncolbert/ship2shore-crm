@@ -172,6 +172,11 @@ export default function Pipeline() {
     })
     try {
       await cancelOpportunity(id)
+    } catch (e) {
+      // Per-2026-09-01 audit: without this, a failed save (dropped
+      // connection, bad cell signal) just silently reverted on the next
+      // refetch below with zero indication anything went wrong.
+      alert(e.message || "Couldn't cancel this job — check your connection and try again.")
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
       qc.invalidateQueries({ queryKey: ['auditLogs'] })
@@ -196,6 +201,8 @@ export default function Pipeline() {
           oldValue: prevOpp.title || prevOpp.contacts?.full_name || id,
         }))
       }
+    } catch (e) {
+      alert(e.message || "Couldn't delete this job — check your connection and try again.")
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
       qc.invalidateQueries({ queryKey: ['auditLogs'] })
@@ -227,6 +234,8 @@ export default function Pipeline() {
           oldValue: driverName(prevOpp.assigned_driver_card_id), newValue: driverName(patch.assigned_driver_card_id),
         }))
       }
+    } catch (e) {
+      alert(e.message || "Couldn't save that change — check your connection and try again.")
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
       qc.invalidateQueries({ queryKey: ['auditLogs'] })
@@ -247,6 +256,9 @@ export default function Pipeline() {
     })
     try {
       await updateOpportunity(id, patch)
+    } catch (e) {
+      alert(e.message || "Couldn't save this job — check your connection and try again.")
+      throw e // let the caller's own try/catch (the JobCard Save button) know too, so it doesn't show "Saved ✓"
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
       qc.invalidateQueries({ queryKey: ['auditLogs'] })
@@ -266,6 +278,9 @@ export default function Pipeline() {
     })
     try {
       await setOpportunityBilling(id, value)
+    } catch (e) {
+      alert(e.message || "Couldn't save the billing number — check your connection and try again.")
+      throw e
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
       qc.invalidateQueries({ queryKey: ['auditLogs'] })
@@ -330,6 +345,8 @@ export default function Pipeline() {
           oldValue: stageName(prevOpp.stage_id), newValue: stageName(stageId),
         }))
       }
+    } catch (e) {
+      alert(e.message || "Couldn't move this job — check your connection and try again.")
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
       qc.invalidateQueries({ queryKey: ['auditLogs'] })
@@ -361,6 +378,8 @@ export default function Pipeline() {
           oldValue: stageName(prevOpp.stage_id), newValue: stageName(stageId),
         }))
       }
+    } catch (e) {
+      alert(e.message || "Couldn't move this job — check your connection and try again.")
     } finally {
       qc.invalidateQueries({ queryKey: ['pipeline'] })
       qc.invalidateQueries({ queryKey: ['auditLogs'] })
@@ -1170,6 +1189,12 @@ function JobDetailModal({
       logPriceChanges()
       await autoDraftInvoices()
       setJustSaved(true)
+    } catch (e) {
+      // onSave/onSaveBilling already alert() their own failure and re-throw
+      // -- this just stops it from becoming a silent unhandled-rejection
+      // and, more importantly, from reaching setJustSaved(true) below,
+      // which would otherwise show "Saved ✓" on a save that didn't happen.
+      console.error('Job save failed:', e)
     } finally {
       setSaving(false)
     }
