@@ -332,6 +332,14 @@ export const handler = async (event) => {
     return { statusCode: 401, body: 'Unauthorized' }
   }
 
+  // KNOWN GAP (2026-09-01 audit): outbound sends (telegramSend.js) now read
+  // each org's own bot token from organizations.telegram_bot_token, but
+  // this inbound webhook still can't tell which org's bot an update came
+  // from -- Telegram's payload doesn't say, only the URL Telegram was told
+  // to call does. Fine while Ship2Shore is the only org with a real bot;
+  // once a second org registers their own (via BotFather's setWebhook),
+  // this needs a per-org URL (e.g. a ?org= param + its own webhook secret)
+  // so it can look up that org's token instead of assuming this one.
   const token = process.env.TELEGRAM_BOT_TOKEN
   if (!token) return { statusCode: 200, body: 'ok' } // not configured -- ack and drop
 

@@ -1,5 +1,5 @@
 import { admin } from './_shared/supabaseAdmin.js'
-import { sendTelegramMessage } from './_shared/telegramSend.js'
+import { sendTelegramMessage, getOrgTelegramConfig } from './_shared/telegramSend.js'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -38,7 +38,7 @@ async function getQuoteRequest(token) {
 // below what the mileage formula guessed -- without the driver ever having
 // seen that number themselves.
 async function notifyOwnerOfQuote(request) {
-  const groupChatId = process.env.TELEGRAM_GROUP_CHAT_ID
+  const { groupChatId } = await getOrgTelegramConfig(request.org_id)
   if (!groupChatId) return
 
   const { data: org } = await admin

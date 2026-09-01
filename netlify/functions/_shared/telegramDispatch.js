@@ -1,24 +1,21 @@
 import { admin } from './supabaseAdmin.js'
 import { calculateGeneralQuote, caPortBracket, isCaPortRoute, seasonFor } from './pricingFormula.js'
-import { sendTelegramMessage } from './telegramSend.js'
+import { sendTelegramMessage, getOrgTelegramConfig } from './telegramSend.js'
 
 // Posts a new-lead alert into the team's Telegram group with a one-tap
 // "Send Quote" action, so the team doesn't have to be staring at the CRM to
-// catch a fresh lead. Silently no-ops when the org hasn't set up Telegram
-// (TELEGRAM_BOT_TOKEN/TELEGRAM_GROUP_CHAT_ID unset) -- same "best-effort,
-// never blocks lead creation" shape as autoAssignDispatcher.
+// catch a fresh lead. Silently no-ops when THIS org hasn't set up its own
+// Telegram bot (Settings > Dispatch Assignment) -- same "best-effort,
+// never blocks lead creation" shape as autoAssignDispatcher. Each org's
+// token/chat id live in the organizations table (see getOrgTelegramConfig
+// in telegramSend.js) -- fixing a historical stale-env-var bug for free,
+// since a DB read is always current, unlike a warm function container's
+// process.env after an env var is changed via the API.
 //
 // Deliberately plain text, no parse_mode -- Telegram's Markdown parser
 // rejects the entire message if a customer's name/address/vehicle happens
 // to contain an unescaped *, _, [, or a few other characters, which would
 // silently swallow a real lead alert. Not worth the risk for a bit of bold text.
-
-// Netlify env var changes via the API don't retroactively update an
-// already-warm function container's process.env -- only a fresh deploy
-// (or a cold start) picks up a new value. TELEGRAM_GROUP_CHAT_ID was
-// corrected twice via the API without a deploy in between, so warm
-// containers kept sending to a stale chat_id even after the value looked
-// right in Netlify's dashboard. Forcing a deploy here.
 function siteOrigin() {
   return process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://dispatch.ship2shorebooking.com'
 }
@@ -84,8 +81,7 @@ export async function estimateLeadQuote({ pickupAddress, dropoffAddress, schedul
 }
 
 export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
-  const token = process.env.TELEGRAM_BOT_TOKEN
-  const groupChatId = process.env.TELEGRAM_GROUP_CHAT_ID
+  const { token, groupChatId } = await getOrgTelegramConfig(orgId)
   if (!token || !groupChatId) return { sent: false, reason: 'Telegram not configured' }
 
   // opportunities has two FKs into contacts (contact_id and
@@ -202,8 +198,7 @@ export async function sendTelegramLeadAlert({ orgId, opportunityId }) {
 // tracking page -- same best-effort, silently-no-ops-if-unconfigured shape
 // as the lead alert above. No buttons needed, this is just a status ping.
 export async function sendTelegramArrivalAlert({ orgId, opportunityId, stage }) {
-  const token = process.env.TELEGRAM_BOT_TOKEN
-  const chatId = process.env.TELEGRAM_GROUP_CHAT_ID
+  const { token, groupChatId: chatId } = await getOrgTelegramConfig(orgId)
   if (!token || !chatId) return { sent: false, reason: 'Telegram not configured' }
 
   const { data: opp, error: oppErr } = await admin

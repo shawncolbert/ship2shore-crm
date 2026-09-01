@@ -73,3 +73,17 @@ export async function saveTelegramBotUsername(orgId, username) {
   const { error } = await supabase.from('organizations').update({ telegram_bot_username: clean }).eq('id', orgId)
   if (error) throw error
 }
+
+// The bot's own token (from @BotFather) and the fallback group chat id
+// (from adding the bot to a group and checking getUpdates) -- per-2026-09-01
+// audit, these used to be one global Netlify env var shared by every org in
+// the database, so a second org's own leads could fall back to Ship2Shore's
+// bot/group. Each org now owns its own row; blank means Telegram alerts
+// just don't send for that org, never silently borrow another org's.
+export async function saveTelegramBotCredentials(orgId, { botToken, groupChatId }) {
+  const { error } = await supabase.from('organizations').update({
+    telegram_bot_token: String(botToken || '').trim() || null,
+    telegram_group_chat_id: String(groupChatId || '').trim() || null,
+  }).eq('id', orgId)
+  if (error) throw error
+}

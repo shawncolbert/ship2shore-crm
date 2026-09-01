@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchMyOrg, fetchMyOrgId, fetchLandingPages, updateLandingPage, fetchDispatcherContacts } from '../lib/supabase'
 import {
   fetchDispatchRotationCandidates, addToDispatchRotation, removeFromDispatchRotation, saveAutoAssignLeads,
-  generateTelegramLinkCode, unlinkTelegramChat, saveTelegramBotUsername,
+  generateTelegramLinkCode, unlinkTelegramChat, saveTelegramBotUsername, saveTelegramBotCredentials,
 } from '../lib/dispatchRotation'
 import { pushSupported, isPushSubscribed, subscribeToPush } from '../lib/pushNotifications'
 
@@ -165,18 +165,32 @@ function PushNotificationSettings() {
 // One-time org setting -- the bot's own @username, shown next to every
 // "Get link code" button below so Shawn (or whoever's on this page) never
 // has to go dig it out of BotFather to tell a dispatcher who to message.
+//
+// Bot token + fallback group chat id (added 2026-09-01, per the multi-tenant
+// audit): these used to be one global Netlify env var shared by every org in
+// the database, so a second org's own leads with no dispatcher assigned yet
+// could fall back to Ship2Shore's own bot/group. Now each org pastes in its
+// OWN bot's credentials here -- blank means Telegram alerts just don't send
+// for that org, never silently borrow another org's bot.
 function TelegramBotSettings({ org }) {
   const qc = useQueryClient()
   const [value, setValue] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedValue, setSavedValue] = useState('')
 
+  const [botToken, setBotToken] = useState('')
+  const [groupChatId, setGroupChatId] = useState('')
+  const [savingCreds, setSavingCreds] = useState(false)
+  const [credsSaved, setCredsSaved] = useState(false)
+
   useEffect(() => {
     if (org?.telegram_bot_username) {
       setValue(org.telegram_bot_username)
       setSavedValue(org.telegram_bot_username)
     }
-  }, [org?.telegram_bot_username])
+    setBotToken(org?.telegram_bot_token || '')
+    setGroupChatId(org?.telegram_group_chat_id || '')
+  }, [org?.telegram_bot_username, org?.telegram_bot_token, org?.telegram_group_chat_id])
 
   const save = async () => {
     setSaving(true)
@@ -190,30 +204,89 @@ function TelegramBotSettings({ org }) {
     }
   }
 
+  const credsDirty = botToken.trim() !== (org?.telegram_bot_token || '') || groupChatId.trim() !== (org?.telegram_group_chat_id || '')
+
+  const saveCreds = async () => {
+    setSavingCreds(true); setCredsSaved(false)
+    try {
+      const orgId = await fetchMyOrgId()
+      await saveTelegramBotCredentials(orgId, { botToken, groupChatId })
+      qc.invalidateQueries({ queryKey: ['myOrg'] })
+      setCredsSaved(true)
+    } finally {
+      setSavingCreds(false)
+    }
+  }
+
   return (
-    <div className={`${card} mb-4`}>
-      <h2 className="mb-1 text-sm font-semibold text-ink">Telegram bot</h2>
-      <p className="mb-3 text-xs text-muted">
-        The @username of the bot posting your lead alerts. Needed so the "Get link code" button below can
-        tell a dispatcher exactly who to message.
-      </p>
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted">@</span>
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="YourBotUsername"
-          className="w-56 rounded-md border border-line bg-canvas px-2 py-1.5 text-sm text-ink"
-        />
-        <button
-          type="button"
-          onClick={save}
-          disabled={saving || value.trim().replace(/^@/, '') === savedValue}
-          className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-ink disabled:opacity-50"
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+    <div className={`${card} mb-4 space-y-4`}>
+      <div>
+        <h2 className="mb-1 text-sm font-semibold text-ink">Telegram bot</h2>
+        <p className="mb-3 text-xs text-muted">
+          The @username of the bot posting your lead alerts. Needed so the "Get link code" button below can
+          tell a dispatcher exactly who to message.
+        </p>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted">@</span>
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="YourBotUsername"
+            className="w-56 rounded-md border border-line bg-canvas px-2 py-1.5 text-sm text-ink"
+          />
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving || value.trim().replace(/^@/, '') === savedValue}
+            className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-ink disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+
+      <div className="border-t border-line pt-4">
+        <h3 className="mb-1 text-sm font-semibold text-ink">Bot credentials</h3>
+        <p className="mb-3 text-xs text-muted">
+          Your own bot's token (from @BotFather) and the fallback group chat id (add the bot to a group, then
+          check its getUpdates response) — needed so lead alerts actually send. This is your own organization's
+          bot, kept separate from any other organization using this system.
+        </p>
+        <div className="space-y-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted">Bot token</label>
+            <input
+              type="password"
+              value={botToken}
+              onChange={(e) => { setBotToken(e.target.value); setCredsSaved(false) }}
+              placeholder="123456789:AA..."
+              autoComplete="off"
+              className="w-full max-w-md rounded-md border border-line bg-canvas px-2 py-1.5 text-sm text-ink"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted">Fallback group chat id</label>
+            <input
+              type="text"
+              value={groupChatId}
+              onChange={(e) => { setGroupChatId(e.target.value); setCredsSaved(false) }}
+              placeholder="-1001234567890"
+              className="w-full max-w-md rounded-md border border-line bg-canvas px-2 py-1.5 text-sm text-ink"
+            />
+          </div>
+          <div className="flex items-center gap-3 pt-1">
+            {credsSaved && !credsDirty && <span className="text-xs text-starboard">Saved ✓</span>}
+            <button
+              type="button"
+              onClick={saveCreds}
+              disabled={savingCreds || !credsDirty}
+              className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-ink disabled:opacity-50"
+            >
+              {savingCreds ? 'Saving…' : 'Save credentials'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

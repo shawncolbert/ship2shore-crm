@@ -3,6 +3,21 @@ import { sendPushToOrgOwners } from './webPush.js'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+// Per-2026-09-01 audit: the bot token and fallback group chat used to be
+// single global Netlify env vars shared by every org in this database. Any
+// org's public lead form could generate a lead that fell back to
+// Ship2Shore's own bot/group -- a real cross-tenant leak the moment a
+// second org goes live with its own public booking page. Each org now owns
+// its own row here (Settings > Dispatch Assignment); a org with nothing
+// configured gets "Telegram not configured" for THAT org, never another
+// org's bot. This also sidesteps the old stale-env-var-in-a-warm-container
+// problem noted below, since a DB read is always current.
+export async function getOrgTelegramConfig(orgId) {
+  const { data } = await admin
+    .from('organizations').select('telegram_bot_token, telegram_group_chat_id').eq('id', orgId).maybeSingle()
+  return { token: data?.telegram_bot_token || null, groupChatId: data?.telegram_group_chat_id || null }
+}
+
 // Every outbound Telegram send in the app should go through this instead
 // of calling fetch(...api.telegram.org...) directly -- per the 2026-08-30
 // audit (confirmed independently by two reviews), a failed send was only
@@ -11,7 +26,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // absorbs a one-off blip without paging anyone; only a failure that
 // survives the retry gets logged and pushed.
 export async function sendTelegramMessage({ orgId, chatId, text, context, replyMarkup }) {
-  const token = process.env.TELEGRAM_BOT_TOKEN
+  const { token } = await getOrgTelegramConfig(orgId)
   if (!token || !chatId) return { sent: false, reason: 'Telegram not configured' }
 
   const attempt = () =>
