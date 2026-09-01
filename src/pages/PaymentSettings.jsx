@@ -36,6 +36,7 @@ export default function PaymentSettings() {
         cashapp_handle: data.cashapp_handle || '',
         apple_pay_handle: data.apple_pay_handle || '',
         default_method: data.default_method || '',
+        stripe_secret_key: data.stripe_secret_key || '',
       })
     }
   }, [data])
@@ -112,6 +113,25 @@ export default function PaymentSettings() {
         <button className={btnAccent + ' mt-5'} disabled={saving} onClick={save}>
           {saving ? 'Saving…' : 'Save'}
         </button>
+      </div>
+
+      <div className={card + ' mt-4'}>
+        <h2 className="mb-1 text-sm font-semibold text-ink">Stripe (card payments)</h2>
+        <p className="mb-3 text-sm text-muted">
+          Paste your own Stripe secret key here to add a "Pay with Card" button to your invoices — get it from
+          your Stripe Dashboard under Developers → API keys. This is your own Stripe account; money from cards
+          paid this way goes straight to you, never routed through anyone else's account. Leave blank and
+          invoices just skip the card option.
+        </p>
+        <label className={label}>Stripe secret key</label>
+        <input
+          type="password"
+          value={form.stripe_secret_key}
+          onChange={(e) => { setForm((f) => ({ ...f, stripe_secret_key: e.target.value })); setSaved(false) }}
+          placeholder="sk_live_…"
+          autoComplete="off"
+          className={`${input} max-w-md`}
+        />
       </div>
 
       <WaveCheckoutLinks />

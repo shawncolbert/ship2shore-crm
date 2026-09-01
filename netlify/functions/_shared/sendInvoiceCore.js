@@ -9,7 +9,14 @@ function siteOrigin(event) {
 // Stripe's API is form-encoded, not JSON -- URLSearchParams handles the
 // bracket-notation nested keys fine as long as they're built as flat
 // "line_items[0][price_data][currency]"-style strings.
-async function createStripePaymentLink({ invoice, publicUrl }) {
+//
+// stripeSecretKey is the calling org's OWN key (Settings > Payment Settings),
+// not a shared platform key -- per the 2026-09-01 audit, this used to be a
+// single global STRIPE_SECRET_KEY env var, so any org's "Pay with Card"
+// link would have run through Ship2Shore's own Stripe account instead of
+// theirs. Never actually turned on for anyone (the env var was never set),
+// so nothing to migrate -- fixed before it could bite anyone.
+async function createStripePaymentLink({ invoice, publicUrl, stripeSecretKey }) {
   const cents = Math.round(Number(invoice.total) * 100)
   const params = new URLSearchParams()
   params.set('line_items[0][price_data][currency]', 'usd')
@@ -23,7 +30,7 @@ async function createStripePaymentLink({ invoice, publicUrl }) {
   const res = await fetch('https://api.stripe.com/v1/payment_links', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`,
+      Authorization: `Bearer ${stripeSecretKey}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: params,
@@ -59,14 +66,17 @@ export async function sendInvoiceCore({ invoice, orgId, event }) {
   if (!invoice.bill_to_email) return { ok: false, error: 'Bill To email is required to send an invoice.' }
 
   const publicUrl = `${siteOrigin(event)}/invoice/${invoice.id}`
+  const { data: paymentSettings } = await admin
+    .from('payment_settings').select('*').eq('org_id', orgId).maybeSingle()
+
   const stripeWanted = invoice.payment_options?.stripe !== false
-  const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY)
+  const stripeConfigured = Boolean(paymentSettings?.stripe_secret_key)
 
   let stripeUrl = invoice.stripe_payment_link_url || null
   let paymentLinkId = invoice.stripe_payment_link_id || null
   if (stripeWanted && stripeConfigured) {
     try {
-      const link = await createStripePaymentLink({ invoice, publicUrl })
+      const link = await createStripePaymentLink({ invoice, publicUrl, stripeSecretKey: paymentSettings.stripe_secret_key })
       stripeUrl = link.url
       paymentLinkId = link.id
     } catch {
@@ -87,8 +97,6 @@ export async function sendInvoiceCore({ invoice, orgId, event }) {
   }).eq('id', invoice.id)
   if (updErr) return { ok: false, error: updErr.message }
 
-  const { data: paymentSettings } = await admin
-    .from('payment_settings').select('*').eq('org_id', orgId).maybeSingle()
   const paymentOptions = resolveInvoicePaymentOptions({ invoice: { ...invoice, stripe_payment_link_url: stripeUrl }, paymentSettings, stripeUrl })
 
   let emailSent = false
