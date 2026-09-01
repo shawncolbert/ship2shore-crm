@@ -59,7 +59,7 @@ export const handler = async () => {
     }
     const orgName = orgNameCache.get(invoice.org_id)
     const paymentOptions = resolveInvoicePaymentOptions({
-      invoice, paymentSettings: paymentSettingsCache.get(invoice.org_id), stripeUrl: invoice.stripe_payment_link_url,
+      invoice, paymentSettings: paymentSettingsCache.get(invoice.org_id),
     })
     const publicUrl = origin ? `${origin}/invoice/${invoice.id}` : null
 

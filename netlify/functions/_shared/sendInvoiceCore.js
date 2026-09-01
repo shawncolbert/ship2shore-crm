@@ -6,40 +6,6 @@ function siteOrigin(event) {
   return process.env.URL || process.env.DEPLOY_PRIME_URL || `https://${event.headers.host}`
 }
 
-// Stripe's API is form-encoded, not JSON -- URLSearchParams handles the
-// bracket-notation nested keys fine as long as they're built as flat
-// "line_items[0][price_data][currency]"-style strings.
-//
-// stripeSecretKey is the calling org's OWN key (Settings > Payment Settings),
-// not a shared platform key -- per the 2026-09-01 audit, this used to be a
-// single global STRIPE_SECRET_KEY env var, so any org's "Pay with Card"
-// link would have run through Ship2Shore's own Stripe account instead of
-// theirs. Never actually turned on for anyone (the env var was never set),
-// so nothing to migrate -- fixed before it could bite anyone.
-async function createStripePaymentLink({ invoice, publicUrl, stripeSecretKey }) {
-  const cents = Math.round(Number(invoice.total) * 100)
-  const params = new URLSearchParams()
-  params.set('line_items[0][price_data][currency]', 'usd')
-  params.set('line_items[0][price_data][unit_amount]', String(cents))
-  params.set('line_items[0][price_data][product_data][name]', `Invoice ${invoice.invoice_number}`)
-  params.set('line_items[0][quantity]', '1')
-  params.set('metadata[invoice_id]', invoice.id)
-  params.set('after_completion[type]', 'redirect')
-  params.set('after_completion[redirect][url]', publicUrl)
-
-  const res = await fetch('https://api.stripe.com/v1/payment_links', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${stripeSecretKey}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: params,
-  })
-  const data = await res.json()
-  if (!res.ok) throw new Error('Stripe error: ' + (data.error?.message || JSON.stringify(data)))
-  return { id: data.id, url: data.url }
-}
-
 function invoiceEmailHtml({ invoice, publicUrl, paymentOptions }) {
   const money = (n) => `$${Number(n || 0).toFixed(2)}`
   return `
@@ -54,14 +20,13 @@ function invoiceEmailHtml({ invoice, publicUrl, paymentOptions }) {
   `
 }
 
-// Marks an invoice as sent, generates a live Stripe payment link if Stripe
-// is configured and enabled for this invoice, and emails the customer from
-// the org's own connected Gmail account with whichever payment options were
-// checked. Shared by the dispatcher-triggered "Send invoice" button
-// (invoice-send.js) and the customer-triggered contract-signing flow
-// (contract-sign.js), so a deposit invoice created automatically when a
-// contract is signed goes out exactly the same way a manually sent one does
-// -- one implementation, not two that can drift apart.
+// Marks an invoice as sent and emails the customer from the org's own
+// connected Gmail account with whichever payment options were checked.
+// Shared by the dispatcher-triggered "Send invoice" button (invoice-send.js)
+// and the customer-triggered contract-signing flow (contract-sign.js), so a
+// deposit invoice created automatically when a contract is signed goes out
+// exactly the same way a manually sent one does -- one implementation, not
+// two that can drift apart.
 export async function sendInvoiceCore({ invoice, orgId, event }) {
   if (!invoice.bill_to_email) return { ok: false, error: 'Bill To email is required to send an invoice.' }
 
@@ -69,35 +34,14 @@ export async function sendInvoiceCore({ invoice, orgId, event }) {
   const { data: paymentSettings } = await admin
     .from('payment_settings').select('*').eq('org_id', orgId).maybeSingle()
 
-  const stripeWanted = invoice.payment_options?.stripe !== false
-  const stripeConfigured = Boolean(paymentSettings?.stripe_secret_key)
-
-  let stripeUrl = invoice.stripe_payment_link_url || null
-  let paymentLinkId = invoice.stripe_payment_link_id || null
-  if (stripeWanted && stripeConfigured) {
-    try {
-      const link = await createStripePaymentLink({ invoice, publicUrl, stripeSecretKey: paymentSettings.stripe_secret_key })
-      stripeUrl = link.url
-      paymentLinkId = link.id
-    } catch {
-      // A Stripe hiccup shouldn't block sending the invoice itself --
-      // the customer still gets a valid "View Invoice" link either way.
-      stripeUrl = null
-    }
-  } else if (!stripeWanted) {
-    stripeUrl = null
-  }
-
   const { error: updErr } = await admin.from('invoices').update({
     status: invoice.status === 'paid' ? 'paid' : 'sent',
     sent_at: new Date().toISOString(),
-    stripe_payment_link_url: stripeUrl,
-    stripe_payment_link_id: paymentLinkId,
     updated_at: new Date().toISOString(),
   }).eq('id', invoice.id)
   if (updErr) return { ok: false, error: updErr.message }
 
-  const paymentOptions = resolveInvoicePaymentOptions({ invoice: { ...invoice, stripe_payment_link_url: stripeUrl }, paymentSettings, stripeUrl })
+  const paymentOptions = resolveInvoicePaymentOptions({ invoice, paymentSettings })
 
   let emailSent = false
   let emailError = null
@@ -117,8 +61,7 @@ export async function sendInvoiceCore({ invoice, orgId, event }) {
 
   return {
     ok: true, status: 'sent',
-    stripeConfigured: stripeWanted && stripeConfigured && Boolean(stripeUrl),
     paymentOptionsSent: paymentOptions.map((o) => o.label),
-    paymentLinkUrl: stripeUrl, publicUrl, emailSent, emailError,
+    publicUrl, emailSent, emailError,
   }
 }

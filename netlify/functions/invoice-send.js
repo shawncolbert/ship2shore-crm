@@ -8,8 +8,9 @@ const json = (statusCode, body) => ({
 })
 
 // Marks an invoice as sent and emails the customer -- see sendInvoiceCore.js
-// for the Stripe link + email logic itself (shared with the contract-signing
-// flow, which sends a deposit invoice the same way once a customer signs).
+// for the payment-options + email logic itself (shared with the
+// contract-signing flow, which sends a deposit invoice the same way once a
+// customer signs).
 export const handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' })
 

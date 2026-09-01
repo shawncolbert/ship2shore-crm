@@ -1,12 +1,11 @@
 // Resolves which payment options should actually appear on a given invoice,
-// combining three sources: the auto-generated Stripe pay link, a per-invoice
-// Wave Checkout URL (pasted in manually -- Wave has no API to mint a fresh
-// single-use link per invoice, unlike Stripe), and the org's own Zelle/
-// Venmo/Cash App/Apple Pay handles from payment_settings. `invoice.
-// payment_options` (jsonb: { stripe, wave, zelle, venmo, cashapp,
-// apple_pay }) records which of these a dispatcher actually checked for
-// *this* invoice -- an option only shows up if it's both checked AND
-// actually configured (a handle on file, or a URL pasted in).
+// combining a per-invoice Wave Checkout URL (pasted in manually -- Wave has
+// no API to mint one per invoice) and the org's own Zelle/Venmo/Cash App/
+// Apple Pay handles from payment_settings. `invoice.payment_options` (jsonb:
+// { wave, zelle, venmo, cashapp, apple_pay } -- stripe retired 2026-09-01,
+// never actually turned on for anyone) records which of these a dispatcher
+// actually checked for *this* invoice -- an option only shows up if it's
+// both checked AND actually configured (a handle on file, or a URL pasted in).
 const money = (n) => `$${Number(n || 0).toFixed(2)}`
 
 function venmoLink(handle, amount) {
@@ -26,16 +25,13 @@ const HANDLE_METHODS = [
 ]
 
 // Returns [{ method, label, kind: 'link'|'handle', url?, handle? }], in a
-// fixed, sensible display order (Stripe/Wave first since they're one-tap,
-// then the handle-style methods).
-export function resolveInvoicePaymentOptions({ invoice, paymentSettings, stripeUrl }) {
+// fixed, sensible display order (Wave first since it's one-tap, then the
+// handle-style methods).
+export function resolveInvoicePaymentOptions({ invoice, paymentSettings }) {
   const opts = invoice.payment_options || {}
   const amount = invoice.amount_due ?? invoice.total
   const list = []
 
-  if (opts.stripe !== false && stripeUrl) {
-    list.push({ method: 'stripe', label: 'Card (Stripe)', kind: 'link', url: stripeUrl })
-  }
   if (opts.wave && invoice.wave_checkout_url) {
     list.push({ method: 'wave', label: 'Wave Checkout', kind: 'link', url: invoice.wave_checkout_url })
   }

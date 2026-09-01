@@ -81,8 +81,9 @@ export const handler = async (event) => {
       ship_to_phone: contact?.phone || null,
       subtotal: contract.deposit_amount, total: contract.deposit_amount, amount_due: contract.deposit_amount,
       status: 'draft',
-      // Zelle always included, per policy -- see lib/invoices.js.
-      payment_options: { stripe: true, zelle: true },
+      // Zelle always included, per policy -- see lib/invoices.js. Wave too,
+      // since it's the default now that Stripe's retired (2026-09-01).
+      payment_options: { wave: true, zelle: true },
       opportunity_id: contract.opportunity_id,
       kind: 'deposit',
     })

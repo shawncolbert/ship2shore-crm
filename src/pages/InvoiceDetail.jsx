@@ -12,7 +12,7 @@ import InvoicePreview from '../components/InvoicePreview'
 // Zelle is always on -- the safest payment method, per policy -- and can't
 // be turned off from this form; enforced again server-side in
 // createInvoice/updateInvoice so it can't be bypassed by any other path.
-const DEFAULT_PAYMENT_OPTIONS = { stripe: true, wave: false, zelle: true, venmo: false, cashapp: false, apple_pay: false }
+const DEFAULT_PAYMENT_OPTIONS = { wave: true, zelle: true, venmo: false, cashapp: false, apple_pay: false }
 const HANDLE_METHODS = [
   { key: 'zelle', field: 'zelle_handle', label: 'Zelle' },
   { key: 'venmo', field: 'venmo_handle', label: 'Venmo' },
@@ -220,11 +220,8 @@ export default function InvoiceDetail() {
   const selectedWaveLink = waveLinks?.find((l) => l.id === waveCheckoutLinkId) || null
 
   // Live-preview version of the send-time resolver in
-  // _shared/invoicePaymentOptions.js -- Stripe's real link doesn't exist
-  // until send, so it previews with a placeholder href just to show the
-  // button will be there.
+  // _shared/invoicePaymentOptions.js.
   const previewPaymentOptions = [
-    ...(paymentOptions.stripe ? [{ method: 'stripe', label: 'Card (Stripe)', kind: 'link', url: '#' }] : []),
     ...(paymentOptions.wave && selectedWaveLink ? [{ method: 'wave', label: `Wave Checkout — ${selectedWaveLink.label}`, kind: 'link', url: selectedWaveLink.url }] : []),
     ...HANDLE_METHODS.filter((m) => paymentOptions[m.key] && paymentSettings?.[m.field]).map((m) => ({
       method: m.key, label: m.label,
@@ -275,8 +272,6 @@ export default function InvoiceDetail() {
       qc.invalidateQueries({ queryKey: ['invoices'] })
       if (!result.emailSent) {
         setNotice({ type: 'warning', text: `Invoice saved as sent, but the email didn't go out: ${result.emailError || 'unknown error'}. Share the customer page link directly instead: ${result.publicUrl}` })
-      } else if (paymentOptions.stripe && !result.stripeConfigured) {
-        setNotice({ type: 'warning', text: `Invoice emailed — but Stripe isn't connected yet, so there's no live Stripe link. ${result.paymentOptionsSent?.length ? `Sent with: ${result.paymentOptionsSent.join(', ')}.` : 'No other payment option was checked, so the customer only got a view link.'} Connect Stripe in Payments to enable it.` })
       } else if (!result.paymentOptionsSent?.length) {
         setNotice({ type: 'warning', text: 'Invoice emailed, but no payment option was actually included — check a box under Payment Options (and make sure any handle/link it needs is filled in) before sending again, or use "View customer page" to share it manually.' })
       } else {
@@ -484,11 +479,6 @@ export default function InvoiceDetail() {
             <section className={card}>
               <h2 className="text-sm font-semibold text-ink">Payment options</h2>
               <p className="-mt-1 text-xs text-muted">Pick which ways to pay show up when this invoice goes out.</p>
-
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input type="checkbox" checked={paymentOptions.stripe} onChange={() => togglePaymentOption('stripe')} className="h-4 w-4 rounded border-line" />
-                Stripe (automatic pay-now link, if connected)
-              </label>
 
               <div>
                 <label className={`flex items-center gap-2 text-sm ${waveLinks?.length ? 'text-ink' : 'text-muted'}`}>

@@ -111,7 +111,7 @@ export async function createInvoice({ fields, lineItems }) {
       // Zelle used to be forced on here regardless of what the caller passed
       // -- Shawn 2026-08-28: it's a normal checkbox now, same as every other
       // method, not a policy the invoice enforces on its own.
-      payment_options: fields.payment_options || { stripe: true },
+      payment_options: fields.payment_options || { wave: true },
       opportunity_id: fields.opportunity_id || null,
       kind: fields.kind === 'deposit' ? 'deposit' : 'invoice',
       reminder_enabled: !!fields.reminder_enabled,
@@ -154,7 +154,7 @@ export async function updateInvoice(id, { fields, lineItems }) {
       wave_checkout_url: fields.wave_checkout_url?.trim() || null,
       wave_checkout_link_id: fields.wave_checkout_link_id || null,
       // See createInvoice -- Zelle is a normal toggleable option now, not forced.
-      payment_options: fields.payment_options || { stripe: true },
+      payment_options: fields.payment_options || { wave: true },
       reminder_enabled: !!fields.reminder_enabled,
       reminder_interval_days: fields.reminder_enabled ? Number(fields.reminder_interval_days) || 7 : null,
       updated_at: new Date().toISOString(),
@@ -258,11 +258,10 @@ export async function fetchCompletedJobs() {
   return data || []
 }
 
-// Not every payment arrives through Stripe (cash, check, Venmo in person,
-// or a Stripe payment link hasn't been connected yet) -- this lets a
-// dispatcher record that manually rather than the invoice being stuck
-// showing a balance forever. Automatic Stripe payments go through the
-// webhook instead, which sets the same fields.
+// None of the supported payment methods (Wave, Zelle, Venmo, Cash App,
+// Apple Pay) have an API to confirm payment automatically -- this lets a
+// dispatcher record that manually once the money's actually arrived,
+// rather than the invoice being stuck showing a balance forever.
 //
 // Moving the linked job to the Paid stage and emailing the customer a
 // receipt both happen server-side now (trg_notify_invoice_paid ->
@@ -337,7 +336,7 @@ export async function dismissZellePaymentMatch(zelleId) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Send (status + Stripe payment link + email, via Netlify function)   */
+/* Send (status + email, via Netlify function)                         */
 /* ------------------------------------------------------------------ */
 
 export async function sendInvoice(id) {

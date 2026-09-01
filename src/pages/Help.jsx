@@ -233,24 +233,18 @@ const SECTIONS = [
     body: `Bill a customer and get paid, without needing Wave or any other outside invoicing tool. Click "+
       New invoice," pick a contact (auto-fills their Bill To info) or type it in manually, add line items —
       pull from your own Services list or type a custom one — and the totals and a live preview update as you
-      go. "Save draft" keeps it editable; "Send invoice" locks in the amount, emails the customer from your
-      connected Gmail account with a link to their own invoice page, and (once Stripe is connected) generates
-      a real "Pay Now" button that marks the invoice paid automatically the moment they pay. Before your first
-      invoice, click "Business info" on this page to set your name/address/phone/logo/EIN for the invoice
-      header — that's separate from your booking business info. Payment didn't come through Stripe (cash,
-      check, Venmo in person)? Open the invoice and click "Mark as Paid" to record it manually — nothing gets
-      stuck showing a balance forever just because it wasn't paid online. Connecting Stripe itself isn't
-      self-serve yet (it's a secret key an admin adds to the deployment) — until it's connected, invoices
-      still send and customers can still view them, there's just no live Pay Now button yet.
+      go. "Save draft" keeps it editable; "Send invoice" locks in the amount and emails the customer from your
+      connected Gmail account with a link to their own invoice page. Before your first invoice, click
+      "Business info" on this page to set your name/address/phone/logo/EIN for the invoice header — that's
+      separate from your booking business info. None of the payment methods here confirm payment
+      automatically — open the invoice and click "Mark as Paid" once the money actually arrives (cash, check,
+      Zelle, Venmo, whatever), so nothing gets stuck showing a balance forever.
 
       Every invoice has its own "Payment options" section where you check off which ways to pay actually go
-      out with it: the Stripe pay-now link, and/or your Venmo/Cash App/Apple Pay handles from Payment
-      Settings. There's also Wave Checkout — Wave's payment links work without needing Wave's paid API tier
-      and are reusable, so build a small library of them once under Payment Settings (name each one, e.g.
-      "Escort - $85"), then just pick the right one from a dropdown when checking the Wave Checkout box on
-      an invoice. Zelle is the one exception — it's always included on every invoice (deposit invoices
-      created automatically from a signed contract too), checkbox locked on, the safest payment route —
-      everything else only shows up if you check it.
+      out with it: Wave Checkout, and/or your Zelle/Venmo/Cash App/Apple Pay handles from Payment Settings.
+      Wave's payment links work without needing Wave's paid API tier and are reusable, so build a small
+      library of them once under Payment Settings (name each one, e.g. "Escort - $85"), then just pick the
+      right one from a dropdown when checking the Wave Checkout box on an invoice.
 
       Zelle payments get matched automatically, too: every 15 minutes the app checks your connected Gmail
       for "you received a Zelle payment" notification emails and, when the amount and sender name line up
