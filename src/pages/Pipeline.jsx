@@ -1114,6 +1114,8 @@ function JobDetailModal({
   // 2026-09-01 check). Needs a contact email and a value set first.
   async function handleSendWaveInvoice() {
     if (!c.contact_id) { alert('This job needs a linked contact first.'); return }
+    if (!c.contacts?.email) { alert("This job's contact has no email on file — add one on their contact page, then try again."); return }
+    if (c.paid_on_site) { alert("This job is marked Paid on-site / COD — there's nothing to invoice through Wave."); return }
     if (!(Number(c.value) > 0)) { alert('Set a transport price above, hit Save, then try again.'); return }
     setSendingWave(true)
     try {
@@ -1231,6 +1233,20 @@ function JobDetailModal({
   const field = 'w-full rounded-md border border-line bg-canvas px-2.5 py-1.5 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/30'
   const mono = 'font-[family-name:var(--font-mono)]'
   const panel = 'rounded-[var(--radius-card)] border border-line bg-surface p-4 shadow-[var(--shadow-card)]'
+  const redField = 'border-red-500 ring-1 ring-red-500/40'
+  const redPill = 'rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white'
+
+  // 2026-09-02: temporary red highlighting on whatever's missing for a
+  // correct Wave invoice -- Shawn asked for this to build the habit of
+  // filling every job in fully before we send an invoice through Wave.
+  // Amount and a real vehicle description are required for a clean line
+  // item; escort fee is flagged (not required) whenever a port's picked,
+  // since not every port job needs one but it's easy to forget.
+  const amountMissing = !(Number(amount) > 0)
+  const vehicleDescMissing = !vehicle.trim() && !hasVehicleDetails
+  const portEscortUnchecked = !isPhotographyOrg && !!port && !(Number(escortFee) > 0)
+  const contactMissing = !c.contact_id
+  const contactEmailMissing = !!c.contact_id && !c.contacts?.email
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6">
@@ -1339,6 +1355,15 @@ function JobDetailModal({
               {c.port && <p className="mt-1 text-white/70">{PORT_LABEL[c.port] || c.port}</p>}
             </div>
           </div>
+
+          {(contactMissing || contactEmailMissing) && (
+            <div className="mb-4 flex items-center gap-2 rounded-[var(--radius-card)] border-2 border-red-500 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700">
+              <span aria-hidden="true">⚠️</span>
+              {contactMissing
+                ? 'No contact linked — link one before this job can be invoiced through Wave.'
+                : "This contact has no email on file — add one on their contact page before invoicing through Wave."}
+            </div>
+          )}
 
           {latestNote && (
             <div className="mb-4 rounded-[var(--radius-card)] border border-line bg-surface px-4 py-2.5 text-sm text-ink">
@@ -1578,8 +1603,14 @@ function JobDetailModal({
 
               {!isPhotographyOrg && (
               <div className="mt-4 border-t border-line pt-4">
-                <label className={label}>Vehicle description</label>
-                <input value={vehicle} onChange={(e) => setVehicle(e.target.value)} placeholder="e.g. 2022 Toyota Tacoma" className={field} />
+                <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                  <label className={`${label} !mb-0`}>Vehicle description</label>
+                  {vehicleDescMissing && <span className={redPill}>Needed for invoice</span>}
+                </div>
+                <input
+                  value={vehicle} onChange={(e) => setVehicle(e.target.value)} placeholder="e.g. 2022 Toyota Tacoma"
+                  className={`${field} ${vehicleDescMissing ? redField : ''}`}
+                />
                 {hasVehicleDetails && (
                   <p className="mt-2 text-xs text-muted">
                     Captured at booking: <span className="text-ink">{[c.vehicle_year, c.vehicle_make, c.vehicle_model].filter(Boolean).join(' ')}</span>
@@ -1668,11 +1699,14 @@ function JobDetailModal({
               <div className="mt-4 border-t border-line pt-4">
                 <div className={`grid gap-3 ${isPhotographyOrg ? 'grid-cols-2' : 'grid-cols-3'}`}>
                   <div>
-                    <label className={label}>Amount ($)</label>
+                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                      <label className={`${label} !mb-0`}>Amount ($)</label>
+                      {amountMissing && <span className={redPill}>Needed for invoice</span>}
+                    </div>
                     <input
                       type="number" inputMode="decimal" min="0" step="1" value={amount}
                       onChange={(e) => { setAmount(e.target.value); setPriceConfirmed(false) }}
-                      placeholder="0" className={`${field} ${mono}`}
+                      placeholder="0" className={`${field} ${mono} ${amountMissing ? redField : ''}`}
                     />
                   </div>
                   <div>
@@ -1681,8 +1715,19 @@ function JobDetailModal({
                   </div>
                   {!isPhotographyOrg && (
                     <div>
-                      <label className={label} title="Flat port escort fee -- always due in full, never split into a deposit, never part of Amount above.">T.W.I.C. Vehicle Service fee ($)</label>
-                      <input type="number" inputMode="decimal" min="0" step="1" value={escortFee} onChange={(e) => setEscortFee(e.target.value)} placeholder="0" className={`${field} ${mono}`} />
+                      <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                        <label
+                          className={`${label} !mb-0`}
+                          title="Flat port escort fee -- always due in full, never split into a deposit, never part of Amount above. Billed as its own line item on the Wave invoice."
+                        >
+                          T.W.I.C. Vehicle Service fee ($)
+                        </label>
+                        {portEscortUnchecked && <span className={redPill}>Port pickup — check this</span>}
+                      </div>
+                      <input
+                        type="number" inputMode="decimal" min="0" step="1" value={escortFee} onChange={(e) => setEscortFee(e.target.value)}
+                        placeholder="0" className={`${field} ${mono} ${portEscortUnchecked ? redField : ''}`}
+                      />
                     </div>
                   )}
                 </div>
@@ -1762,6 +1807,11 @@ function JobDetailModal({
               >
                 {sendingWave ? 'Sending…' : c.wave_invoice_id ? `📤 Wave invoice ${c.payment_status === 'paid' ? '— Paid ✓' : 'sent'}` : '📤 Send via Wave'}
               </button>
+              {!c.wave_invoice_id && (contactMissing || contactEmailMissing || amountMissing || vehicleDescMissing) && (
+                <p className="mt-1.5 text-[11px] font-semibold text-red-600">
+                  Fix the fields marked "Needed for invoice" above before sending.
+                </p>
+              )}
               {isWon && (
                 <div className="mt-3">
                   <CompletionVideoField opportunityId={c.id} contactId={c.contact_id} onInteractStart={() => {}} onInteractEnd={() => {}} />

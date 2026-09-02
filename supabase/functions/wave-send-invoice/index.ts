@@ -3,15 +3,17 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // "Send invoice" action from an opportunity card. Creates (or reuses) a Wave
 // customer for the contact, creates a Wave invoice for the opportunity's
-// value, emails it via Wave, and stores the returned invoice id.
+// value (minus any deposit already collected, plus a separate line for the
+// port escort fee when one's on the job), emails it via Wave, and stores
+// the returned invoice id.
 //
-// NOTE ON SCHEMA CERTAINTY: Wave's own docs (developer.waveapps.com) could
-// not be reached from this build environment (blocked upstream), so the
-// GraphQL shapes below are the best-known-accurate Wave API, kept
-// deliberately minimal (few selected fields) to reduce the chance of a
-// field-name mismatch. If Wave's live schema differs on any field, the
-// GraphQL error returned here will name the exact field -- check these logs
-// after the first real "Send invoice" click and tell me; it's a one-line fix.
+// 2026-09-02: every InvoiceCreateItemInput needs a real productId (confirmed
+// via live schema introspection -- see wave-payment-sync/wave-webhook for
+// the shared Wave client conventions). This reuses one cached generic
+// product (organizations.wave_default_product_id, created lazily against
+// that org's own income account) for both the transport and escort line
+// items -- Wave only needs a product for chart-of-accounts categorization,
+// and a small operation doesn't need two.
 //
 // This file intentionally duplicates the Wave client helpers also present in
 // wave-webhook and wave-payment-sync, matching this project's existing
@@ -84,7 +86,53 @@ async function findOrCreateWaveCustomer(
   return customerId;
 }
 
-async function createAndSendWaveInvoice(opts: { customerId: string; description: string; amount: number | string; toEmail: string }) {
+// Picks this business's own "Sales" income account (falls back to the first
+// INCOME account if there's no literal "Sales") to post the default product
+// to -- required by ProductCreateInput, and has to be a real account id from
+// THIS business's chart of accounts, not a fixed/shared value.
+async function findIncomeAccountId() {
+  const data = await waveFetch(
+    `query Accounts($businessId: ID!) {
+      business(id: $businessId) { accounts(types: [INCOME], page: 1, pageSize: 25) { edges { node { id name } } } }
+    }`,
+    { businessId: WAVE_BUSINESS_ID },
+  );
+  const accounts = (data.business?.accounts?.edges || []).map((e: any) => e.node);
+  const sales = accounts.find((a: any) => a.name === "Sales") || accounts[0];
+  if (!sales) throw new WaveError("This Wave business has no income account to post to -- add one in Wave's Chart of Accounts first.");
+  return sales.id;
+}
+
+// One generic product covers every line item -- Wave requires each item to
+// reference a real Product, but this CRM prices each job (and its escort
+// fee) individually via the item's own unitPrice, so the product itself
+// doesn't need to represent a specific price or service variant.
+async function findOrCreateWaveProduct(supabase: any, org: { id: string; wave_default_product_id: string | null }) {
+  if (org.wave_default_product_id) return org.wave_default_product_id;
+
+  const incomeAccountId = await findIncomeAccountId();
+  const data = await waveFetch(
+    `mutation ProductCreate($input: ProductCreateInput!) {
+      productCreate(input: $input) {
+        didSucceed
+        inputErrors { path message code }
+        product { id }
+      }
+    }`,
+    { input: { businessId: WAVE_BUSINESS_ID, name: "Vehicle Transport Service", unitPrice: "0.00", incomeAccountId } },
+  );
+  const payload = data.productCreate;
+  if (!payload.didSucceed || !payload.product) {
+    throw new WaveError(
+      "Could not create Wave product: " + (payload.inputErrors || []).map((e: any) => e.message).join("; "),
+    );
+  }
+  const productId = payload.product.id;
+  await supabase.from("organizations").update({ wave_default_product_id: productId }).eq("id", org.id);
+  return productId;
+}
+
+async function createAndSendWaveInvoice(opts: { customerId: string; productId: string; items: { description: string; amount: number }[]; toEmail: string }) {
   const created = await waveFetch(
     `mutation InvoiceCreate($input: InvoiceCreateInput!) {
       invoiceCreate(input: $input) {
@@ -97,7 +145,8 @@ async function createAndSendWaveInvoice(opts: { customerId: string; description:
       input: {
         businessId: WAVE_BUSINESS_ID,
         customerId: opts.customerId,
-        items: [{ description: opts.description, quantity: 1, unitPrice: money2(opts.amount) }],
+        status: "SAVED",
+        items: opts.items.map((it) => ({ productId: opts.productId, description: it.description, quantity: 1, unitPrice: money2(it.amount) })),
       },
     },
   );
@@ -149,18 +198,49 @@ Deno.serve(async (req: Request) => {
 
   const { data: opp, error: oppErr } = await supabase
     .from("opportunities")
-    .select("id, org_id, title, service_code, value, contact_id, contacts!contact_id(id, full_name, email, wave_customer_id)")
+    .select(
+      "id, org_id, title, service_code, value, escort_fee, deposit_amount, deposit_paid, paid_on_site, " +
+        "vehicle, vehicle_year, vehicle_make, vehicle_model, contact_id, contacts!contact_id(id, full_name, email, wave_customer_id)",
+    )
     .eq("id", opportunityId)
     .maybeSingle();
   if (oppErr || !opp) return json({ error: "Opportunity not found." }, 404);
 
   const contact = (opp as any).contacts;
   if (!contact?.email) return json({ error: "This contact has no email on file — add one before sending an invoice." }, 400);
+  if (opp.paid_on_site) return json({ error: "This job is marked Paid on-site / COD — no invoice needed." }, 400);
+
+  const { data: org, error: orgErr } = await supabase
+    .from("organizations").select("id, wave_default_product_id").eq("id", opp.org_id).maybeSingle();
+  if (orgErr || !org) return json({ error: "Organization not found." }, 404);
+
+  // Bill only what's actually still owed -- if a deposit's already been
+  // marked collected, it comes off the transport total so Wave never
+  // double-bills a customer who paid a deposit through another channel.
+  const vehicleDesc = [opp.vehicle_year, opp.vehicle_make, opp.vehicle_model].filter(Boolean).join(" ") || opp.vehicle || null;
+  const baseDescription = vehicleDesc || opp.title || (opp.service_code ? String(opp.service_code).replace(/_/g, " ") : "Service");
+  const depositCollected = opp.deposit_paid ? Number(opp.deposit_amount || 0) : 0;
+  const transportDue = Math.max(Number(opp.value || 0) - depositCollected, 0);
+  const escortFee = Number(opp.escort_fee || 0);
+
+  const items: { description: string; amount: number }[] = [];
+  if (transportDue > 0) {
+    items.push({
+      description: depositCollected > 0 ? `${baseDescription} — balance after $${depositCollected.toFixed(2)} deposit` : baseDescription,
+      amount: transportDue,
+    });
+  }
+  if (escortFee > 0) {
+    items.push({ description: "Port escort fee (T.W.I.C.)", amount: escortFee });
+  }
+  if (items.length === 0) {
+    return json({ error: "Nothing left to invoice — the deposit already on file covers the full amount." }, 400);
+  }
 
   try {
     const customerId = await findOrCreateWaveCustomer(supabase, contact);
-    const description = opp.title || (opp.service_code ? String(opp.service_code).replace(/_/g, " ") : "Service");
-    const invoiceId = await createAndSendWaveInvoice({ customerId, description, amount: opp.value, toEmail: contact.email });
+    const productId = await findOrCreateWaveProduct(supabase, org);
+    const invoiceId = await createAndSendWaveInvoice({ customerId, productId, items, toEmail: contact.email });
 
     await supabase.from("opportunities")
       .update({ wave_invoice_id: invoiceId, payment_status: "sent" })
