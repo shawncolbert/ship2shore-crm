@@ -1771,9 +1771,14 @@ function JobDetailModal({
               </div>
             </div>
 
-            {/* Section 3 -- Documents & Execution */}
+            {/* Section 3 -- Documents & Execution, split into Billing (ways to
+                get paid) and Driver & Contract (everything else) so the three
+                invoicing options read as one group instead of one of them
+                looking like a random extra button. */}
             <div className={panel}>
-              <h3 className="mb-3 text-sm font-bold text-ink">Documents &amp; Execution</h3>
+              <h3 className="mb-1 text-sm font-bold text-ink">Documents &amp; Execution</h3>
+
+              <h4 className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wide text-muted">Billing</h4>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button type="button" onClick={() => onOpenInvoice()} className="flex items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent">
                   Balance invoice {invoice && <InvoiceStatusBadge status={invoice.status} />}
@@ -1781,12 +1786,26 @@ function JobDetailModal({
                 <button type="button" onClick={() => onOpenDepositInvoice()} className="flex items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent">
                   Deposit invoice {depositInvoice && <InvoiceStatusBadge status={depositInvoice.status} prefix="Deposit: " />}
                 </button>
+                <button
+                  type="button" onClick={handleSendWaveInvoice} disabled={sendingWave}
+                  title="Sends a real invoice through your own Wave account -- separate from the invoice buttons above. Marked paid automatically once Wave confirms it (checked every 15 min)."
+                  className="flex items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent disabled:opacity-50 sm:col-span-2"
+                >
+                  {sendingWave ? 'Sending…' : c.wave_invoice_id ? `📤 Wave invoice ${c.payment_status === 'paid' ? '— Paid ✓' : 'sent'}` : '📤 Send via Wave'}
+                </button>
               </div>
+              {!c.wave_invoice_id && (contactMissing || contactEmailMissing || amountMissing || vehicleDescMissing) && (
+                <p className="mt-1.5 text-[11px] font-semibold text-red-600">
+                  Fix the fields marked "Needed for invoice" above before sending via Wave.
+                </p>
+              )}
+
+              <h4 className="mb-2 mt-4 border-t border-line pt-3 text-[11px] font-semibold uppercase tracking-wide text-muted">Driver &amp; Contract</h4>
               <button
                 type="button"
                 onClick={handleSendContract}
                 disabled={sendingContract}
-                className="mt-2 flex w-full items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent disabled:opacity-50"
+                className="flex w-full items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent disabled:opacity-50"
               >
                 <span>{sendingContract ? 'Sending contract…' : contract ? 'Resend contract' : 'Send contract'}</span>
                 {contract && <ContractStatusBadge contract={contract} />}
@@ -1800,18 +1819,6 @@ function JobDetailModal({
               >
                 {requestingQuote ? 'Creating link…' : '🚚 Ask driver for quote'}
               </button>
-              <button
-                type="button" onClick={handleSendWaveInvoice} disabled={sendingWave}
-                title="Sends a real invoice through your own Wave account -- separate from the invoice buttons above. Marked paid automatically once Wave confirms it (checked every 15 min)."
-                className="mt-2 w-full rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent disabled:opacity-50"
-              >
-                {sendingWave ? 'Sending…' : c.wave_invoice_id ? `📤 Wave invoice ${c.payment_status === 'paid' ? '— Paid ✓' : 'sent'}` : '📤 Send via Wave'}
-              </button>
-              {!c.wave_invoice_id && (contactMissing || contactEmailMissing || amountMissing || vehicleDescMissing) && (
-                <p className="mt-1.5 text-[11px] font-semibold text-red-600">
-                  Fix the fields marked "Needed for invoice" above before sending.
-                </p>
-              )}
               {isWon && (
                 <div className="mt-3">
                   <CompletionVideoField opportunityId={c.id} contactId={c.contact_id} onInteractStart={() => {}} onInteractEnd={() => {}} />
