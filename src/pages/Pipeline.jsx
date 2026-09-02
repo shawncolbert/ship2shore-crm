@@ -13,6 +13,7 @@ import {
   sendContract, fetchLatestContract,
   parseJobBrief,
   logAudit, fetchAuditLogsForEntity,
+  sendWaveInvoice,
 } from '../lib/supabase'
 import { createInvoice } from '../lib/invoices'
 import { buildBookingSummary, buildCarrierQuoteAsk, shareBooking, copyToClipboard } from '../lib/shareBooking'
@@ -878,6 +879,7 @@ function JobDetailModal({
   const { data: contract } = useQuery({ queryKey: ['jobContract', c.id], queryFn: () => fetchLatestContract(c.id) })
   const [sendingContract, setSendingContract] = useState(false)
   const [requestingQuote, setRequestingQuote] = useState(false)
+  const [sendingWave, setSendingWave] = useState(false)
   const [estimatedMiles, setEstimatedMiles] = useState(null)
   const qc = useQueryClient()
   const hasVehicleDetails = c.vehicle_year || c.vehicle_make || c.vehicle_model || c.vehicle_vin
@@ -1102,6 +1104,27 @@ function JobDetailModal({
 
   function handleShare() {
     shareBooking({ summaryText: bookingSummaryFor(c, latestNote, photoUrl), recipientPhone: c.contacts?.phone })
+  }
+
+  // Real invoice inside Shawn's actual Wave account (separate from this
+  // CRM's own invoice records above) -- creates/reuses the Wave customer,
+  // creates + emails a Wave invoice for the job's transport value, and gets
+  // marked paid automatically once Wave confirms it (wave-payment-sync
+  // polls every 15 min; no Wave Pro plan required for either step, per the
+  // 2026-09-01 check). Needs a contact email and a value set first.
+  async function handleSendWaveInvoice() {
+    if (!c.contact_id) { alert('This job needs a linked contact first.'); return }
+    if (!(Number(c.value) > 0)) { alert('Set a transport price above, hit Save, then try again.'); return }
+    setSendingWave(true)
+    try {
+      await sendWaveInvoice(c.id)
+      qc.invalidateQueries({ queryKey: ['pipeline'] })
+      alert('Wave invoice sent — the customer should have it in their inbox now.')
+    } catch (e) {
+      alert(e.message || 'Could not send this through Wave.')
+    } finally {
+      setSendingWave(false)
+    }
   }
 
   // Works for any driver, saved contact or not -- prompts for whatever
@@ -1731,6 +1754,13 @@ function JobDetailModal({
                 className="mt-2 w-full rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent disabled:opacity-50"
               >
                 {requestingQuote ? 'Creating link…' : '🚚 Ask driver for quote'}
+              </button>
+              <button
+                type="button" onClick={handleSendWaveInvoice} disabled={sendingWave}
+                title="Sends a real invoice through your own Wave account -- separate from the invoice buttons above. Marked paid automatically once Wave confirms it (checked every 15 min)."
+                className="mt-2 w-full rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent disabled:opacity-50"
+              >
+                {sendingWave ? 'Sending…' : c.wave_invoice_id ? `📤 Wave invoice ${c.payment_status === 'paid' ? '— Paid ✓' : 'sent'}` : '📤 Send via Wave'}
               </button>
               {isWon && (
                 <div className="mt-3">
