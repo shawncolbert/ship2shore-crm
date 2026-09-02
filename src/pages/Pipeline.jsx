@@ -509,12 +509,24 @@ function JobCard({ c, autoOpen, isWon, stages, dragId, setDragId, cancelling, on
     navigate(depositInvoice ? `/invoices/${depositInvoice.id}` : `/invoices/new?opportunity_id=${c.id}&kind=deposit`)
   }
 
+  // 2026-09-02: this button is labeled (and meant) for the driver, but was
+  // wired to c.contacts?.phone -- the linked CRM contact, which for a
+  // vehicle-transport job is the customer, not the driver. shareBooking()
+  // addresses the text straight to whatever phone it's given, so that sent
+  // it to the customer's phone instead of the assigned driver's every time.
+  // Fixed to use the assigned driver's own number, same source "Text route"
+  // already uses correctly; falls back to the open share sheet (no
+  // preaddressed number) when no driver's assigned yet, same as "Text to
+  // another driver (not in system)" below.
+  const { data: driversForShare } = useQuery({ queryKey: ['transportDrivers'], queryFn: fetchTransportDrivers })
+  const assignedDriverForShare = driversForShare?.find((d) => d.id === c.assigned_driver_card_id)
+
   // No await before shareBooking() -- navigator.share() needs to fire within
   // the same user-gesture the click provides, and this card's fields are
   // already all in memory (no fetch needed for the quick-action version).
   function handleShareBooking(e) {
     e?.stopPropagation()
-    shareBooking({ summaryText: bookingSummaryFor(c), recipientPhone: c.contacts?.phone })
+    shareBooking({ summaryText: bookingSummaryFor(c), recipientPhone: assignedDriverForShare?.sms_number || assignedDriverForShare?.phone })
   }
 
   return (
@@ -1102,8 +1114,12 @@ function JobDetailModal({
     await autoDraftInvoice({ kind: 'invoice', existing: invoice, unitPrice: remaining, label: 'Balance' })
   }
 
+  // 2026-09-02: same fix as JobCard's quick-action version above -- was
+  // wired to c.contacts?.phone (the customer), sending "Text driver" texts
+  // straight to the customer instead of the assigned driver. Uses the same
+  // assignedDriver this modal already loads for "Text route".
   function handleShare() {
-    shareBooking({ summaryText: bookingSummaryFor(c, latestNote, photoUrl), recipientPhone: c.contacts?.phone })
+    shareBooking({ summaryText: bookingSummaryFor(c, latestNote, photoUrl), recipientPhone: assignedDriver?.sms_number || assignedDriver?.phone })
   }
 
   // Real invoice inside Shawn's actual Wave account (separate from this
