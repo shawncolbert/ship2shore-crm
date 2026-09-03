@@ -101,8 +101,11 @@ const PORTS_AMERICA_URL = 'https://dockworks.portsamerica.com/Operations/Cargo/C
 async function openCarrierTracking(blNumber) {
   const clean = String(blNumber || '').trim()
   if (!clean) return
-  await copyToClipboard(clean)
+  // window.open has to fire synchronously, in the same tick as the click --
+  // Safari (especially iOS) silently blocks it as a popup if anything gets
+  // awaited first, which is exactly what copyToClipboard below would do.
   window.open(PORTS_AMERICA_URL, '_blank')
+  await copyToClipboard(clean)
 }
 
 // Vehicle type bucket used for auto-pricing (matches the DB check constraint
