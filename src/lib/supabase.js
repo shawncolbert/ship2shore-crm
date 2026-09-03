@@ -439,6 +439,7 @@ export async function fetchDefaultPipeline() {
     .from('opportunities')
     .select('id, org_id, title, service_code, port, vehicle, value, deposit_amount, escort_fee, scheduled_at, stage_id, contact_id, status, billing_number, booking_number, bl_number, cleared, paid, deposit_paid, paid_on_site, pickup_address, dropoff_address, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, vehicle_type, vehicle_modification, vehicle_extended, vehicle_body_class, vehicle_gvwr, suggested_price, confirmed_price, source_board, board_order_number, assigned_dispatcher_id, assigned_driver_card_id, project_type, gallery_link, custom_fields, wave_invoice_id, payment_status, contacts!opportunities_contact_id_fkey(full_name, company, email, phone), assigned_dispatcher:contacts!opportunities_assigned_dispatcher_id_fkey(id, full_name, company), invoices(id, status, invoice_number, total, amount_due, created_at, kind)')
     .eq('pipeline_id', pipeline.id)
+    .is('archived_at', null)
     .order('created_at', { ascending: false, foreignTable: 'invoices' })
   if (oErr) throw oErr
 
@@ -645,6 +646,7 @@ export async function patchOpportunity(id, patch) {
   if ('deposit_paid' in patch) allowed.deposit_paid = !!patch.deposit_paid
   if ('paid_on_site' in patch) allowed.paid_on_site = !!patch.paid_on_site
   if ('assigned_driver_card_id' in patch) allowed.assigned_driver_card_id = patch.assigned_driver_card_id || null
+  if ('archived_at' in patch) allowed.archived_at = patch.archived_at || null
   const { error } = await supabase.from('opportunities').update(allowed).eq('id', id)
   if (error) throw error
 }

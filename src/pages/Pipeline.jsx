@@ -1942,10 +1942,24 @@ function JobDetailModal({
           </button>
           <button
             type="button"
+            onClick={() => {
+              if (window.confirm(`Mark "${c.title || 'this job'}" completed? It'll come off the Pipeline board -- still on ${c.contacts?.full_name || 'the customer'}'s file, full history intact.`)) {
+                onPatch({ archived_at: new Date().toISOString() })
+                onClose()
+              }
+            }}
+            disabled={saving || cancelling}
+            title="Removes this job from the board -- stays on the customer's file, nothing's deleted."
+            className="ml-auto rounded-md bg-starboard/15 px-4 py-2 text-sm font-medium text-starboard hover:bg-starboard/25 disabled:opacity-50"
+          >
+            ✅ Mark job completed
+          </button>
+          <button
+            type="button"
             onClick={onCancelJob}
             disabled={saving || cancelling}
             title="Cancel this job — it'll disappear from the board"
-            className="ml-auto rounded-md px-4 py-2 text-sm font-medium text-port hover:bg-red-50 disabled:opacity-50"
+            className="rounded-md px-4 py-2 text-sm font-medium text-port hover:bg-red-50 disabled:opacity-50"
           >
             {cancelling ? 'Cancelling…' : 'Cancel job'}
           </button>
