@@ -666,6 +666,11 @@ function JobCard({ c, autoOpen, isWon, stages, dragId, setDragId, cancelling, on
       {c.booking_number && (
         <div className="mt-0.5 font-[family-name:var(--font-mono)] text-[10px] text-muted">{c.booking_number}</div>
       )}
+      {c.vehicle_vin && (
+        <div className="mt-0.5 font-[family-name:var(--font-mono)] text-[10px] text-muted" title="VIN / chassis number">
+          VIN {c.vehicle_vin}
+        </div>
+      )}
       {c.scheduled_at && (
         <div className="mt-1.5">
           <span
@@ -1712,11 +1717,11 @@ function JobDetailModal({
 
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div className="sm:col-span-3">
-                    <label className={label}>VIN</label>
+                    <label className={label} title="A real 17-character VIN auto-decodes the vehicle. A JDM/import chassis number (different format) is fine too -- it just won't auto-decode, so fill in Year/Make/Model yourself alongside it.">VIN / Chassis #</label>
                     <input
                       value={vehicleVin}
-                      onChange={(e) => setVehicleVin(e.target.value.toUpperCase().slice(0, 17))}
-                      placeholder="17-character VIN — auto-decodes"
+                      onChange={(e) => setVehicleVin(e.target.value.toUpperCase().slice(0, 32))}
+                      placeholder="17-character VIN (auto-decodes) or a JDM chassis #"
                       maxLength={17}
                       className={`${field} ${mono}`}
                     />
