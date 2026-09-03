@@ -213,16 +213,23 @@ export default function Inbox() {
         )}
 
         {gmailStatus && !gmailStatus.connected && gmailStatus.appConfigured && (
-          <div className="mx-4 mt-3 rounded-[var(--radius-card)] border-l-2 bg-surface/80 px-3 py-2.5 text-xs text-ink shadow-[var(--shadow-card)] backdrop-blur" style={{ borderColor: 'var(--color-brass)' }}>
-            <p className="mb-2 flex items-start gap-2"><AlertIcon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--color-brass)' }} /><span>No Gmail account connected. Connect one so emails sync in and replies send from your own address.</span></p>
+          <div className="mx-4 mt-3 rounded-[var(--radius-card)] border-l-2 bg-surface/80 px-3 py-2.5 text-xs text-ink shadow-[var(--shadow-card)] backdrop-blur" style={{ borderColor: gmailStatus.needsReconnect ? 'var(--color-port)' : 'var(--color-brass)' }}>
+            <p className="mb-2 flex items-start gap-2">
+              <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: gmailStatus.needsReconnect ? 'var(--color-port)' : 'var(--color-brass)' }} />
+              <span>
+                {gmailStatus.needsReconnect
+                  ? `Gmail (${gmailStatus.email || 'your account'}) stopped working -- Google revoked the connection. Nothing that emails a customer will send until you reconnect.`
+                  : 'No Gmail account connected. Connect one so emails sync in and replies send from your own address.'}
+              </span>
+            </p>
             <button
               onClick={handleConnectGmail}
               disabled={connecting}
               className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-btn)] px-3 py-1.5 text-xs font-semibold text-white transition-shadow hover:shadow-[0_0_16px_-2px_var(--color-accent)] disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, var(--color-accent), var(--color-accent-600))' }}
+              style={{ background: gmailStatus.needsReconnect ? 'var(--color-port)' : 'linear-gradient(135deg, var(--color-accent), var(--color-accent-600))' }}
             >
               <MailIcon className="h-3.5 w-3.5" />
-              {connecting ? 'Redirecting…' : 'Connect Gmail'}
+              {connecting ? 'Redirecting…' : gmailStatus.needsReconnect ? 'Reconnect Gmail' : 'Connect Gmail'}
             </button>
           </div>
         )}
