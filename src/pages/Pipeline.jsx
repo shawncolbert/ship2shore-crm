@@ -87,38 +87,22 @@ const PORT_ADDRESS = {
   matson: '1320 Pier C St, Long Beach, CA 90813',
 }
 
-// 2026-09-02: "Track shipment" -- the free, no-backend fallback after the
-// Ports America terminal lookup turned out to need a real logged-in
-// browser session (couldn't be automated server-side, see that day's
-// build notes). This never tries to be clever: it copies the B/L number
-// to the clipboard and opens the *real* carrier tracking site's homepage
-// in a new tab, so all Shawn has to do is paste. Deliberately does NOT
-// try to build a pre-filled deep-link URL for each carrier -- those
-// formats aren't publicly documented and a guessed one that's wrong would
-// be worse than no link at all (looks like it works, silently doesn't).
-// Only carriers with a confirmed real tracking tool are mapped; anything
-// else (including MOLU/MOL -- their vehicle/RoRo cargo doesn't route
-// through the same tracker as their container business) falls through to
-// a plain web search, which reliably surfaces the right carrier page.
-const CARRIER_TRACKING = {
-  MAEU: { name: 'Maersk', url: 'https://www.maersk.com/tracking/' },
-  COSU: { name: 'COSCO', url: 'https://lines.coscoshipping.com/' },
-  ONEY: { name: 'ONE (Ocean Network Express)', url: 'https://us.one-line.com/CargoTracking' },
-  MSCU: { name: 'MSC', url: 'https://www.msc.com/en/track-a-shipment' },
-  HLCU: { name: 'Hapag-Lloyd', url: 'https://www.hapag-lloyd.com/en/online-business/track/track-by-booking-solution.html' },
-  CMDU: { name: 'CMA CGM', url: 'https://www.cma-cgm.com/ebusiness/tracking' },
-  EGLV: { name: 'Evergreen', url: 'https://www.evergreen-line.com/eservice/tools/track_trace.jsp' },
-}
+// 2026-09-02: "Track shipment" -- Shawn's actual workflow is a single site
+// he checks 2-5x/day (Ports America's Wilmington cargo/demurrage lookup),
+// not a per-carrier routing tool. That page needs a real logged-in browser
+// session, which ruled out checking it automatically from the server --
+// but this button runs client-side in Shawn's own browser (same as his
+// existing bookmark to this exact URL), so it carries whatever access he
+// already has there. No pre-filled querystring -- his own bookmark doesn't
+// use one either, so the page apparently doesn't support one; this copies
+// the B/L number to the clipboard instead so it's a paste, not a retype.
+const PORTS_AMERICA_URL = 'https://dockworks.portsamerica.com/Operations/Cargo/CargoAvailableAndDemurrage.aspx'
 
 async function openCarrierTracking(blNumber) {
   const clean = String(blNumber || '').trim()
   if (!clean) return
-  const prefix = clean.slice(0, 4).toUpperCase()
-  const carrier = CARRIER_TRACKING[prefix]
   await copyToClipboard(clean)
-  const url = carrier ? carrier.url : `https://www.google.com/search?q=track+bill+of+lading+${encodeURIComponent(clean)}`
-  window.open(url, '_blank')
-  return carrier?.name || null
+  window.open(PORTS_AMERICA_URL, '_blank')
 }
 
 // Vehicle type bucket used for auto-pricing (matches the DB check constraint
@@ -1582,12 +1566,12 @@ function JobDetailModal({
                     <button
                       type="button"
                       disabled={!blNumber || trackingShipment}
-                      title="Copies the number and opens the carrier's real tracking site so you can just paste it in."
+                      title="Copies the number and opens Ports America's cargo lookup in a new tab -- paste the number in and hit their Search."
                       onClick={async () => {
                         setTrackingShipment(true)
                         try {
-                          const carrierName = await openCarrierTracking(blNumber)
-                          setTrackedCarrier(carrierName)
+                          await openCarrierTracking(blNumber)
+                          setTrackedCarrier(true)
                           setTimeout(() => setTrackedCarrier(null), 3000)
                         } finally {
                           setTrackingShipment(false)
@@ -1595,12 +1579,12 @@ function JobDetailModal({
                       }}
                       className="shrink-0 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink transition-colors hover:bg-canvas disabled:opacity-40"
                     >
-                      🔎 Track shipment
+                      🔎 Check port status
                     </button>
                   </div>
-                  {trackedCarrier !== null && (
+                  {trackedCarrier && (
                     <p className="mt-1 text-[11px] text-muted">
-                      {trackedCarrier ? `Number copied — paste it into ${trackedCarrier}'s tracking page.` : "Number copied — carrier not recognized, opened a search for it instead."}
+                      Number copied — paste it into the BL Number box and hit Search.
                     </p>
                   )}
                 </div>
