@@ -87,6 +87,40 @@ const PORT_ADDRESS = {
   matson: '1320 Pier C St, Long Beach, CA 90813',
 }
 
+// 2026-09-02: "Track shipment" -- the free, no-backend fallback after the
+// Ports America terminal lookup turned out to need a real logged-in
+// browser session (couldn't be automated server-side, see that day's
+// build notes). This never tries to be clever: it copies the B/L number
+// to the clipboard and opens the *real* carrier tracking site's homepage
+// in a new tab, so all Shawn has to do is paste. Deliberately does NOT
+// try to build a pre-filled deep-link URL for each carrier -- those
+// formats aren't publicly documented and a guessed one that's wrong would
+// be worse than no link at all (looks like it works, silently doesn't).
+// Only carriers with a confirmed real tracking tool are mapped; anything
+// else (including MOLU/MOL -- their vehicle/RoRo cargo doesn't route
+// through the same tracker as their container business) falls through to
+// a plain web search, which reliably surfaces the right carrier page.
+const CARRIER_TRACKING = {
+  MAEU: { name: 'Maersk', url: 'https://www.maersk.com/tracking/' },
+  COSU: { name: 'COSCO', url: 'https://lines.coscoshipping.com/' },
+  ONEY: { name: 'ONE (Ocean Network Express)', url: 'https://us.one-line.com/CargoTracking' },
+  MSCU: { name: 'MSC', url: 'https://www.msc.com/en/track-a-shipment' },
+  HLCU: { name: 'Hapag-Lloyd', url: 'https://www.hapag-lloyd.com/en/online-business/track/track-by-booking-solution.html' },
+  CMDU: { name: 'CMA CGM', url: 'https://www.cma-cgm.com/ebusiness/tracking' },
+  EGLV: { name: 'Evergreen', url: 'https://www.evergreen-line.com/eservice/tools/track_trace.jsp' },
+}
+
+async function openCarrierTracking(blNumber) {
+  const clean = String(blNumber || '').trim()
+  if (!clean) return
+  const prefix = clean.slice(0, 4).toUpperCase()
+  const carrier = CARRIER_TRACKING[prefix]
+  await copyToClipboard(clean)
+  const url = carrier ? carrier.url : `https://www.google.com/search?q=track+bill+of+lading+${encodeURIComponent(clean)}`
+  window.open(url, '_blank')
+  return carrier?.name || null
+}
+
 // Vehicle type bucket used for auto-pricing (matches the DB check constraint
 // and the vin-decode Edge Function's BodyClass mapping).
 const VEHICLE_TYPE_LABEL = {
@@ -832,6 +866,9 @@ function JobDetailModal({
   const [sourceBoard, setSourceBoard] = useState(c.source_board || '')
   const [boardOrderNumber, setBoardOrderNumber] = useState(c.board_order_number || '')
   const [billingNumber, setBillingNumber] = useState(c.billing_number || '')
+  const [blNumber, setBlNumber] = useState(c.bl_number || '')
+  const [trackingShipment, setTrackingShipment] = useState(false)
+  const [trackedCarrier, setTrackedCarrier] = useState(null)
   const [saving, setSaving] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
   const [copiedRoute, setCopiedRoute] = useState(false)
@@ -1211,6 +1248,7 @@ function JobDetailModal({
           escort_fee: escortFee === '' ? null : escortFee,
           source_board: sourceBoard || null,
           board_order_number: boardOrderNumber || null,
+          bl_number: blNumber || null,
           vehicle_vin: vehicleVin || null,
           vehicle_year: vehicleYear || null,
           vehicle_make: vehicleMake || null,
@@ -1533,6 +1571,38 @@ function JobDetailModal({
                 <div>
                   <label className={label}>Ship billing #</label>
                   <input value={billingNumber} onChange={(e) => setBillingNumber(e.target.value.slice(0, 16))} maxLength={16} placeholder="Ship billing #" className={`${field} ${mono}`} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className={label} title="From the waybill/Bill of Lading -- include the carrier prefix (e.g. MOLU18009385790).">Bill of Lading #</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      value={blNumber} onChange={(e) => setBlNumber(e.target.value.trim())}
+                      placeholder="e.g. MOLU18009385790" className={`${field} ${mono} flex-1`}
+                    />
+                    <button
+                      type="button"
+                      disabled={!blNumber || trackingShipment}
+                      title="Copies the number and opens the carrier's real tracking site so you can just paste it in."
+                      onClick={async () => {
+                        setTrackingShipment(true)
+                        try {
+                          const carrierName = await openCarrierTracking(blNumber)
+                          setTrackedCarrier(carrierName)
+                          setTimeout(() => setTrackedCarrier(null), 3000)
+                        } finally {
+                          setTrackingShipment(false)
+                        }
+                      }}
+                      className="shrink-0 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink transition-colors hover:bg-canvas disabled:opacity-40"
+                    >
+                      🔎 Track shipment
+                    </button>
+                  </div>
+                  {trackedCarrier !== null && (
+                    <p className="mt-1 text-[11px] text-muted">
+                      {trackedCarrier ? `Number copied — paste it into ${trackedCarrier}'s tracking page.` : "Number copied — carrier not recognized, opened a search for it instead."}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
