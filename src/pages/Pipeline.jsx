@@ -856,6 +856,7 @@ function JobDetailModal({
   const [blNumber, setBlNumber] = useState(c.bl_number || '')
   const [trackingShipment, setTrackingShipment] = useState(false)
   const [trackedCarrier, setTrackedCarrier] = useState(null)
+  const [copiedBlNumber, setCopiedBlNumber] = useState(false)
   const [saving, setSaving] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
   const [copiedRoute, setCopiedRoute] = useState(false)
@@ -1566,6 +1567,20 @@ function JobDetailModal({
                       value={blNumber} onChange={(e) => setBlNumber(e.target.value.trim())}
                       placeholder="e.g. MOLU18009385790" className={`${field} ${mono} flex-1`}
                     />
+                    <button
+                      type="button"
+                      disabled={!blNumber}
+                      title="Just copies the number -- doesn't open anything."
+                      onClick={async () => {
+                        if (await copyToClipboard(blNumber)) {
+                          setCopiedBlNumber(true)
+                          setTimeout(() => setCopiedBlNumber(false), 2000)
+                        }
+                      }}
+                      className="shrink-0 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink transition-colors hover:bg-canvas disabled:opacity-40"
+                    >
+                      {copiedBlNumber ? 'Copied ✓' : '📋 Copy'}
+                    </button>
                     <button
                       type="button"
                       disabled={!blNumber || trackingShipment}
