@@ -55,6 +55,33 @@ Two Netlify functions power it:
 - Supabase → Authentication → URL Configuration → add your Netlify URL as a
   redirect URL so magic links work in production.
 
+### Setting up a new client's own site
+
+Every org lives in the same Supabase database (`organizations` table, RLS
+keeps each org's data to itself) — this section is only about giving one
+client their own look: their own name on the login screen, browser tab,
+and phone home-screen icon instead of Ship2Shore's.
+
+1. Netlify → **Add new site → Import an existing project** → same Git repo,
+   new site. (Not a new repo — one codebase, many sites.)
+2. That new site's **Environment variables**: everything under "Server" and
+   the first two "Client" vars above, same as any other site, *plus*:
+   - `VITE_APP_NAME` — e.g. `Acme Dispatch`
+   - `VITE_APP_SHORT_NAME` — e.g. `Acme` (home-screen icon label — keep it short)
+   - `VITE_APP_DESCRIPTION` — one line, shown when they install the app
+   - `VITE_APP_THEME_COLOR` — hex code for the browser/status-bar chrome color
+3. Icons don't come from an env var (they're image files, not text) — before
+   this site's first deploy, swap the client's own PNGs into
+   `public/icons/` (same five filenames: `favicon-32.png`,
+   `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`,
+   `maskable-icon-512.png`) on whatever branch/checkout that site builds
+   from.
+4. Point the client's domain at the new site (Netlify → Domain management),
+   then add that domain as a Supabase redirect URL (step above) too.
+5. Leave the *original* ship2shorebooking.com site's env vars alone —
+   nothing under `VITE_APP_*` should ever be set there, since it's still
+   shared by every org that doesn't have its own site yet.
+
 ## What's built
 
 - Magic-link auth

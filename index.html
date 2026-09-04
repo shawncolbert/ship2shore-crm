@@ -3,14 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Ship2Shore Dispatch</title>
-    <meta name="theme-color" content="#111f3a" />
+    <!-- Per-client branding: %VITE_APP_*% are filled in at build time from
+         Netlify's env vars for that site (see vite.config.js) -- falls back
+         to Ship2Shore's own name/color when unset, same as the PWA manifest. -->
+    <title>%VITE_APP_NAME%</title>
+    <meta name="theme-color" content="%VITE_APP_THEME_COLOR%" />
     <!-- iOS ignores the web manifest for "Add to Home Screen" behavior --
          these are the only tags that actually control standalone mode,
          status bar style, and the home screen icon on iPhone/iPad. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Ship2Shore" />
+    <meta name="apple-mobile-web-app-title" content="%VITE_APP_SHORT_NAME%" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
