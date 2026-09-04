@@ -31,12 +31,21 @@ const PORT_ESCORT_FEE = 95
 async function getPage(slug) {
   const { data, error } = await admin
     .from('landing_pages')
-    .select('id, org_id, title, blocks, published, theme, organizations(slug)')
+    .select('id, org_id, title, blocks, published, theme, organizations(slug, ga4_measurement_id)')
     .eq('slug', String(slug || '').trim())
     .maybeSingle()
   if (error) return { status: 500, body: { error: error.message } }
   if (!data || !data.published) return { status: 404, body: { error: 'Page not found.' } }
-  return { status: 200, body: { title: data.title, blocks: data.blocks || [], theme: data.theme || 'classic', bookingOrgSlug: data.organizations?.slug || null } }
+  return {
+    status: 200,
+    body: {
+      title: data.title,
+      blocks: data.blocks || [],
+      theme: data.theme || 'classic',
+      bookingOrgSlug: data.organizations?.slug || null,
+      ga4MeasurementId: data.organizations?.ga4_measurement_id || null,
+    },
+  }
 }
 
 async function submitLead(payload) {

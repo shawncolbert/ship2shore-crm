@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import LandingBlockView, { Prose } from '../components/LandingBlockView'
 import { getPublicTheme, accentTint, PUBLIC_INK } from '../lib/publicThemes'
+import { useGtag } from '../lib/gtag'
 
 async function callLandingPageApi(payload) {
   const res = await fetch('/.netlify/functions/public-landing-page', {
@@ -22,6 +23,8 @@ export default function LandingPagePublic() {
     queryFn: () => callLandingPageApi({ action: 'get', slug }),
     retry: false,
   })
+
+  useGtag(data?.ga4MeasurementId)
 
   const formRef = useRef(null)
   const [leadOpen, setLeadOpen] = useState(false)
