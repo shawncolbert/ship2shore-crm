@@ -17,7 +17,7 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 self.addEventListener('push', (event) => {
   let payload = {}
   try { payload = event.data ? event.data.json() : {} } catch { payload = {} }
-  const title = payload.title || 'Ship2Shore Dispatch'
+  const title = payload.title || 'New notification'
   const options = {
     body: payload.body || '',
     icon: '/icons/icon-192.png',

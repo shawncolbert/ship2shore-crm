@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { PLATFORM_NAME } from '../lib/platform'
 
 // Where a "reset your password" email link lands. Supabase's redirect
 // establishes a short-lived recovery session automatically before this
@@ -39,8 +40,7 @@ export default function ResetPassword() {
     <div className="flex h-full items-center justify-center bg-brand p-6">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="font-[family-name:var(--font-display)] text-2xl font-bold text-white">Ship2Shore</div>
-          <div className="text-xs uppercase tracking-[0.2em] text-accent">Dispatch</div>
+          <div className="font-[family-name:var(--font-display)] text-2xl font-bold text-white">{PLATFORM_NAME}</div>
         </div>
 
         <div className="rounded-xl bg-surface p-6 shadow-xl">

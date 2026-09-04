@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { supabase, isConfigured } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { PLATFORM_NAME } from '../lib/platform'
 
 export default function Login() {
   const { session, loading } = useAuth()
@@ -50,9 +51,8 @@ export default function Login() {
         <div className="w-full max-w-sm">
           <div className="mb-8 text-center">
             <div className="font-[family-name:var(--font-display)] text-2xl font-bold text-white">
-              Ship2Shore
+              {PLATFORM_NAME}
             </div>
-            <div className="text-xs uppercase tracking-[0.2em] text-accent">Dispatch</div>
           </div>
 
           <div className="rounded-xl bg-surface p-6 shadow-xl">
@@ -111,9 +111,8 @@ export default function Login() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="font-[family-name:var(--font-display)] text-2xl font-bold text-white">
-            Ship2Shore
+            {PLATFORM_NAME}
           </div>
-          <div className="text-xs uppercase tracking-[0.2em] text-accent">Dispatch</div>
         </div>
 
         <form onSubmit={signIn} className="rounded-xl bg-surface p-6 shadow-xl">
@@ -129,7 +128,7 @@ export default function Login() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="username"
-            placeholder="shawn@ship2shorebooking.com"
+            placeholder="you@example.com"
             className="mt-1.5 w-full rounded-md border border-line px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           />
 

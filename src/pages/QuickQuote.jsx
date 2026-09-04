@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { createContactWithBooking } from '../lib/supabase'
+import { useQuery } from '@tanstack/react-query'
+import { createContactWithBooking, fetchMyOrg } from '../lib/supabase'
 import AddressAutocompleteField from '../components/AddressAutocompleteField'
 import PriceEstimator from '../components/PriceEstimator'
 import { parsePastedText } from '../components/NewContactModal'
@@ -18,6 +19,7 @@ const emptyBooking = { pickup_address: '', dropoff_address: '', vehicle: '', val
 // one screen with nothing else to tap through first.
 export default function QuickQuote() {
   const navigate = useNavigate()
+  const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
   const [pasteText, setPasteText] = useState('')
   const [form, setForm] = useState(empty)
   const [booking, setBooking] = useState(emptyBooking)
@@ -101,7 +103,7 @@ export default function QuickQuote() {
         <div className="mb-4 flex items-center justify-between">
           <div>
             <div className="font-[family-name:var(--font-display)] text-xl font-bold text-white">Quick Quote</div>
-            <div className="text-xs uppercase tracking-[0.2em] text-accent">Ship2Shore Dispatch</div>
+            <div className="text-xs uppercase tracking-[0.2em] text-accent">{org?.name || 'Your Business'}</div>
           </div>
           <Link to="/dashboard" className="text-xs font-medium text-white/60 hover:text-white">Full CRM</Link>
         </div>
