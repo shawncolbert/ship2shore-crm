@@ -189,6 +189,32 @@ export async function fetchMyOrg() {
   return data
 }
 
+// Populated by google-marketing-sync.js (Settings > SEO & Traffic) once an
+// org connects Search Console -- RLS already scopes both of these to the
+// caller's own org, so a plain select is enough, no service-role function
+// needed for reads (only the OAuth tokens themselves are locked down).
+export async function fetchSearchPerformance(days = 30) {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const { data, error } = await supabase
+    .from('search_performance')
+    .select('date, query, clicks, impressions, position')
+    .gte('date', since)
+    .order('clicks', { ascending: false })
+  if (error) throw error
+  return data
+}
+
+export async function fetchSiteAnalytics(days = 30) {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const { data, error } = await supabase
+    .from('site_analytics')
+    .select('date, page_path, sessions, active_users, pageviews')
+    .gte('date', since)
+    .order('sessions', { ascending: false })
+  if (error) throw error
+  return data
+}
+
 // Editable outbound-from-California pricing adjustment (Settings >
 // Pricing) -- see PriceEstimator.jsx for where it's applied. `orgId` is
 // passed explicitly (not resolved via fetchMyOrgId) since PriceEstimator

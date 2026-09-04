@@ -53,3 +53,11 @@
 # link set), and a referral ask. Never sends twice per job.
 [functions."send-review-requests"]
   schedule = "0 15 * * *"
+
+# Pulls the last few days of Google Search Console (search queries, clicks,
+# position) and GA4 (sessions, pageviews per page) into search_performance
+# and site_analytics, for every org that's connected Settings > SEO &
+# Traffic. Both source APIs lag a day or two before their own data settles,
+# so once a day is plenty -- there's nothing new to pull more often than that.
+[functions."google-marketing-sync"]
+  schedule = "0 15 * * *"

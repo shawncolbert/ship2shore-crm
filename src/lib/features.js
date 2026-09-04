@@ -34,6 +34,7 @@ export const FEATURES = [
   { key: 'document_requests', label: 'Document Requests', path: '/settings/document-requests' },
   { key: 'scheduling', label: 'Scheduling', path: '/settings/scheduling' },
   { key: 'dispatch_assignment', label: 'Dispatch Assignment', path: '/settings/dispatch-assignment' },
+  { key: 'seo_analytics', label: 'SEO & Traffic', path: '/settings/seo-analytics' },
   { key: 'landing_pages', label: 'Landing Pages', path: '/landing-pages' },
   { key: 'funnels', label: 'Funnels', path: '/funnels' },
   { key: 'social_posts', label: 'Social Posts', path: '/social-posts' },

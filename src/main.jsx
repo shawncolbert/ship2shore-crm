@@ -37,6 +37,7 @@ const CustomLinks = lazy(() => import('./pages/CustomLinks'))
 const DocumentPresets = lazy(() => import('./pages/DocumentPresets'))
 const Scheduling = lazy(() => import('./pages/Scheduling'))
 const DispatchAssignment = lazy(() => import('./pages/DispatchAssignment'))
+const SeoAnalytics = lazy(() => import('./pages/SeoAnalytics'))
 const PricingSettings = lazy(() => import('./pages/PricingSettings'))
 const Services = lazy(() => import('./pages/Services'))
 const Invoices = lazy(() => import('./pages/Invoices'))
@@ -152,6 +153,7 @@ function App() {
                   <Route path="settings/document-requests" element={<FeatureGate featureKey="document_requests"><DocumentPresets /></FeatureGate>} />
                   <Route path="settings/scheduling" element={<FeatureGate featureKey="scheduling"><Scheduling /></FeatureGate>} />
                   <Route path="settings/dispatch-assignment" element={<FeatureGate featureKey="dispatch_assignment"><DispatchAssignment /></FeatureGate>} />
+                  <Route path="settings/seo-analytics" element={<FeatureGate featureKey="seo_analytics"><SeoAnalytics /></FeatureGate>} />
                   <Route path="settings/pricing" element={<FeatureGate featureKey="pricing_settings"><PricingSettings /></FeatureGate>} />
                   <Route path="services" element={<FeatureGate featureKey="services"><Services /></FeatureGate>} />
                   <Route path="invoices" element={<FeatureGate featureKey="invoices"><Invoices /></FeatureGate>} />
