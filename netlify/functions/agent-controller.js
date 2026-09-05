@@ -2,6 +2,7 @@ import { admin, userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
 import { getDefaultPipeline, getStageByName, getIntakeStage, listStageNames } from './_shared/pipeline.js'
 import { sendCustomerEmail } from './_shared/email.js'
 import { buildBookingEmail } from './_shared/bookingEmails.js'
+import { lookupCarrierByDot } from './_shared/fmcsaLookup.js'
 import Anthropic from '@anthropic-ai/sdk'
 
 const json = (statusCode, body) => ({
@@ -246,6 +247,49 @@ function buildAgentTools(stageNames) {
         booking_details: { type: 'string', description: 'Booking details to include in the email' },
       },
       required: ['customer_email', 'customer_name', 'message_type'],
+    },
+  },
+  {
+    name: 'lookup_carrier',
+    description: "Look up a motor carrier's FMCSA registration (legal name, address, phone, operating authority status, insurance filings) by USDOT number. This is keyed by DOT number specifically -- an MC/docket number is a different FMCSA identifier this lookup does not accept directly; if only given an MC number, ask for the DOT number instead.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        dot_number: { type: 'string', description: 'USDOT number of the carrier/driver to look up' },
+      },
+      required: ['dot_number'],
+    },
+  },
+  {
+    name: 'create_appointment',
+    description: 'Create a scheduled appointment/job on the calendar -- a pickup, delivery, or escort window. Not the same as create_opportunity: this is a calendar time slot, optionally linked to an existing contact or opportunity.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Short title, e.g. "Pickup - 2019 Honda Civic"' },
+        contact_id: { type: 'string', description: 'Linked contact ID, if any' },
+        opportunity_id: { type: 'string', description: 'Linked job/opportunity ID, if any' },
+        start_at: { type: 'string', description: 'Start date/time, ISO 8601 (e.g. 2026-09-10T14:00:00Z)' },
+        end_at: { type: 'string', description: 'End date/time, ISO 8601 -- optional' },
+        pickup_address: { type: 'string', description: 'Pickup address, if applicable' },
+        dropoff_address: { type: 'string', description: 'Drop-off address, if applicable' },
+        port: { type: 'string', description: 'Port name, for port escort/pickup jobs' },
+      },
+      required: ['title', 'start_at'],
+    },
+  },
+  {
+    name: 'create_social_post',
+    description: 'Draft or schedule a social media post (Settings > Social Posts). This assistant cannot attach a photo/video file itself -- pass media_url only if the user already gave you a link to an uploaded image or video; otherwise it posts as text-only. If auto_publish_tiktok is true, media_url is required (TikTok will not accept a text-only post).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Post caption/text' },
+        media_url: { type: 'string', description: 'Public URL of an already-uploaded photo or video, if the user provided one' },
+        scheduled_date: { type: 'string', description: 'ISO 8601 date/time to publish -- required' },
+        auto_publish_tiktok: { type: 'boolean', description: 'Auto-publish to TikTok at the scheduled time (requires media_url and a connected TikTok account)' },
+      },
+      required: ['text', 'scheduled_date'],
     },
   },
   ]
@@ -674,6 +718,61 @@ async function executeTool(toolName, input, orgId, orgName) {
       }
     }
 
+    case 'lookup_carrier': {
+      if (!input.dot_number) throw new Error('dot_number is required')
+      const carrier = await lookupCarrierByDot(String(input.dot_number).trim())
+      return { result: carrier || { message: `No carrier found for DOT number ${input.dot_number}.` }, clientEvent: null }
+    }
+
+    case 'create_appointment': {
+      if (!input.title || !input.start_at) throw new Error('title and start_at are required')
+
+      const { data: appt, error } = await admin
+        .from('appointments')
+        .insert({
+          org_id: orgId,
+          contact_id: input.contact_id || null,
+          opportunity_id: input.opportunity_id || null,
+          title: input.title,
+          start_at: input.start_at,
+          end_at: input.end_at || null,
+          pickup_address: input.pickup_address || null,
+          dropoff_address: input.dropoff_address || null,
+          port: input.port || null,
+          source: 'ai_assistant',
+          status: 'scheduled',
+        })
+        .select()
+        .single()
+
+      if (error) throw new Error(error.message)
+      return { result: appt, clientEvent: { type: 'APPOINTMENT_ADDED', data: appt } }
+    }
+
+    case 'create_social_post': {
+      if (!input.text?.trim()) throw new Error('text is required')
+      if (!input.scheduled_date) throw new Error('scheduled_date is required')
+      if (input.auto_publish_tiktok && !input.media_url) throw new Error('media_url is required to auto-publish to TikTok -- ask the user for a link to the uploaded photo/video, or post as a draft instead')
+
+      const { data: post, error } = await admin
+        .from('social_posts')
+        .insert({
+          org_id: orgId,
+          text: input.text,
+          image_url: input.media_url || null,
+          scheduled_date: input.scheduled_date,
+          status: input.auto_publish_tiktok ? 'scheduled' : 'draft',
+          platform: input.auto_publish_tiktok ? 'tiktok' : null,
+          tiktok_privacy_level: 'SELF_ONLY',
+          tiktok_is_aigc: false,
+        })
+        .select()
+        .single()
+
+      if (error) throw new Error(error.message)
+      return { result: post, clientEvent: null }
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`)
   }
@@ -799,6 +898,15 @@ Use send_email tool to send messages to customers. Two message types:
    - send_email(customer_email="email@example.com", customer_name="John Doe", message_type="payment_link_request", booking_amount=95, booking_details="1x Escort Service")
    - Requests payment once the job is ready
    - ONLY send this after confirmation from user that the job is cleared/ready
+
+CARRIER/DRIVER LOOKUPS:
+Use lookup_carrier with a USDOT number to pull a motor carrier's real FMCSA registration (name, address, operating authority, insurance filings). This only accepts a DOT number, not an MC/docket number -- if the user only has an MC number, ask them for the DOT number instead of guessing or refusing outright.
+
+SCHEDULING:
+Use create_appointment for a calendar pickup/delivery/escort time slot. This is separate from create_opportunity (the pipeline job record) -- link them via opportunity_id when both exist for the same booking.
+
+SOCIAL POSTS:
+Use create_social_post to draft or schedule a post. You cannot attach a photo or video yourself -- only pass media_url if the user gives you a link to something already uploaded (e.g. via Settings > Social Posts' own upload button). Auto-publishing to TikTok requires a media_url; without one, create it as a draft and tell the user to add a photo before it can auto-publish.
 
 `,
           tools: agentTools,

@@ -90,58 +90,48 @@ and phone home-screen icon instead of Ship2Shore's.
 - Inbox: unified email conversations, live-updating, reply from the thread
 - Dashboard: job counts + revenue
 
-### Ask AI (floating widget) vs. the full-page AI Assistant
+### Ask AI (floating widget) — same brain as the full-page AI Assistant
 
-Two different Claude-backed features live in this CRM on purpose, at two
-different privilege levels:
+`src/components/AskAIWidget.jsx` (the floating bubble, bottom-right on
+every page) and `/agent` (`src/pages/Agent.jsx`, a dedicated page) are two
+entry points into the exact same backend: `netlify/functions/agent-controller.js`.
+There is no separate lower-privilege "read-only" version — both call the
+same endpoint with the same `{ userPrompt, conversationHistory }` /
+`{ reply, conversationHistory, clientEvents }` contract, so the widget can
+do anything the Assistant page can: create/update/delete contacts and
+opportunities, move pipeline stages, send customer emails for real, look
+up a carrier's FMCSA registration by DOT number, schedule an appointment,
+and draft or schedule a social post. Actions happen when asked — there's
+no separate confirm-before-acting step beyond what `/agent` already had.
 
-- **AI Assistant** (`/agent`, `netlify/functions/agent-controller.js`) — a
-  dedicated page a dispatcher navigates to deliberately. It has real
-  tool-calling access: it can create/update/delete contacts and
-  opportunities, move pipeline stages, and send customer emails for real.
-- **Ask AI** (the floating bubble on every page, bottom-right —
-  `src/components/AskAIWidget.jsx` + `netlify/functions/ask-ai.js`) — always
-  read-only and draft-only, regardless of how it's asked. It never touches
-  the database except to read it, and it never sends anything. That's what
-  makes it safe to float on every screen instead of living behind its own
-  page like the Assistant does.
+The widget adds one convenience `/agent` doesn't need: when open on a
+`/contacts/:id` page it auto-detects that contact's ID from the URL and
+prepends it to the prompt as context, so "draft a follow-up to this
+person" resolves without re-typing who. It also remembers open/closed
+state per browser tab (`sessionStorage`), independent of the Assistant page.
 
-**How `ask-ai.js` decides what to look up** (its "intent matching" — a few
-keyword buckets, not a classifier):
-
-1. Every question first gets a cheap three-query baseline snapshot: new
-   leads in the last 7 days, pipeline totals by stage, and unpaid/overdue
-   invoices. This keeps answers grounded even when the keyword match below
-   misses entirely.
-2. The question text is checked for a few keyword patterns (e.g.
-   `book|schedul|upcoming|this week`) to decide whether to run one
-   additional, more specific query (recent jobs, in that case) on top of
-   the snapshot.
-3. The snapshot (+ any extra) is handed to Claude as plain-text context
-   along with the dispatcher's question and a fixed guardrail system
-   prompt (mirroring `ai-draft-reply.js`'s locked rules: never claim an
-   action was taken, never guess a fact that isn't in the data).
-
-**Adding a new query bucket later**: add a new `if (/keywords/.test(q))`
-branch inside `fetchIntentExtra()` in `ask-ai.js`, run whatever Supabase
-query answers it, and return a plain-text block to append to the context —
-no other wiring needed, since the Claude call at the bottom always just
-concatenates whatever text it's given.
-
-**Contact-context mode** (`contactId` present — auto-detected from the URL
-when the widget is open on a `/contacts/:id` page, not passed as a prop)
-pulls that one contact's job status, invoices, and full email thread, then
-either answers a question about them or — if the question matches a
-"draft/write/follow up/reply" pattern — drafts a suggested reply. Drafts
-render in a visually distinct block in the widget with a Copy button;
-nothing is ever sent from here.
-
-Deliberate deviations from a literal "Supabase Edge Function" /
-client-supplied `orgId` spec: this is a Netlify Function like every other
-backend piece in this repo (one auth pattern, one place secrets live), and
 `orgId` is always resolved server-side from the authenticated session
-(`userFromToken` → `orgForUser`), never trusted from the client — the same
-tenant-isolation approach every other function here already uses.
+(`userFromToken` → `orgForUser`) inside `agent-controller.js`, never
+trusted from the client — the same tenant-isolation approach every other
+function in this repo uses.
+
+**Tools available to the assistant** (`buildAgentTools()` in
+`agent-controller.js`), beyond contact/opportunity/pipeline/email actions:
+
+- `lookup_carrier` — pulls a motor carrier's real FMCSA registration
+  (legal name, address, operating authority, insurance filings) from
+  `motus.dot.gov`, keyed by **USDOT number** (not MC/docket number — a
+  different FMCSA identifier the endpoint doesn't accept directly). Shared
+  logic lives in `netlify/functions/_shared/fmcsaLookup.js`, reused as-is
+  by the standalone Lead Finder feature (`fmcsa-insurance.js`).
+- `create_appointment` — books a calendar time slot (`appointments`
+  table), optionally linked to an existing contact/opportunity. Separate
+  from `create_opportunity` (the pipeline job record itself).
+- `create_social_post` — drafts or schedules a post the same way
+  Settings > Social Posts' own "Create Post" does. The assistant can't
+  attach a photo/video itself — it can only reference one by URL if the
+  user already uploaded it and shared the link; auto-publishing to TikTok
+  requires that URL, otherwise the post is saved as a draft.
 
 ## Next
 
