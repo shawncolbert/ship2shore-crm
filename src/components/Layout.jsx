@@ -10,6 +10,7 @@ import IdleTimeout from './IdleTimeout'
 import PaymentClaimToast from './PaymentClaimToast'
 import UnfollowedLeadToast from './UnfollowedLeadToast'
 import QuickAccessBar from './QuickAccessBar'
+import AskAIWidget from './AskAIWidget'
 
 // `group` only matters for the Aurora layout's sectioned sidebar (see
 // NavItems below) -- every other layout renders this same list flat, in
@@ -374,6 +375,7 @@ export default function Layout({ children }) {
       <IdleTimeout />
       <PaymentClaimToast />
       <UnfollowedLeadToast />
+      <AskAIWidget />
       {/* Mobile top bar */}
       <header className="flex items-center justify-between px-4 py-3 md:hidden" style={{ background: 'var(--sidebar-bg)' }}>
         <Brand />
