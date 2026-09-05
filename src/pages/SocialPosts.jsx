@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchMyOrgId } from '../lib/supabase'
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -229,6 +229,35 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
   const [tiktokIsAigc, setTiktokIsAigc] = useState(false)
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+
+  // Uploads straight from the phone/computer into the same public bucket
+  // the business card logo already uses (card-assets) -- reuses its
+  // existing "org members write under their own org_id folder, anyone can
+  // read" storage policy, so no new bucket or Netlify function needed. A
+  // public (not signed) URL matters here specifically because a scheduled
+  // post might not auto-publish to TikTok for days -- a signed URL could
+  // expire before then, a public one never does.
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // let the same file be picked again later if needed
+    if (!file) return
+    setUploading(true)
+    setErr('')
+    try {
+      const orgId = await fetchMyOrgId()
+      const ext = file.name.split('.').pop() || 'jpg'
+      const path = `${orgId}/social-posts/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const { error: upErr } = await supabase.storage.from('card-assets').upload(path, file, { upsert: false, contentType: file.type })
+      if (upErr) throw upErr
+      const { data } = supabase.storage.from('card-assets').getPublicUrl(path)
+      setImageUrl(data.publicUrl)
+    } catch (e2) {
+      setErr(e2.message || 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const handleSave = async () => {
     if (!text.trim()) { setErr('Post text is required'); return }
@@ -282,15 +311,28 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
         </div>
 
         <div>
-          <label className="block text-xs font-semibold uppercase tracking-wide text-muted">Image URL (optional)</label>
+          <label className="block text-xs font-semibold uppercase tracking-wide text-muted">Photo (optional)</label>
+          <div className="mt-1 flex items-center gap-2">
+            <label className="cursor-pointer rounded-lg border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:bg-canvas/70">
+              {uploading ? 'Uploading…' : '📷 Upload photo'}
+              <input type="file" accept="image/*" onChange={handleUpload} disabled={uploading} className="hidden" />
+            </label>
+            {imageUrl && <img src={imageUrl} alt="" className="h-10 w-10 rounded object-cover" />}
+          </div>
           <input
             type="url"
             value={imageUrl}
             onChange={(e) => setImageUrl(e.target.value)}
-            placeholder="https://example.com/image.jpg"
-            className="mt-1 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+            placeholder="or paste an image URL directly"
+            className="mt-2 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
           />
         </div>
+
+        <p className="rounded-lg bg-canvas/60 p-2.5 text-xs leading-relaxed text-muted">
+          <strong className="text-ink">Heads up on links:</strong> Facebook makes a link in your post text clickable automatically.
+          Instagram and TikTok don't — a link typed into a caption there just sits as plain text. The standard free way around
+          it: put your booking link in your Instagram/TikTok bio once, then write "link in bio" in the post text here.
+        </p>
 
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-muted">Scheduled date & time</label>
