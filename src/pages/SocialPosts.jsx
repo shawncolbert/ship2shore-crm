@@ -516,14 +516,14 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
             <button
               type="button"
               onClick={() => setLibraryTab('unused')}
-              className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${libraryTab === 'unused' ? 'bg-ink text-white' : 'bg-surface text-muted'}`}
+              className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${libraryTab === 'unused' ? 'bg-brand text-white' : 'bg-surface text-muted'}`}
             >
               UNUSED ({unusedPhotos.length})
             </button>
             <button
               type="button"
               onClick={() => setLibraryTab('used')}
-              className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${libraryTab === 'used' ? 'bg-ink text-white' : 'bg-surface text-muted'}`}
+              className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${libraryTab === 'used' ? 'bg-brand text-white' : 'bg-surface text-muted'}`}
             >
               POSTED ({usedPhotos.length})
             </button>
@@ -625,7 +625,7 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
               type="button"
               onClick={handleGenerateAll}
               disabled={generatingAll}
-              className="mb-3 w-full rounded-lg bg-ink px-3 py-2.5 text-xs font-bold text-white hover:opacity-90 disabled:opacity-50"
+              className="mb-3 w-full rounded-lg bg-brand px-3 py-2.5 text-xs font-bold text-white hover:opacity-90 disabled:opacity-50"
             >
               {generatingAll ? 'Writing captions…' : '✨ Generate & refine captions for every platform'}
             </button>
@@ -691,7 +691,7 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
         <div className="rounded-lg border border-line">
           <p className="border-b border-line px-3 py-2 text-xs font-semibold text-ink">Preview — {PLATFORM_LABEL[activeTab]}</p>
           <div className="flex justify-center p-3">
-            <div className="w-full max-w-[200px] overflow-hidden rounded-2xl border-[6px] border-ink bg-white shadow-[var(--shadow-card)]">
+            <div className="w-full max-w-[200px] overflow-hidden rounded-2xl border-[6px] border-brand bg-white shadow-[var(--shadow-card)]">
               <div className="flex items-center gap-1.5 border-b border-line/50 px-2 py-1.5">
                 <div className="h-4 w-4 rounded-full bg-gradient-to-br from-accent to-ink" />
                 <b className="text-[9px] text-ink">ship2shorebooking</b>
