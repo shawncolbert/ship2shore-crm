@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase, fetchMyOrgId } from '../lib/supabase'
 
@@ -233,6 +233,38 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
   const [genPrompt, setGenPrompt] = useState('')
   const [generating, setGenerating] = useState(false)
 
+  // Voice input for the image description -- same browser SpeechRecognition
+  // API AI Studio's chat and the Pipeline's Audio Brief field already use.
+  // Only fills the field; talking never triggers Generate on its own.
+  const [genListening, setGenListening] = useState(false)
+  const genRecognitionRef = useRef(null)
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) return
+    const rec = new SpeechRecognition()
+    rec.continuous = true
+    rec.interimResults = true
+    rec.lang = 'en-US'
+    rec.onstart = () => setGenListening(true)
+    rec.onend = () => setGenListening(false)
+    rec.onerror = () => setGenListening(false)
+    rec.onresult = (event) => {
+      let finalText = ''
+      for (let i = 0; i < event.results.length; i++) {
+        if (event.results[i].isFinal) finalText += event.results[i][0].transcript + ' '
+      }
+      if (finalText) setGenPrompt((prev) => (prev ? prev.trim() + ' ' : '') + finalText.trim())
+    }
+    genRecognitionRef.current = rec
+    return () => rec.stop()
+  }, [])
+
+  const toggleGenMic = () => {
+    if (!genRecognitionRef.current) return
+    if (genListening) genRecognitionRef.current.stop()
+    else genRecognitionRef.current.start()
+  }
+
   // Uploads straight from the phone/computer into the same public bucket
   // the business card logo already uses (card-assets) -- reuses its
   // existing "org members write under their own org_id folder, anyone can
@@ -359,10 +391,23 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
               type="text"
               value={genPrompt}
               onChange={(e) => setGenPrompt(e.target.value)}
-              placeholder="…or describe an image for AI to make, e.g. 'a red Honda Acty truck on a car carrier at sunset'"
+              placeholder={genListening ? 'Listening…' : "…or describe an image for AI to make, e.g. 'a red Honda Acty truck on a car carrier at sunset'"}
               disabled={generating}
               className="flex-1 rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
             />
+            {(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+              <button
+                type="button"
+                onClick={toggleGenMic}
+                disabled={generating}
+                title={genListening ? 'Stop listening' : 'Talk instead of typing'}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-base disabled:opacity-50 ${
+                  genListening ? 'animate-pulse border-port bg-port/10 text-port' : 'border-line text-muted hover:text-ink'
+                }`}
+              >
+                🎤
+              </button>
+            )}
             <button
               type="button"
               onClick={handleGenerate}
