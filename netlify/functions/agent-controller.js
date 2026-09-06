@@ -3,6 +3,7 @@ import { getDefaultPipeline, getStageByName, getIntakeStage, listStageNames } fr
 import { sendCustomerEmail } from './_shared/email.js'
 import { buildBookingEmail } from './_shared/bookingEmails.js'
 import { lookupCarrierByDot } from './_shared/fmcsaLookup.js'
+import { generateImage, uploadGeneratedImage } from './_shared/geminiImage.js'
 import Anthropic from '@anthropic-ai/sdk'
 
 const json = (statusCode, body) => ({
@@ -290,8 +291,20 @@ function buildAgentTools(stageNames) {
     },
   },
   {
+    name: 'generate_post_image',
+    description: "Generate a new image with AI (for a social post, when the user doesn't have a real photo to use) and return its URL. Call this BEFORE create_social_post when the user wants an AI-made image rather than one they already uploaded -- pass the returned url straight into create_social_post's media_url. For an actual photo of a real vehicle/job, tell the user to upload it in Settings > Social Posts instead -- a real photo is better for this business than an AI one and this tool cannot see or use their camera roll.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'Description of the image to generate, e.g. "a red Honda Acty kei truck on a car carrier at sunset, professional photo style"' },
+        aspect_ratio: { type: 'string', enum: ['1:1', '4:5', '9:16'], description: '1:1 or 4:5 for an Instagram/Facebook feed post, 9:16 for a Story/Reel/TikTok frame. Defaults to 1:1 if unsure.' },
+      },
+      required: ['prompt'],
+    },
+  },
+  {
     name: 'create_social_post',
-    description: 'Draft or schedule a social media post (Settings > Social Posts). This assistant cannot attach a photo/video file itself -- pass media_url only if the user already gave you a link to an uploaded image or video; otherwise it posts as text-only. If auto_publish_tiktok is true, media_url is required (TikTok will not accept a text-only post).',
+    description: 'Draft or schedule a social media post (Settings > Social Posts). This assistant cannot attach a photo/video file itself -- pass media_url only if the user already gave you a link to an uploaded image/video, or from a prior generate_post_image call; otherwise it posts as text-only. If auto_publish_tiktok is true, media_url is required (TikTok will not accept a text-only post).',
     input_schema: {
       type: 'object',
       properties: {
@@ -794,6 +807,13 @@ async function executeTool(toolName, input, orgId, orgName) {
       return { result: appt, clientEvent: { type: 'APPOINTMENT_ADDED', data: appt } }
     }
 
+    case 'generate_post_image': {
+      if (!input.prompt?.trim()) throw new Error('prompt is required')
+      const image = await generateImage(input.prompt.trim(), { aspectRatio: input.aspect_ratio })
+      const imageUrl = await uploadGeneratedImage(admin, orgId, image)
+      return { result: { imageUrl }, clientEvent: null }
+    }
+
     case 'create_social_post': {
       if (!input.text?.trim()) throw new Error('text is required')
       if (!input.scheduled_date) throw new Error('scheduled_date is required')
@@ -954,7 +974,7 @@ SCHEDULING:
 Use create_appointment for a calendar pickup/delivery/escort time slot. This is separate from create_opportunity (the pipeline job record) -- link them via opportunity_id when both exist for the same booking.
 
 SOCIAL POSTS:
-Use create_social_post to draft or schedule a post. You cannot attach a photo or video yourself -- only pass media_url if the user gives you a link to something already uploaded (e.g. via Settings > Social Posts' own upload button). Auto-publishing to TikTok requires a media_url; without one, create it as a draft and tell the user to add a photo before it can auto-publish.
+Use create_social_post to draft or schedule a post. For the image: if the user has a real photo already uploaded, use the URL they give you; if they want an AI-made image instead, call generate_post_image first and pass its returned url into media_url. Prefer suggesting a real photo when one plausibly exists (a real photo of the actual vehicle/job performs better for this business than an AI one) but don't refuse to generate one if that's what's asked for. Auto-publishing to TikTok requires a media_url; without one, create it as a draft and tell the user to add a photo before it can auto-publish. Unless the user explicitly asks to auto-publish, create_social_post already saves as a draft for them to review before it goes out -- don't imply a post is live when it's only a draft.
 
 `,
           tools: agentTools,

@@ -230,6 +230,8 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [genPrompt, setGenPrompt] = useState('')
+  const [generating, setGenerating] = useState(false)
 
   // Uploads straight from the phone/computer into the same public bucket
   // the business card logo already uses (card-assets) -- reuses its
@@ -256,6 +258,32 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
       setErr(e2.message || 'Upload failed')
     } finally {
       setUploading(false)
+    }
+  }
+
+  // AI-generated image (Gemini, via generate-social-image.js) -- a second
+  // way to get an image in, alongside handleUpload above. Kept as its own
+  // prompt field rather than reusing the post text, since what you'd want
+  // to SEE in a photo (e.g. "a red Honda Acty truck on a car carrier at
+  // sunset") is usually not the same words you'd want to READ in the caption.
+  const handleGenerate = async () => {
+    if (!genPrompt.trim() || generating) return
+    setGenerating(true)
+    setErr('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/.netlify/functions/generate-social-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ prompt: genPrompt.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Image generation failed')
+      setImageUrl(data.imageUrl)
+    } catch (e2) {
+      setErr(e2.message || 'Image generation failed')
+    } finally {
+      setGenerating(false)
     }
   }
 
@@ -326,6 +354,24 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
             placeholder="or paste an image URL directly"
             className="mt-2 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
           />
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="text"
+              value={genPrompt}
+              onChange={(e) => setGenPrompt(e.target.value)}
+              placeholder="…or describe an image for AI to make, e.g. 'a red Honda Acty truck on a car carrier at sunset'"
+              disabled={generating}
+              className="flex-1 rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={generating || !genPrompt.trim()}
+              className="shrink-0 rounded-lg border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:bg-canvas/70 disabled:opacity-50"
+            >
+              {generating ? 'Generating…' : '✨ Generate'}
+            </button>
+          </div>
         </div>
 
         <p className="rounded-lg bg-canvas/60 p-2.5 text-xs leading-relaxed text-muted">
