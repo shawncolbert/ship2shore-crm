@@ -1,3 +1,4 @@
 /card/*  /.netlify/functions/card-preview?slug=:splat  200
 /pages/*  /.netlify/functions/landing-preview?slug=:splat  200
+/sitemap-pages.xml  /.netlify/functions/sitemap-pages  200
 /*  /index.html  200
