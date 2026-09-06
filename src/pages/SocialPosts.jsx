@@ -290,17 +290,30 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
     if (!files.length) return
     setImporting(true)
     setErr('')
+    let ok = 0
+    const failures = []
     try {
       const orgId = await fetchMyOrgId()
       for (const file of files) {
-        const ext = file.name.split('.').pop() || 'jpg'
-        const path = `${orgId}/media-library/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-        const { error: upErr } = await supabase.storage.from('card-assets').upload(path, file, { upsert: false, contentType: file.type })
-        if (upErr) continue // one bad file shouldn't stop the rest of the batch
-        const { data } = supabase.storage.from('card-assets').getPublicUrl(path)
-        await supabase.from('media_library').insert({ org_id: orgId, url: data.publicUrl, storage_path: path, status: 'unused' })
+        try {
+          const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+          const path = `${orgId}/media-library/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+          const { error: upErr } = await supabase.storage.from('card-assets').upload(path, file, { upsert: false, contentType: file.type || 'application/octet-stream' })
+          if (upErr) throw upErr
+          const { data } = supabase.storage.from('card-assets').getPublicUrl(path)
+          const { error: insErr } = await supabase.from('media_library').insert({ org_id: orgId, url: data.publicUrl, storage_path: path, status: 'unused' })
+          if (insErr) throw insErr
+          ok++
+        } catch (fileErr) {
+          failures.push(`${file.name}: ${fileErr.message || 'failed'}`)
+        }
       }
       qc.invalidateQueries({ queryKey: ['mediaLibrary'] })
+      if (failures.length) {
+        setErr(`Imported ${ok} of ${files.length}. Problems: ${failures.slice(0, 3).join('; ')}${failures.length > 3 ? ` (+${failures.length - 3} more)` : ''}`)
+      }
+    } catch (e2) {
+      setErr(e2.message || 'Import failed before it could start.')
     } finally {
       setImporting(false)
     }
