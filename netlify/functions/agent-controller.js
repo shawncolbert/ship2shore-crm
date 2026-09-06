@@ -140,6 +140,17 @@ function buildAgentTools(stageNames) {
     },
   },
   {
+    name: 'get_revenue_summary',
+    description: "Real earnings numbers from actual invoices (not pipeline deal values, which are estimates): total paid, how many invoices that is, average job value, and what's still outstanding -- broken out into not-yet-due vs. overdue. Optionally scoped to a date range on the invoice date.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        start_date: { type: 'string', description: 'ISO date, inclusive, e.g. 2026-09-01. Omit for all-time.' },
+        end_date: { type: 'string', description: 'ISO date, inclusive, e.g. 2026-09-30. Omit for no upper bound.' },
+      },
+    },
+  },
+  {
     name: 'update_opportunity',
     description: 'Update any field on an opportunity/deal card (title, value, payment status, notes, etc.)',
     input_schema: {
@@ -453,6 +464,40 @@ async function executeTool(toolName, input, orgId, orgName) {
           totalOutstanding,
           dealCount: opportunities?.length || 0,
           deals: (opportunities || []).map(opp => ({ id: opp.id, title: opp.title, value: opp.value })),
+        },
+        clientEvent: null,
+      }
+    }
+
+    case 'get_revenue_summary': {
+      let query = admin
+        .from('invoices')
+        .select('id, invoice_number, total, amount_due, status, invoice_date, due_date, paid_at')
+        .eq('org_id', orgId)
+
+      if (input.start_date) query = query.gte('invoice_date', input.start_date)
+      if (input.end_date) query = query.lte('invoice_date', input.end_date)
+
+      const { data: invoices, error } = await query
+      if (error) throw new Error(error.message)
+
+      const todayStr = new Date().toISOString().slice(0, 10)
+      const paid = (invoices || []).filter((i) => i.status === 'paid')
+      const unpaid = (invoices || []).filter((i) => i.status !== 'paid')
+      const overdue = unpaid.filter((i) => i.due_date && i.due_date < todayStr)
+      const notYetDue = unpaid.filter((i) => !overdue.includes(i))
+
+      const sum = (rows, field) => rows.reduce((s, r) => s + (r[field] || 0), 0)
+      const paidTotal = sum(paid, 'total')
+
+      return {
+        result: {
+          period: { start_date: input.start_date || null, end_date: input.end_date || null },
+          paid: { count: paid.length, total: paidTotal, averageJobValue: paid.length ? Math.round((paidTotal / paid.length) * 100) / 100 : 0 },
+          outstanding: {
+            notYetDue: { count: notYetDue.length, total: sum(notYetDue, 'amount_due') },
+            overdue: { count: overdue.length, total: sum(overdue, 'amount_due') },
+          },
         },
         clientEvent: null,
       }
@@ -840,7 +885,7 @@ export const handler = async (event) => {
       let response
       try {
         response = await anthropic.messages.create({
-          model: 'claude-opus-5',
+          model: 'claude-sonnet-5',
           max_tokens: 1024,
           system:
           `You are a helpful CRM assistant for ${orgName}. Help users manage pipeline jobs, quote accurate prices, and communicate with customers.
@@ -898,6 +943,9 @@ Use send_email tool to send messages to customers. Two message types:
    - send_email(customer_email="email@example.com", customer_name="John Doe", message_type="payment_link_request", booking_amount=95, booking_details="1x Escort Service")
    - Requests payment once the job is ready
    - ONLY send this after confirmation from user that the job is cleared/ready
+
+EARNINGS/REVENUE QUESTIONS:
+Use get_revenue_summary for "how much did I make," "what's overdue," "average job value," etc. -- it reads real invoice data (paid/unpaid/overdue), not pipeline deal estimates. Pass start_date/end_date for a specific period (this month, last week); omit both for all-time. Use get_outstanding_revenue only when asked specifically about open pipeline deal value, not actual invoiced earnings.
 
 CARRIER/DRIVER LOOKUPS:
 Use lookup_carrier with a USDOT number to pull a motor carrier's real FMCSA registration (name, address, operating authority, insurance filings). This only accepts a DOT number, not an MC/docket number -- if the user only has an MC number, ask them for the DOT number instead of guessing or refusing outright.
