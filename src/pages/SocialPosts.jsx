@@ -377,7 +377,11 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
               {uploading ? 'Uploading…' : '📷 Upload photo'}
               <input type="file" accept="image/*" onChange={handleUpload} disabled={uploading} className="hidden" />
             </label>
-            {imageUrl && <img src={imageUrl} alt="" className="h-10 w-10 rounded object-cover" />}
+            {imageUrl && (
+              <a href={imageUrl} target="_blank" rel="noopener noreferrer" title="Open full size">
+                <img src={imageUrl} alt="" className="h-28 w-28 rounded-lg border border-line object-cover" />
+              </a>
+            )}
           </div>
           <input
             type="url"
