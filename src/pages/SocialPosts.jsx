@@ -220,18 +220,97 @@ function PostCard({ post, onUpdated }) {
   )
 }
 
+const PLATFORMS = ['instagram', 'facebook', 'tiktok']
+const PLATFORM_LABEL = { instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok' }
+
+const LINK_NOTE = {
+  instagram: 'Instagram doesn’t allow clickable links in captions — "Link in bio" is written in on purpose. Set your booking link in your Instagram bio once and every post like this works from then on.',
+  facebook: 'Facebook makes a link in your caption clickable automatically, so the real booking link is written straight into the text — no "link in bio" needed here.',
+  tiktok: 'TikTok doesn’t allow clickable links in captions — "Link in bio" is written in on purpose. Set your booking link in your TikTok bio once and every post like this works from then on.',
+}
+
+function howToSteps(platform, autoPublishTiktok) {
+  if (platform === 'tiktok' && autoPublishTiktok) {
+    return ['This one posts itself at the scheduled time — nothing else for you to do.']
+  }
+  const app = PLATFORM_LABEL[platform]
+  return [
+    'Tap the photo above to open it full-size, then press and hold it to save it to your phone',
+    `Open the ${app} app and start a new post`,
+    'Add the photo you just saved',
+    'Copy the caption below and paste it in',
+    'Post it',
+  ]
+}
+
 function DraftForm({ onClose, onSaved, tiktokConnected }) {
-  const [text, setText] = useState('')
+  const qc = useQueryClient()
   const [imageUrl, setImageUrl] = useState('')
+  const [imagePath, setImagePath] = useState('') // storage path, if this image lives in our own bucket
+  const [libraryId, setLibraryId] = useState('') // set if the image was picked from the Library, so we can mark it used
   const [scheduledDate, setScheduledDate] = useState('')
+  const [enabled, setEnabled] = useState({ instagram: true, facebook: true, tiktok: false })
+  const [activeTab, setActiveTab] = useState('instagram')
+  const [captions, setCaptions] = useState({ instagram: '', facebook: '', tiktok: '' })
+  const [generatingAll, setGeneratingAll] = useState(false)
+  const [generatingOne, setGeneratingOne] = useState(false)
   const [autoPublishTiktok, setAutoPublishTiktok] = useState(false)
   const [tiktokPrivacyLevel, setTiktokPrivacyLevel] = useState('SELF_ONLY')
   const [tiktokIsAigc, setTiktokIsAigc] = useState(false)
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [genPrompt, setGenPrompt] = useState('')
   const [generating, setGenerating] = useState(false)
+  const [libraryTab, setLibraryTab] = useState('unused')
+
+  // The photo library -- bulk-imported (or previously posted) photos, so
+  // Shawn can pick from a running pool instead of hunting through Google
+  // Photos each time. See migration 0071_media_library.sql.
+  const { data: library } = useQuery({
+    queryKey: ['mediaLibrary'],
+    queryFn: async () => {
+      const orgId = await fetchMyOrgId()
+      const { data, error } = await supabase
+        .from('media_library')
+        .select('*')
+        .eq('org_id', orgId)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data || []
+    },
+  })
+  const unusedPhotos = (library || []).filter((m) => m.status === 'unused')
+  const usedPhotos = (library || []).filter((m) => m.status === 'used')
+
+  const handleBulkImport = async (e) => {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (!files.length) return
+    setImporting(true)
+    setErr('')
+    try {
+      const orgId = await fetchMyOrgId()
+      for (const file of files) {
+        const ext = file.name.split('.').pop() || 'jpg'
+        const path = `${orgId}/media-library/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+        const { error: upErr } = await supabase.storage.from('card-assets').upload(path, file, { upsert: false, contentType: file.type })
+        if (upErr) continue // one bad file shouldn't stop the rest of the batch
+        const { data } = supabase.storage.from('card-assets').getPublicUrl(path)
+        await supabase.from('media_library').insert({ org_id: orgId, url: data.publicUrl, storage_path: path, status: 'unused' })
+      }
+      qc.invalidateQueries({ queryKey: ['mediaLibrary'] })
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const pickFromLibrary = (item) => {
+    setImageUrl(item.url)
+    setImagePath(item.storage_path || '')
+    setLibraryId(item.id)
+  }
 
   // Voice input for the image description -- same browser SpeechRecognition
   // API AI Studio's chat and the Pipeline's Audio Brief field already use.
@@ -286,6 +365,8 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
       if (upErr) throw upErr
       const { data } = supabase.storage.from('card-assets').getPublicUrl(path)
       setImageUrl(data.publicUrl)
+      setImagePath(path)
+      setLibraryId('')
     } catch (e2) {
       setErr(e2.message || 'Upload failed')
     } finally {
@@ -295,7 +376,7 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
 
   // AI-generated image (Gemini, via generate-social-image.js) -- a second
   // way to get an image in, alongside handleUpload above. Kept as its own
-  // prompt field rather than reusing the post text, since what you'd want
+  // prompt field rather than reusing the caption, since what you'd want
   // to SEE in a photo (e.g. "a red Honda Acty truck on a car carrier at
   // sunset") is usually not the same words you'd want to READ in the caption.
   const handleGenerate = async () => {
@@ -312,6 +393,8 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Image generation failed')
       setImageUrl(data.imageUrl)
+      setImagePath('') // generate-social-image.js already saved it under org/social-posts/... -- path not returned, and not needed since it's never re-picked from here
+      setLibraryId('')
     } catch (e2) {
       setErr(e2.message || 'Image generation failed')
     } finally {
@@ -319,8 +402,51 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
     }
   }
 
+  const generateCaption = async (platform, seedText) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch('/.netlify/functions/generate-post-caption', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify({ platform, imageUrl: imageUrl || undefined, seedText: seedText || undefined }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || `Could not write the ${PLATFORM_LABEL[platform]} caption`)
+    return data.caption
+  }
+
+  const handleGenerateAll = async () => {
+    const targets = PLATFORMS.filter((p) => enabled[p])
+    if (!targets.length) { setErr('Turn on at least one platform first.'); return }
+    if (!imageUrl && !genPrompt.trim()) { setErr('Add a photo (or a quick note about the post) first, so there’s something to write about.'); return }
+    setGeneratingAll(true)
+    setErr('')
+    try {
+      const results = await Promise.all(targets.map((p) => generateCaption(p, genPrompt)))
+      setCaptions((prev) => ({ ...prev, ...Object.fromEntries(targets.map((p, i) => [p, results[i]])) }))
+    } catch (e2) {
+      setErr(e2.message || 'Could not write the captions')
+    } finally {
+      setGeneratingAll(false)
+    }
+  }
+
+  const handleRegenerateOne = async () => {
+    setGeneratingOne(true)
+    setErr('')
+    try {
+      const caption = await generateCaption(activeTab, captions[activeTab] || genPrompt)
+      setCaptions((prev) => ({ ...prev, [activeTab]: caption }))
+    } catch (e2) {
+      setErr(e2.message || 'Could not write that caption')
+    } finally {
+      setGeneratingOne(false)
+    }
+  }
+
   const handleSave = async () => {
-    if (!text.trim()) { setErr('Post text is required'); return }
+    const targets = PLATFORMS.filter((p) => enabled[p])
+    if (!targets.length) { setErr('Turn on at least one platform first.'); return }
+    if (targets.some((p) => !captions[p].trim())) { setErr('Every platform you’ve turned on needs caption text.'); return }
     if (!scheduledDate) { setErr('Scheduled date is required'); return }
     if (autoPublishTiktok && !imageUrl.trim()) { setErr('An image URL is required to auto-publish to TikTok'); return }
 
@@ -328,23 +454,38 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
     setErr('')
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch('/.netlify/functions/social-posts-create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session?.access_token || ''}`,
-        },
-        body: JSON.stringify({
-          text,
-          imageUrl: imageUrl || null,
-          scheduledDate,
-          autoPublishTiktok,
-          tiktokPrivacyLevel,
-          tiktokIsAigc,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to save post')
+      let firstPostId = null
+      for (const platform of targets) {
+        const res = await fetch('/.netlify/functions/social-posts-create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+          body: JSON.stringify({
+            text: captions[platform],
+            imageUrl: imageUrl || null,
+            scheduledDate,
+            platform,
+            autoPublishTiktok: platform === 'tiktok' ? autoPublishTiktok : false,
+            tiktokPrivacyLevel,
+            tiktokIsAigc,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || `Failed to save the ${PLATFORM_LABEL[platform]} post`)
+        if (!firstPostId) firstPostId = data.post?.id || null
+      }
+
+      // Keep the library honest: whatever photo just got used moves to
+      // Posted, whether it came from the library or was fresh this time.
+      if (imageUrl) {
+        const orgId = await fetchMyOrgId()
+        if (libraryId) {
+          await supabase.from('media_library').update({ status: 'used', used_at: new Date().toISOString(), used_in_post_id: firstPostId }).eq('id', libraryId)
+        } else {
+          await supabase.from('media_library').insert({ org_id: orgId, url: imageUrl, storage_path: imagePath || null, status: 'used', used_at: new Date().toISOString(), used_in_post_id: firstPostId })
+        }
+        qc.invalidateQueries({ queryKey: ['mediaLibrary'] })
+      }
+
       onSaved()
     } catch (e) {
       setErr(e.message)
@@ -353,125 +494,239 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
     }
   }
 
+  const activeLibraryList = libraryTab === 'unused' ? unusedPhotos : usedPhotos
+
   return (
-    <div className="mb-6 rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]">
-      <h2 className="mb-3 text-sm font-semibold text-ink">Draft new post</h2>
-      {err && <p className="mb-3 text-xs text-port">{err}</p>}
+    <div className="mb-6 rounded-[var(--radius-card)] border border-line bg-surface shadow-[var(--shadow-card)]">
+      <div className="flex items-center justify-between border-b border-line px-5 py-3">
+        <h2 className="text-sm font-semibold text-ink">Draft new post</h2>
+        <p className="text-xs text-muted">Pick a photo, write it once, get it ready for every platform.</p>
+      </div>
+      {err && <p className="px-5 pt-3 text-xs text-port">{err}</p>}
 
-      <div className="space-y-3">
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wide text-muted">Post text</label>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="What's on your mind?"
-            rows={4}
-            className="mt-1 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
-          />
-        </div>
+      <div className="grid gap-4 p-5 lg:grid-cols-[240px_minmax(0,1fr)_280px]">
 
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wide text-muted">Photo (optional)</label>
-          <div className="mt-1 flex items-center gap-2">
-            <label className="cursor-pointer rounded-lg border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:bg-canvas/70">
-              {uploading ? 'Uploading…' : '📷 Upload photo'}
-              <input type="file" accept="image/*" onChange={handleUpload} disabled={uploading} className="hidden" />
-            </label>
-            {imageUrl && (
-              <a href={imageUrl} target="_blank" rel="noopener noreferrer" title="Open full size">
-                <img src={imageUrl} alt="" className="h-28 w-28 rounded-lg border border-line object-cover" />
-              </a>
-            )}
+        {/* LEFT: Photo Library */}
+        <div className="rounded-lg border border-line bg-canvas/40">
+          <div className="flex items-center justify-between border-b border-line px-3 py-2">
+            <span className="text-xs font-semibold text-ink">Your Photo Library</span>
+            <span className="rounded-full border border-line bg-surface px-2 py-0.5 text-[10px] font-medium text-muted">{unusedPhotos.length} unused</span>
           </div>
-          <input
-            type="url"
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            placeholder="or paste an image URL directly"
-            className="mt-2 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
-          />
-          <div className="mt-2 flex items-center gap-2">
-            <input
-              type="text"
-              value={genPrompt}
-              onChange={(e) => setGenPrompt(e.target.value)}
-              placeholder={genListening ? 'Listening…' : "…or describe an image for AI to make, e.g. 'a red Honda Acty truck on a car carrier at sunset'"}
-              disabled={generating}
-              className="flex-1 rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
-            />
-            {(window.SpeechRecognition || window.webkitSpeechRecognition) && (
-              <button
-                type="button"
-                onClick={toggleGenMic}
-                disabled={generating}
-                title={genListening ? 'Stop listening' : 'Talk instead of typing'}
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-base disabled:opacity-50 ${
-                  genListening ? 'animate-pulse border-port bg-port/10 text-port' : 'border-line text-muted hover:text-ink'
-                }`}
-              >
-                🎤
-              </button>
-            )}
+          <div className="flex gap-1 p-2">
             <button
               type="button"
-              onClick={handleGenerate}
-              disabled={generating || !genPrompt.trim()}
-              className="shrink-0 rounded-lg border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:bg-canvas/70 disabled:opacity-50"
+              onClick={() => setLibraryTab('unused')}
+              className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${libraryTab === 'unused' ? 'bg-ink text-white' : 'bg-surface text-muted'}`}
             >
-              {generating ? 'Generating…' : '✨ Generate'}
+              UNUSED ({unusedPhotos.length})
             </button>
+            <button
+              type="button"
+              onClick={() => setLibraryTab('used')}
+              className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${libraryTab === 'used' ? 'bg-ink text-white' : 'bg-surface text-muted'}`}
+            >
+              POSTED ({usedPhotos.length})
+            </button>
+          </div>
+          <div className="grid max-h-72 grid-cols-3 gap-1.5 overflow-y-auto p-2">
+            {activeLibraryList.length === 0 && (
+              <p className="col-span-3 py-4 text-center text-[11px] text-muted">
+                {libraryTab === 'unused' ? 'No photos imported yet.' : 'Nothing posted from here yet.'}
+              </p>
+            )}
+            {activeLibraryList.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => libraryTab === 'unused' && pickFromLibrary(item)}
+                className={`relative aspect-square overflow-hidden rounded-md border-2 bg-cover bg-center ${libraryId === item.id ? 'border-accent' : 'border-transparent'}`}
+                style={{ backgroundImage: `url(${item.url})` }}
+                title={libraryTab === 'unused' ? 'Use this photo' : 'Already posted'}
+              />
+            ))}
+          </div>
+          <label className="m-2 block cursor-pointer rounded-md border border-dashed border-line bg-canvas px-2 py-2 text-center text-[11px] font-semibold text-muted hover:bg-canvas/70">
+            {importing ? 'Importing…' : '⬆ Import photos from your phone'}
+            <input type="file" accept="image/*" multiple onChange={handleBulkImport} disabled={importing} className="hidden" />
+          </label>
+        </div>
+
+        {/* CENTER: editor */}
+        <div className="rounded-lg border border-line">
+          <div className="flex items-center gap-2 border-b border-line p-3">
+            {imageUrl ? (
+              <a href={imageUrl} target="_blank" rel="noopener noreferrer" title="Open full size">
+                <img src={imageUrl} alt="" className="h-16 w-16 shrink-0 rounded-lg border border-line object-cover" />
+              </a>
+            ) : (
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-line text-[10px] text-muted">no photo</div>
+            )}
+            <div className="flex-1 space-y-1.5">
+              <label className="cursor-pointer text-xs font-semibold text-accent-600">
+                {uploading ? 'Uploading…' : '📷 Upload a photo'}
+                <input type="file" accept="image/*" onChange={handleUpload} disabled={uploading} className="hidden" />
+              </label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={genPrompt}
+                  onChange={(e) => setGenPrompt(e.target.value)}
+                  placeholder={genListening ? 'Listening…' : "…or describe a photo/note for AI, e.g. 'escorted a Honda Acty off Wilmington port'"}
+                  disabled={generating}
+                  className="flex-1 rounded-md border border-line bg-canvas px-2 py-1 text-xs outline-none focus:border-accent"
+                />
+                {(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                  <button
+                    type="button"
+                    onClick={toggleGenMic}
+                    disabled={generating}
+                    title={genListening ? 'Stop listening' : 'Talk instead of typing'}
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-sm disabled:opacity-50 ${
+                      genListening ? 'animate-pulse border-port bg-port/10 text-port' : 'border-line text-muted hover:text-ink'
+                    }`}
+                  >
+                    🎤
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={generating || !genPrompt.trim()}
+                  className="shrink-0 rounded-md border border-line bg-canvas px-2 py-1 text-[11px] font-semibold text-ink hover:bg-canvas/70 disabled:opacity-50"
+                >
+                  {generating ? '…' : '✨ Generate photo'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-1.5 border-b border-line p-3">
+            {PLATFORMS.map((p) => (
+              <div key={p} className="flex-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(p)}
+                  className={`w-full rounded-t-md border px-2 py-1.5 text-xs font-bold ${
+                    activeTab === p ? 'border-accent bg-accent text-ink' : 'border-line bg-canvas text-muted'
+                  }`}
+                >
+                  {PLATFORM_LABEL[p]}
+                </button>
+                <label className="mt-1 flex items-center justify-center gap-1 text-[10px] text-muted">
+                  <input type="checkbox" checked={enabled[p]} onChange={(e) => setEnabled((prev) => ({ ...prev, [p]: e.target.checked }))} />
+                  include
+                </label>
+              </div>
+            ))}
+          </div>
+
+          <div className="p-4">
+            <button
+              type="button"
+              onClick={handleGenerateAll}
+              disabled={generatingAll}
+              className="mb-3 w-full rounded-lg bg-ink px-3 py-2.5 text-xs font-bold text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {generatingAll ? 'Writing captions…' : '✨ Generate & refine captions for every platform'}
+            </button>
+
+            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-muted">
+              {PLATFORM_LABEL[activeTab]} caption {!enabled[activeTab] && '(not included)'}
+            </p>
+            <textarea
+              value={captions[activeTab]}
+              onChange={(e) => setCaptions((prev) => ({ ...prev, [activeTab]: e.target.value }))}
+              placeholder={`Write it yourself, or use "Generate" above…`}
+              rows={7}
+              className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm leading-relaxed outline-none focus:border-accent"
+            />
+            <div className="mt-2 rounded-lg border border-line bg-canvas/60 p-2.5 text-[11px] leading-relaxed text-muted">
+              📎 {LINK_NOTE[activeTab]}
+            </div>
+            <button
+              type="button"
+              onClick={handleRegenerateOne}
+              disabled={generatingOne}
+              className="mt-2 rounded-md border border-line bg-surface px-2.5 py-1.5 text-[11px] font-semibold text-ink hover:bg-canvas/70 disabled:opacity-50"
+            >
+              {generatingOne ? 'Rewriting…' : `🔄 Rewrite just ${PLATFORM_LABEL[activeTab]}`}
+            </button>
+
+            {activeTab === 'tiktok' && (
+              <div className="mt-3 rounded-lg border border-line bg-canvas/50 p-3">
+                <label className="flex items-center gap-2 text-xs font-semibold text-ink">
+                  <input type="checkbox" checked={autoPublishTiktok} onChange={(e) => setAutoPublishTiktok(e.target.checked)} />
+                  Auto-publish to TikTok at the scheduled time
+                </label>
+                {!tiktokConnected && (
+                  <p className="mt-1 text-xs text-amber-600">No TikTok account connected yet — click "Connect TikTok" above first, or this post will fail.</p>
+                )}
+                {autoPublishTiktok && (
+                  <div className="mt-3 space-y-2">
+                    <div>
+                      <label className="block text-xs text-muted">Who can see it on TikTok</label>
+                      <select
+                        value={tiktokPrivacyLevel}
+                        onChange={(e) => setTiktokPrivacyLevel(e.target.value)}
+                        className="mt-1 w-full rounded border border-line bg-white px-2 py-1 text-xs outline-none focus:border-accent"
+                      >
+                        <option value="SELF_ONLY">Only me</option>
+                        <option value="FOLLOWER_OF_CREATOR">Followers</option>
+                        <option value="MUTUAL_FOLLOW_FRIENDS">Friends</option>
+                        <option value="PUBLIC_TO_EVERYONE">Everyone</option>
+                      </select>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-muted">
+                      <input type="checkbox" checked={tiktokIsAigc} onChange={(e) => setTiktokIsAigc(e.target.checked)} />
+                      This image is AI-generated or AI-edited (TikTok requires this disclosure)
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        <p className="rounded-lg bg-canvas/60 p-2.5 text-xs leading-relaxed text-muted">
-          <strong className="text-ink">Heads up on links:</strong> Facebook makes a link in your post text clickable automatically.
-          Instagram and TikTok don't — a link typed into a caption there just sits as plain text. The standard free way around
-          it: put your booking link in your Instagram/TikTok bio once, then write "link in bio" in the post text here.
-        </p>
-
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wide text-muted">Scheduled date & time</label>
-          <input
-            type="datetime-local"
-            value={scheduledDate}
-            onChange={(e) => setScheduledDate(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
-          />
-        </div>
-
-        <div className="rounded-lg border border-line bg-canvas/50 p-3">
-          <label className="flex items-center gap-2 text-xs font-semibold text-ink">
-            <input type="checkbox" checked={autoPublishTiktok} onChange={(e) => setAutoPublishTiktok(e.target.checked)} />
-            Auto-publish to TikTok at the scheduled time
-          </label>
-          {!tiktokConnected && (
-            <p className="mt-1 text-xs text-amber-600">No TikTok account connected yet — click "Connect TikTok" above first, or this post will fail.</p>
-          )}
-          {autoPublishTiktok && (
-            <div className="mt-3 space-y-2">
-              <div>
-                <label className="block text-xs text-muted">Who can see it on TikTok</label>
-                <select
-                  value={tiktokPrivacyLevel}
-                  onChange={(e) => setTiktokPrivacyLevel(e.target.value)}
-                  className="mt-1 w-full rounded border border-line bg-white px-2 py-1 text-xs outline-none focus:border-accent"
-                >
-                  <option value="SELF_ONLY">Only me</option>
-                  <option value="FOLLOWER_OF_CREATOR">Followers</option>
-                  <option value="MUTUAL_FOLLOW_FRIENDS">Friends</option>
-                  <option value="PUBLIC_TO_EVERYONE">Everyone</option>
-                </select>
+        {/* RIGHT: preview + how-to + schedule */}
+        <div className="rounded-lg border border-line">
+          <p className="border-b border-line px-3 py-2 text-xs font-semibold text-ink">Preview — {PLATFORM_LABEL[activeTab]}</p>
+          <div className="flex justify-center p-3">
+            <div className="w-full max-w-[200px] overflow-hidden rounded-2xl border-[6px] border-ink bg-white shadow-[var(--shadow-card)]">
+              <div className="flex items-center gap-1.5 border-b border-line/50 px-2 py-1.5">
+                <div className="h-4 w-4 rounded-full bg-gradient-to-br from-accent to-ink" />
+                <b className="text-[9px] text-ink">ship2shorebooking</b>
               </div>
-              <label className="flex items-center gap-2 text-xs text-muted">
-                <input type="checkbox" checked={tiktokIsAigc} onChange={(e) => setTiktokIsAigc(e.target.checked)} />
-                This image is AI-generated or AI-edited (TikTok requires this disclosure)
-              </label>
+              {imageUrl ? (
+                <img src={imageUrl} alt="" className="aspect-[4/5] w-full object-cover" />
+              ) : (
+                <div className="flex aspect-[4/5] w-full items-center justify-center bg-canvas text-[10px] text-muted">no photo yet</div>
+              )}
+              <p className="px-2 py-1.5 text-[9px] leading-snug text-ink/80">
+                <b>ship2shorebooking</b> {(captions[activeTab] || 'Your caption will show here…').slice(0, 90)}{captions[activeTab]?.length > 90 ? '…' : ''}
+              </p>
             </div>
-          )}
+          </div>
+
+          <div className="mx-3 mb-3 rounded-lg border border-line bg-canvas/60 p-3">
+            <p className="mb-1.5 text-[11px] font-bold text-ink">📱 How to actually post this</p>
+            <ol className="ml-4 list-decimal space-y-1 text-[11px] leading-relaxed text-ink/80">
+              {howToSteps(activeTab, autoPublishTiktok).map((step, i) => <li key={i}>{step}</li>)}
+            </ol>
+          </div>
+
+          <p className="border-y border-line px-3 py-2 text-xs font-semibold text-ink">Scheduled date &amp; time</p>
+          <div className="p-3">
+            <input
+              type="datetime-local"
+              value={scheduledDate}
+              onChange={(e) => setScheduledDate(e.target.value)}
+              className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+          </div>
         </div>
       </div>
 
-      <div className="mt-4 flex justify-end gap-2">
+      <div className="flex justify-end gap-2 border-t border-line px-5 py-3">
         <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:bg-canvas hover:text-ink">
           Cancel
         </button>
@@ -480,7 +735,7 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
           disabled={saving}
           className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
         >
-          {saving ? 'Saving…' : 'Save draft'}
+          {saving ? 'Saving…' : `Save draft${PLATFORMS.filter((p) => enabled[p]).length > 1 ? 's' : ''}`}
         </button>
       </div>
     </div>
