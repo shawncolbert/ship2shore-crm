@@ -39,6 +39,12 @@ export const handler = async (event) => {
 
   const metaTags = [
     `<meta name="description" content="${esc(description)}" />`,
+    // Missing until now -- with no canonical tag, Google was left to guess
+    // which of these landing pages (often similar wording, same template)
+    // was the "real" one and silently dropped the others from its index
+    // ("Alternate page with proper canonical tag" in Search Console). This
+    // tells it explicitly: this exact URL is the one to index.
+    `<link rel="canonical" href="${esc(url)}" />`,
     `<meta property="og:title" content="${esc(pageTitle)}" />`,
     `<meta property="og:description" content="${esc(description)}" />`,
     `<meta property="og:url" content="${esc(url)}" />`,
