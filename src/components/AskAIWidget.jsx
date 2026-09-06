@@ -42,6 +42,12 @@ function Bubble({ role, text }) {
 // separate review step, the same as /agent already could. There is no
 // weaker version anymore; this is a second entry point into the identical
 // assistant, not a separate lower-privilege one.
+// Voice input: the browser's own SpeechRecognition (Chrome/Edge/Android,
+// and Safari via the webkit- prefix) -- free, no server round-trip, and
+// starting it from a click is what makes the browser show the mic
+// permission prompt at all (it refuses to prompt without a user gesture).
+const SpeechRecognitionCtor = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null
+
 export default function AskAIWidget() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -55,7 +61,10 @@ export default function AskAIWidget() {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [listening, setListening] = useState(false)
   const listRef = useRef(null)
+  const recognitionRef = useRef(null)
+  const finalTranscriptRef = useRef('')
 
   useEffect(() => {
     try { sessionStorage.setItem(OPEN_KEY, open ? '1' : '0') } catch { /* private browsing -- fine to just not persist */ }
@@ -65,9 +74,61 @@ export default function AskAIWidget() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
   }, [messages, busy])
 
-  const send = async (e) => {
+  // Stop any in-progress recognition if the widget unmounts mid-listen.
+  useEffect(() => () => recognitionRef.current?.stop(), [])
+
+  const stopListening = () => {
+    recognitionRef.current?.stop()
+  }
+
+  const startListening = () => {
+    if (!SpeechRecognitionCtor) {
+      setErr("Voice input isn't supported in this browser -- type your question instead.")
+      return
+    }
+    if (listening || busy) return
+    setErr('')
+    finalTranscriptRef.current = ''
+    setInput('')
+
+    const recognition = new SpeechRecognitionCtor()
+    recognition.lang = 'en-US'
+    recognition.interimResults = true
+    recognition.continuous = false
+
+    recognition.onresult = (event) => {
+      let interim = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) finalTranscriptRef.current = `${finalTranscriptRef.current} ${transcript}`.trim()
+        else interim += transcript
+      }
+      setInput(`${finalTranscriptRef.current} ${interim}`.trim())
+    }
+    recognition.onerror = (event) => {
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setErr('Microphone access is blocked -- allow it for this site in your browser/phone settings to use voice.')
+      } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        setErr('Voice input had a problem -- try again or type your question.')
+      }
+    }
+    recognition.onend = () => {
+      setListening(false)
+      const finalText = finalTranscriptRef.current.trim()
+      if (finalText) sendQuestion(finalText)
+    }
+
+    recognitionRef.current = recognition
+    setListening(true)
+    recognition.start()
+  }
+
+  const send = (e) => {
     e.preventDefault()
-    const question = input.trim()
+    sendQuestion(input.trim())
+  }
+
+  const sendQuestion = async (question) => {
     if (!question || busy) return
     setInput('')
     setErr('')
@@ -134,7 +195,7 @@ export default function AskAIWidget() {
               <p className="text-xs" style={{ color: 'var(--color-muted)' }}>
                 Same assistant as the full CRM Assistant page — it can create or update contacts and jobs, move pipeline
                 stages, send customer emails, look up a carrier by DOT number, schedule an appointment, or draft/schedule a
-                social post. {contactId ? 'Try "draft a follow-up to this person."' : 'Try "how many new leads this week?"'}
+                social post. Tap the mic and just talk — {contactId ? 'try "draft a follow-up to this person."' : 'try "how many new leads this week?"'}
               </p>
             )}
             {messages.map((m, i) => <Bubble key={i} {...m} />)}
@@ -143,10 +204,24 @@ export default function AskAIWidget() {
           </div>
 
           <form onSubmit={send} className="flex gap-2 p-3" style={{ borderTop: '1px solid var(--color-line)' }}>
+            <button
+              type="button"
+              onClick={() => (listening ? stopListening() : startListening())}
+              disabled={busy}
+              aria-label={listening ? 'Stop listening' : 'Speak your question'}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg disabled:opacity-50"
+              style={{
+                background: listening ? '#c0392b' : 'var(--color-canvas)',
+                border: '1px solid var(--color-line)',
+                color: listening ? '#fff' : 'var(--color-ink)',
+              }}
+            >
+              🎤
+            </button>
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={contactId ? 'Ask about or act on this contact…' : 'Ask your CRM anything…'}
+              placeholder={listening ? 'Listening…' : (contactId ? 'Ask about or act on this contact…' : 'Ask your CRM anything…')}
               disabled={busy}
               className="flex-1 rounded-md px-3 py-2 text-sm outline-none"
               style={{ background: 'var(--color-canvas)', border: '1px solid var(--color-line)', color: 'var(--color-ink)' }}
@@ -164,12 +239,25 @@ export default function AskAIWidget() {
       )}
 
       <button
-        onClick={() => setOpen((o) => !o)}
-        aria-label={open ? 'Close Ask AI' : 'Open Ask AI'}
+        onClick={() => {
+          if (listening) {
+            stopListening()
+          } else if (open) {
+            setOpen(false)
+          } else {
+            setOpen(true)
+            startListening()
+          }
+        }}
+        aria-label={listening ? 'Stop listening' : (open ? 'Close Ask AI' : 'Talk to Ask AI')}
         className="flex h-14 w-14 items-center justify-center rounded-full text-2xl"
-        style={{ background: 'var(--color-accent)', color: 'var(--color-ink)', boxShadow: 'var(--shadow-card, 0 8px 20px -4px rgba(0,0,0,.3))' }}
+        style={{
+          background: listening ? '#c0392b' : 'var(--color-accent)',
+          color: listening ? '#fff' : 'var(--color-ink)',
+          boxShadow: 'var(--shadow-card, 0 8px 20px -4px rgba(0,0,0,.3))',
+        }}
       >
-        {open ? '×' : '✨'}
+        {open ? (listening ? '🎤' : '×') : '✨'}
       </button>
     </div>
   )
