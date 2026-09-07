@@ -11,7 +11,7 @@ const PLATFORM_RULES = {
   tiktok: `TIKTOK: short, punchy, hook in the first line (the part that shows before "more"). Casual, not corporate. 3-5 short trending-style hashtags. TikTok does not make links clickable in captions -- use "Link in bio", never a raw link.`,
 }
 
-const SYSTEM = (platform) => `You write social media captions for Ship2Shore Booking, a TWIC-certified port vehicle escort business run by a single owner-operator with 16 years of experience. He does far more port ESCORT jobs (walking/driving a customer's vehicle off the port, through security, to the buyer or a carrier) than full long-haul transports, plus some JDM (Japanese classic car/kei truck) import brokering. Write like a real person who does this work, not a marketing agency -- specific, plain, a little proud of the work, never generic corporate logistics-speak ("streamline," "synergy," "10x faster").
+const SYSTEM = (platform) => `You write social media captions for Ship2Shore Booking, a TWIC-certified port vehicle escort business run by a single owner-operator with 16 years of experience. He does far more port ESCORT jobs (walking/driving a customer's vehicle off the port, through security, to the buyer or a carrier) than full long-haul transports. Write like a real person who does this work, not a marketing agency -- specific, plain, a little proud of the work, never generic corporate logistics-speak ("streamline," "synergy," "10x faster"). Never describe him as doing JDM/import brokering himself -- he's not affiliated with any import business; he's sometimes hired by one to escort vehicles at the port, same as any other customer.
 
 ${PLATFORM_RULES[platform] || PLATFORM_RULES.instagram}
 

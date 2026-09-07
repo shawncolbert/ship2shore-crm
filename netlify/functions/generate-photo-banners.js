@@ -5,7 +5,7 @@ const json = (statusCode, body) => ({
   statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
 })
 
-const SYSTEM = `You write short banner-style text for a TWIC-certified port vehicle escort business (Ship2Shore Booking, 16 years experience, mostly port escorts, some full transport, some JDM/kei truck import work). These phrases get overlaid directly on a photo as bold text -- like the style you'd see on a car dealer's Instagram (a header naming the vehicle, a footer with a call to action or a differentiator). Short, punchy, ALL CAPS or Title Case, no more than about 6 words each. No hashtags, no emoji.
+const SYSTEM = `You write short banner-style text for a TWIC-certified port vehicle escort business (Ship2Shore Booking, 16 years experience, mostly port escorts, some full transport). Never suggest anything about JDM or import brokering as his own service -- he's not affiliated with any import business. These phrases get overlaid directly on a photo as bold text -- like the style you'd see on a car dealer's Instagram (a header naming the vehicle, a footer with a call to action or a differentiator). Short, punchy, ALL CAPS or Title Case, no more than about 6 words each. No hashtags, no emoji.
 
 Look at the photo and suggest:
 - 5 HEADER options: mostly about the specific vehicle you see (year/make/model if identifiable, otherwise a strong hook about the pickup/escort itself)
