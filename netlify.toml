@@ -17,7 +17,14 @@
 #   schedule = "*/10 * * * *"
 
 # Publish any Social Media Planner post whose scheduled time has arrived
+# via the direct TikTok API (publish_via is null -- see buffer-publish.js
+# for the Buffer-routed path, which is what new auto-publish posts use).
 [functions."tiktok-publish"]
+  schedule = "*/10 * * * *"
+
+# Publish any Social Media Planner post (Instagram/Facebook/TikTok) whose
+# scheduled time has arrived and was set to auto-publish via Buffer.
+[functions."buffer-publish"]
   schedule = "*/10 * * * *"
 
 # Telegram nudge for any Social Media Planner draft whose scheduled time has

@@ -14,6 +14,7 @@ export const handler = async () => {
     .select('*')
     .eq('platform', 'tiktok')
     .eq('status', 'scheduled')
+    .is('publish_via', null) // publish_via = 'buffer' belongs to buffer-publish.js instead
     .lte('scheduled_date', new Date().toISOString())
 
   if (dueErr) return { statusCode: 500, body: JSON.stringify({ error: dueErr.message }) }

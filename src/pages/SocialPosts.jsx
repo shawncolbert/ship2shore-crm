@@ -139,8 +139,8 @@ export default function SocialPosts() {
         </div>
       )}
 
-      {showDraft && <DraftForm onClose={() => setShowDraft(false)} onSaved={handlePostCreated} tiktokConnected={tiktokStatus?.connected} />}
-      {editingPost && <EditPostForm post={editingPost} onClose={() => setEditingPost(null)} onSaved={handlePostCreated} tiktokConnected={tiktokStatus?.connected} />}
+      {showDraft && <DraftForm onClose={() => setShowDraft(false)} onSaved={handlePostCreated} />}
+      {editingPost && <EditPostForm post={editingPost} onClose={() => setEditingPost(null)} onSaved={handlePostCreated} />}
 
       <div className="grid gap-4 lg:grid-cols-2">
         {posts?.map((post) => (
@@ -297,8 +297,8 @@ const FOOTER_IDEAS = [
   'Get Your Free Quote Today',
 ]
 
-function howToSteps(platform, autoPublishTiktok) {
-  if (platform === 'tiktok' && autoPublishTiktok) {
+function howToSteps(platform, autoPublish) {
+  if (autoPublish) {
     return ['This one posts itself at the scheduled time — nothing else for you to do.']
   }
   const app = PLATFORM_LABEL[platform]
@@ -311,7 +311,7 @@ function howToSteps(platform, autoPublishTiktok) {
   ]
 }
 
-function DraftForm({ onClose, onSaved, tiktokConnected }) {
+function DraftForm({ onClose, onSaved }) {
   const qc = useQueryClient()
   const [imageUrl, setImageUrl] = useState('')
   const [imagePath, setImagePath] = useState('') // storage path, if this image lives in our own bucket
@@ -322,9 +322,7 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
   const [captions, setCaptions] = useState({ instagram: '', facebook: '', tiktok: '' })
   const [generatingAll, setGeneratingAll] = useState(false)
   const [generatingOne, setGeneratingOne] = useState(false)
-  const [autoPublishTiktok, setAutoPublishTiktok] = useState(false)
-  const [tiktokPrivacyLevel, setTiktokPrivacyLevel] = useState('SELF_ONLY')
-  const [tiktokIsAigc, setTiktokIsAigc] = useState(false)
+  const [autoPublish, setAutoPublish] = useState(false)
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -674,7 +672,7 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
     if (!targets.length) { setErr('Turn on at least one platform first.'); return }
     if (targets.some((p) => !captions[p].trim())) { setErr('Every platform you’ve turned on needs caption text.'); return }
     if (!scheduledDate) { setErr('Scheduled date is required'); return }
-    if (autoPublishTiktok && !imageUrl.trim()) { setErr('An image URL is required to auto-publish to TikTok'); return }
+    if (autoPublish && !imageUrl.trim()) { setErr('An image is required to auto-publish'); return }
 
     setSaving(true)
     setErr('')
@@ -690,9 +688,7 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
             imageUrl: imageUrl || null,
             scheduledDate,
             platform,
-            autoPublishTiktok: platform === 'tiktok' ? autoPublishTiktok : false,
-            tiktokPrivacyLevel,
-            tiktokIsAigc,
+            publishVia: autoPublish ? 'buffer' : null,
           }),
         })
         const data = await res.json()
@@ -997,38 +993,13 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
               {generatingOne ? 'Rewriting…' : `🔄 Rewrite just ${PLATFORM_LABEL[activeTab]}`}
             </button>
 
-            {activeTab === 'tiktok' && (
-              <div className="mt-3 rounded-lg border border-line bg-canvas/50 p-3">
-                <label className="flex items-center gap-2 text-xs font-semibold text-ink">
-                  <input type="checkbox" checked={autoPublishTiktok} onChange={(e) => setAutoPublishTiktok(e.target.checked)} />
-                  Auto-publish to TikTok at the scheduled time
-                </label>
-                {!tiktokConnected && (
-                  <p className="mt-1 text-xs text-amber-600">No TikTok account connected yet — click "Connect TikTok" above first, or this post will fail.</p>
-                )}
-                {autoPublishTiktok && (
-                  <div className="mt-3 space-y-2">
-                    <div>
-                      <label className="block text-xs text-muted">Who can see it on TikTok</label>
-                      <select
-                        value={tiktokPrivacyLevel}
-                        onChange={(e) => setTiktokPrivacyLevel(e.target.value)}
-                        className="mt-1 w-full rounded border border-line bg-white px-2 py-1 text-xs outline-none focus:border-accent"
-                      >
-                        <option value="SELF_ONLY">Only me</option>
-                        <option value="FOLLOWER_OF_CREATOR">Followers</option>
-                        <option value="MUTUAL_FOLLOW_FRIENDS">Friends</option>
-                        <option value="PUBLIC_TO_EVERYONE">Everyone</option>
-                      </select>
-                    </div>
-                    <label className="flex items-center gap-2 text-xs text-muted">
-                      <input type="checkbox" checked={tiktokIsAigc} onChange={(e) => setTiktokIsAigc(e.target.checked)} />
-                      This image is AI-generated or AI-edited (TikTok requires this disclosure)
-                    </label>
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="mt-3 rounded-lg border border-line bg-canvas/50 p-3">
+              <label className="flex items-center gap-2 text-xs font-semibold text-ink">
+                <input type="checkbox" checked={autoPublish} onChange={(e) => setAutoPublish(e.target.checked)} />
+                Auto-publish at the scheduled time (via Buffer)
+              </label>
+              <p className="mt-1 text-xs text-muted">Applies to every platform turned on above for this post.</p>
+            </div>
           </div>
         </div>
 
@@ -1056,7 +1027,7 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
           <div className="mx-3 mb-3 rounded-lg border border-line bg-canvas/60 p-3">
             <p className="mb-1.5 text-[11px] font-bold text-ink">📱 How to actually post this</p>
             <ol className="ml-4 list-decimal space-y-1 text-[11px] leading-relaxed text-ink/80">
-              {howToSteps(activeTab, autoPublishTiktok).map((step, i) => <li key={i}>{step}</li>)}
+              {howToSteps(activeTab, autoPublish).map((step, i) => <li key={i}>{step}</li>)}
             </ol>
           </div>
 
@@ -1093,13 +1064,11 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
 // platform's own post, its own photo, its own schedule. No Library/AI-photo
 // picker here -- swapping the photo on an edit is rare enough that a plain
 // upload-or-paste-URL covers it without dragging in the whole creation flow.
-function EditPostForm({ post, onClose, onSaved, tiktokConnected }) {
+function EditPostForm({ post, onClose, onSaved }) {
   const [text, setText] = useState(post.text || '')
   const [imageUrl, setImageUrl] = useState(post.image_url || '')
   const [scheduledDate, setScheduledDate] = useState(post.scheduled_date ? post.scheduled_date.slice(0, 16) : '')
-  const [autoPublishTiktok, setAutoPublishTiktok] = useState(post.status === 'scheduled' && post.platform === 'tiktok')
-  const [tiktokPrivacyLevel, setTiktokPrivacyLevel] = useState(post.tiktok_privacy_level || 'SELF_ONLY')
-  const [tiktokIsAigc, setTiktokIsAigc] = useState(Boolean(post.tiktok_is_aigc))
+  const [autoPublish, setAutoPublish] = useState(post.status === 'scheduled' && post.publish_via === 'buffer')
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -1131,6 +1100,7 @@ function EditPostForm({ post, onClose, onSaved, tiktokConnected }) {
   const handleSave = async () => {
     if (!text.trim()) { setErr('Post text is required'); return }
     if (!scheduledDate) { setErr('Scheduled date is required'); return }
+    if (autoPublish && !imageUrl.trim()) { setErr('An image is required to auto-publish'); return }
     setSaving(true)
     setErr('')
     try {
@@ -1143,9 +1113,7 @@ function EditPostForm({ post, onClose, onSaved, tiktokConnected }) {
           text,
           imageUrl: imageUrl || null,
           scheduledDate,
-          autoPublishTiktok: isTiktok ? autoPublishTiktok : false,
-          tiktokPrivacyLevel,
-          tiktokIsAigc,
+          publishVia: autoPublish ? 'buffer' : null,
         }),
       })
       const data = await res.json()
@@ -1204,38 +1172,12 @@ function EditPostForm({ post, onClose, onSaved, tiktokConnected }) {
           />
         </div>
 
-        {isTiktok && (
-          <div className="rounded-lg border border-line bg-canvas/50 p-3">
-            <label className="flex items-center gap-2 text-xs font-semibold text-ink">
-              <input type="checkbox" checked={autoPublishTiktok} onChange={(e) => setAutoPublishTiktok(e.target.checked)} />
-              Auto-publish to TikTok at the scheduled time
-            </label>
-            {!tiktokConnected && (
-              <p className="mt-1 text-xs text-amber-600">No TikTok account connected yet — this will fail until one is.</p>
-            )}
-            {autoPublishTiktok && (
-              <div className="mt-3 space-y-2">
-                <div>
-                  <label className="block text-xs text-muted">Who can see it on TikTok</label>
-                  <select
-                    value={tiktokPrivacyLevel}
-                    onChange={(e) => setTiktokPrivacyLevel(e.target.value)}
-                    className="mt-1 w-full rounded border border-line bg-white px-2 py-1 text-xs outline-none focus:border-accent"
-                  >
-                    <option value="SELF_ONLY">Only me</option>
-                    <option value="FOLLOWER_OF_CREATOR">Followers</option>
-                    <option value="MUTUAL_FOLLOW_FRIENDS">Friends</option>
-                    <option value="PUBLIC_TO_EVERYONE">Everyone</option>
-                  </select>
-                </div>
-                <label className="flex items-center gap-2 text-xs text-muted">
-                  <input type="checkbox" checked={tiktokIsAigc} onChange={(e) => setTiktokIsAigc(e.target.checked)} />
-                  This image is AI-generated or AI-edited (TikTok requires this disclosure)
-                </label>
-              </div>
-            )}
-          </div>
-        )}
+        <div className="rounded-lg border border-line bg-canvas/50 p-3">
+          <label className="flex items-center gap-2 text-xs font-semibold text-ink">
+            <input type="checkbox" checked={autoPublish} onChange={(e) => setAutoPublish(e.target.checked)} />
+            Auto-publish at the scheduled time (via Buffer)
+          </label>
+        </div>
       </div>
 
       <div className="mt-4 flex justify-end gap-2">

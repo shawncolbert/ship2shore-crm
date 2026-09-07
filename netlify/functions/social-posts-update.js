@@ -20,7 +20,7 @@ export const handler = async (event) => {
 
   let payload
   try { payload = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'Bad JSON' }) }
-  const { postId, text, imageUrl, scheduledDate, autoPublishTiktok, tiktokPrivacyLevel, tiktokIsAigc } = payload
+  const { postId, text, imageUrl, scheduledDate, publishVia, tiktokPrivacyLevel, tiktokIsAigc } = payload
   if (!postId) return json(400, { error: 'postId is required' })
   if (!text?.trim()) return json(400, { error: 'Post text is required' })
   if (!scheduledDate) return json(400, { error: 'Scheduled date is required' })
@@ -34,17 +34,16 @@ export const handler = async (event) => {
     text,
     image_url: imageUrl || null,
     scheduled_date: scheduledDate,
+    publish_via: publishVia || null,
     // Editing un-does a stale reminder/failure state -- it's effectively a
     // fresh draft again until the new schedule time actually arrives.
     reminded_at: null,
+    tiktok_privacy_level: tiktokPrivacyLevel || 'SELF_ONLY',
+    tiktok_is_aigc: Boolean(tiktokIsAigc),
   }
-  if (existing.status !== 'published') update.status = 'draft'
-
-  if (existing.platform === 'tiktok') {
-    update.tiktok_privacy_level = tiktokPrivacyLevel || 'SELF_ONLY'
-    update.tiktok_is_aigc = Boolean(tiktokIsAigc)
-    if (autoPublishTiktok && !imageUrl) return json(400, { error: 'An image is required to auto-publish to TikTok' })
-    update.status = autoPublishTiktok ? 'scheduled' : 'draft'
+  if (existing.status !== 'published') {
+    if (publishVia === 'buffer' && !imageUrl) return json(400, { error: 'An image is required to auto-publish' })
+    update.status = publishVia ? 'scheduled' : 'draft'
   }
 
   const { data: updated, error } = await admin

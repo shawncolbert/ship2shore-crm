@@ -15,11 +15,11 @@ export const handler = async (event) => {
     const orgId = await orgForUser(user.id)
     if (!orgId) return json(403, { error: 'No org membership' })
 
-    const { text, imageUrl, scheduledDate, platform, autoPublishTiktok, tiktokPrivacyLevel, tiktokIsAigc } = JSON.parse(event.body || '{}')
+    const { text, imageUrl, scheduledDate, platform, publishVia, tiktokPrivacyLevel, tiktokIsAigc } = JSON.parse(event.body || '{}')
 
     if (!text?.trim()) return json(400, { error: 'Post text is required' })
     if (!scheduledDate) return json(400, { error: 'Scheduled date is required' })
-    if (autoPublishTiktok && !imageUrl) return json(400, { error: 'An image URL is required to auto-publish to TikTok' })
+    if (publishVia === 'buffer' && !imageUrl) return json(400, { error: 'An image is required to auto-publish' })
 
     const { data: post, error: postErr } = await admin
       .from('social_posts')
@@ -28,11 +28,9 @@ export const handler = async (event) => {
         text,
         image_url: imageUrl || null,
         scheduled_date: scheduledDate,
-        status: autoPublishTiktok ? 'scheduled' : 'draft',
-        // autoPublishTiktok always means this row is the TikTok one; otherwise
-        // trust whatever platform tag the caller sent (instagram/facebook/
-        // tiktok-not-auto-publishing), defaulting to null for old callers.
-        platform: autoPublishTiktok ? 'tiktok' : (platform || null),
+        status: publishVia ? 'scheduled' : 'draft',
+        platform: platform || null,
+        publish_via: publishVia || null,
         tiktok_privacy_level: tiktokPrivacyLevel || 'SELF_ONLY',
         tiktok_is_aigc: Boolean(tiktokIsAigc),
       })
