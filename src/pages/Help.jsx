@@ -398,12 +398,12 @@ const SECTIONS = [
     id: 'social',
     title: 'Social Posts',
     nav: '/social-posts',
-    body: `A content calendar for drafting and scheduling social posts, separate from everything customer-
-      facing above. Drafting and scheduling work with no setup. To have a post actually go out on its own at
-      the scheduled time instead of just sitting there as a draft, click "Connect TikTok" at the top of the
-      page and authorize your TikTok account once — after that, checking "Auto-publish to TikTok" on a post
-      (with an image and a privacy level chosen) really does publish it at the scheduled time, no manual
-      posting needed.`,
+    body: `A content calendar for drafting and scheduling posts to Instagram, Facebook, and TikTok, separate
+      from everything customer-facing above. Drafting and scheduling work with no setup. To have a post
+      actually go out on its own at the scheduled time instead of just sitting there as a draft, check
+      "Auto-publish at the scheduled time (via Buffer)" when you save it — it posts for real, through your
+      connected Buffer account, no manual posting needed. See the numbered walkthrough near the top of this
+      page for the exact steps.`,
   },
   {
     id: 'appearance',
@@ -538,8 +538,8 @@ export default function Help() {
           <li className={step}>
             <span className={stepNum}>11</span>
             <div>
-              <p className="text-sm font-semibold text-ink">Connect TikTok (optional)</p>
-              <p className="text-sm text-muted">Only needed if you want to auto-publish social posts. Go to <a href="/social-posts" className="text-accent hover:underline">Social Posts</a> and click "Connect TikTok." Skip this if you'll only ever draft posts and post them yourself.</p>
+              <p className="text-sm font-semibold text-ink">Try posting to social media (optional)</p>
+              <p className="text-sm text-muted">Go to <a href="/social-posts" className="text-accent hover:underline">Social Posts</a> and see "How to post on social media" below for the exact steps, including how to auto-publish through Buffer instead of posting by hand.</p>
             </div>
           </li>
           <li className={step}>
@@ -547,6 +547,80 @@ export default function Help() {
             <div>
               <p className="text-sm font-semibold text-ink">Need a teammate added, or something changed?</p>
               <p className="text-sm text-muted">Adding additional users to your account isn't self-serve yet — reach out and we'll get them set up.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      {/* Social Posts walkthrough */}
+      <section className={`${card} mb-6`}>
+        <h2 className={`${h2} mb-1`}>How to post on social media</h2>
+        <p className="mb-4 text-sm text-muted">
+          Go to <a href="/social-posts" className="text-accent hover:underline">Social Posts</a> in the sidebar,
+          then click "New post" and follow these in order.
+        </p>
+        <ol className="space-y-4">
+          <li className={step}>
+            <span className={stepNum}>1</span>
+            <div>
+              <p className="text-sm font-semibold text-ink">Add a photo</p>
+              <p className="text-sm text-muted">Upload one, pick one from your Photo Library, or click "✨ Generate photo" to have AI make one. Once a photo is attached, remove it first if you want to swap to a different one — this is on purpose, so you never accidentally lose a real photo you already added.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>2</span>
+            <div>
+              <p className="text-sm font-semibold text-ink">Turn on the platforms you want this post to go to</p>
+              <p className="text-sm text-muted">Instagram and Facebook are on by default; check TikTok too if you want it there. Each one gets its own caption tab.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>3</span>
+            <div>
+              <p className="text-sm font-semibold text-ink">Write or generate the caption for each platform</p>
+              <p className="text-sm text-muted">Click "Generate captions for all enabled platforms" to have AI write all of them from the photo at once, or write your own on each tab. "🔄 Rewrite" redoes just the one you're looking at.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>4</span>
+            <div>
+              <p className="text-sm font-semibold text-ink">(Optional) Add a header/footer banner on the photo</p>
+              <p className="text-sm text-muted">Pick from the 20 preset ideas in the dropdowns, or click "✨ Get AI ideas for this photo" for five fresh ones specific to that image, then "Apply" to bake the text onto the photo.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>5</span>
+            <div>
+              <p className="text-sm font-semibold text-ink">Set the scheduled date and time</p>
+              <p className="text-sm text-muted">This is when it should post (or, if you're posting it yourself, when you plan to).</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>6</span>
+            <div>
+              <p className="text-sm font-semibold text-ink">Check "Auto-publish at the scheduled time (via Buffer)" — or don't</p>
+              <p className="text-sm text-muted">Checked: it posts itself for real through your connected Buffer account, no other action from you. Unchecked: it's saved as a draft, and "📱 How to actually post this" tells you exactly how to post it by hand on each platform.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>7</span>
+            <div>
+              <p className="text-sm font-semibold text-ink">Click Save</p>
+              <p className="text-sm text-muted">One post gets created per platform you turned on. You'll see a "Saved" confirmation, and each shows up as its own card below.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>8</span>
+            <div>
+              <p className="text-sm font-semibold text-ink">See if it actually posted</p>
+              <p className="text-sm text-muted">Auto-publish checks for anything due about every 10 minutes, so give it up to 10 minutes past the scheduled time, then refresh. The card's status flips to "Published" once it's gone out. If something's wrong (e.g. Buffer isn't connected for that platform), it flips to "Failed" with the real reason shown right on the card instead of just silently doing nothing.</p>
+            </div>
+          </li>
+          <li className={step}>
+            <span className={stepNum}>9</span>
+            <div>
+              <p className="text-sm font-semibold text-ink">Made a mistake?</p>
+              <p className="text-sm text-muted">Click the ✏️ on any post that hasn't published yet to edit it in place — caption, photo, schedule, or the auto-publish checkbox — no need to delete and start over.</p>
             </div>
           </li>
         </ol>
