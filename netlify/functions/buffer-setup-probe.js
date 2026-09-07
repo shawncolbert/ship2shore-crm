@@ -65,12 +65,26 @@ export const handler = async (event) => {
     }
 
     // 2. Introspect CreatePostInput so buffer-publish.js is built against
-    // the real field names/enum values instead of a guess.
+    // the real field names/enum values instead of a guess. Nested 4 deep
+    // since a list-of-non-null field (like assets) needs 3 unwraps before
+    // its real item type name shows up.
     const inputSchema = await gql(
       apiKey,
-      `query { __type(name: "CreatePostInput") { name inputFields { name type { name kind ofType { name kind ofType { name kind } } } } } }`
+      `query { __type(name: "CreatePostInput") { name inputFields { name type { name kind ofType { name kind ofType { name kind ofType { name kind ofType { name kind } } } } } } } }`
     )
     result.createPostInputFields = inputSchema?.__type?.inputFields || []
+
+    // 2b. PostActionPayload -- is createPost's return a union (needs "...
+    // on X" fragments) or a plain object with direct fields?
+    try {
+      const payloadType = await gql(
+        apiKey,
+        `query { __type(name: "PostActionPayload") { name kind possibleTypes { name } fields { name type { name kind ofType { name kind } } } } }`
+      )
+      result.postActionPayloadShape = payloadType?.__type || null
+    } catch (e) {
+      result.postActionPayloadError = String(e.message || e)
+    }
 
     // 3. For every non-scalar field type found above (likely enums or
     // nested input objects like the image/asset field), introspect it too.
