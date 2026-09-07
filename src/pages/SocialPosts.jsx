@@ -575,41 +575,64 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
               <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-line text-[10px] text-muted">no photo</div>
             )}
             <div className="flex-1 space-y-1.5">
-              <label className="cursor-pointer text-xs font-semibold text-accent-600">
-                {uploading ? 'Uploading…' : '📷 Upload a photo'}
-                <input type="file" accept="image/*" onChange={handleUpload} disabled={uploading} className="hidden" />
-              </label>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="text"
-                  value={genPrompt}
-                  onChange={(e) => setGenPrompt(e.target.value)}
-                  placeholder={genListening ? 'Listening…' : "…or describe a photo/note for AI, e.g. 'escorted a Honda Acty off Wilmington port'"}
-                  disabled={generating}
-                  className="flex-1 rounded-md border border-line bg-canvas px-2 py-1 text-xs outline-none focus:border-accent"
-                />
-                {(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+              {imageUrl ? (
+                // A real photo is attached (uploaded, from the Library, or
+                // already AI-generated) -- hide the "make a new AI photo"
+                // controls entirely so there's no way to accidentally
+                // replace a real job photo with a generated one. This is
+                // exactly the confusion Shawn hit: the old layout showed
+                // both "Upload a photo" and "Generate photo" side by side
+                // even after a real photo was already attached.
+                <>
+                  <p className="text-xs font-semibold text-ink">✅ Photo attached</p>
                   <button
                     type="button"
-                    onClick={toggleGenMic}
-                    disabled={generating}
-                    title={genListening ? 'Stop listening' : 'Talk instead of typing'}
-                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-sm disabled:opacity-50 ${
-                      genListening ? 'animate-pulse border-port bg-port/10 text-port' : 'border-line text-muted hover:text-ink'
-                    }`}
+                    onClick={() => { setImageUrl(''); setImagePath(''); setLibraryId('') }}
+                    className="text-[11px] font-semibold text-port hover:underline"
                   >
-                    🎤
+                    ✕ Remove this photo
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={handleGenerate}
-                  disabled={generating || !genPrompt.trim()}
-                  className="shrink-0 rounded-md border border-line bg-canvas px-2 py-1 text-[11px] font-semibold text-ink hover:bg-canvas/70 disabled:opacity-50"
-                >
-                  {generating ? '…' : '✨ Generate photo'}
-                </button>
-              </div>
+                  <p className="text-[10px] text-muted">Remove it first if you want an AI-generated photo instead.</p>
+                </>
+              ) : (
+                <>
+                  <label className="cursor-pointer text-xs font-semibold text-accent-600">
+                    {uploading ? 'Uploading…' : '📷 Upload a photo'}
+                    <input type="file" accept="image/*" onChange={handleUpload} disabled={uploading} className="hidden" />
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={genPrompt}
+                      onChange={(e) => setGenPrompt(e.target.value)}
+                      placeholder={genListening ? 'Listening…' : "…or describe a NEW photo for AI to create, e.g. 'a red Honda Acty on a car carrier at sunset'"}
+                      disabled={generating}
+                      className="flex-1 rounded-md border border-line bg-canvas px-2 py-1 text-xs outline-none focus:border-accent"
+                    />
+                    {(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                      <button
+                        type="button"
+                        onClick={toggleGenMic}
+                        disabled={generating}
+                        title={genListening ? 'Stop listening' : 'Talk instead of typing'}
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-sm disabled:opacity-50 ${
+                          genListening ? 'animate-pulse border-port bg-port/10 text-port' : 'border-line text-muted hover:text-ink'
+                        }`}
+                      >
+                        🎤
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleGenerate}
+                      disabled={generating || !genPrompt.trim()}
+                      className="shrink-0 rounded-md border border-line bg-canvas px-2 py-1 text-[11px] font-semibold text-ink hover:bg-canvas/70 disabled:opacity-50"
+                    >
+                      {generating ? '…' : '✨ Generate a new photo with AI'}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
