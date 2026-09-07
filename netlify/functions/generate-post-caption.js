@@ -7,7 +7,7 @@ const json = (statusCode, body) => ({
 
 const PLATFORM_RULES = {
   instagram: `INSTAGRAM: warm, personal tone, short paragraphs, 1-2 relevant emoji max. End with 5-8 relevant hashtags on their own line. Instagram does not make links clickable in captions -- if a call to action is needed, write "Link in bio" instead of a URL, never a raw link.`,
-  facebook: `FACEBOOK: a bit fuller and more conversational than Instagram, can read like a real update to people who know him. Facebook DOES make a link clickable automatically, so when a call to action fits, include the real link: https://ship2shorebooking.com -- don't write "link in bio" here. Few or no hashtags.`,
+  facebook: `FACEBOOK: a bit fuller and more conversational than Instagram, can read like a real update to people who know him. Facebook DOES make a link clickable automatically, so when a call to action fits, include the real link: https://dispatch.ship2shorebooking.com/pages/book-now (a quick page to pick port escort, nationwide transport, or general transport) -- don't write "link in bio" here. Few or no hashtags.`,
   tiktok: `TIKTOK: short, punchy, hook in the first line (the part that shows before "more"). Casual, not corporate. 3-5 short trending-style hashtags. TikTok does not make links clickable in captions -- use "Link in bio", never a raw link.`,
 }
 
