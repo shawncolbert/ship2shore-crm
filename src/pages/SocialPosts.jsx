@@ -229,6 +229,30 @@ const LINK_NOTE = {
   tiktok: 'TikTok doesn’t allow clickable links in captions — "Link in bio" is written in on purpose. Set your booking link in your TikTok bio once and every post like this works from then on.',
 }
 
+// 20 preset ideas each, styled after what's actually working for real
+// competitor accounts (a vehicle-specific header, a call-to-action or
+// differentiator footer) -- picking one just fills the text field, still
+// editable before "Add to photo".
+const HEADER_IDEAS = [
+  'PORT ESCORT AVAILABLE TODAY', 'FRESH OFF THE BOAT', 'JUST ESCORTED OFF THE PORT',
+  'TWIC-CERTIFIED PORT ESCORT', 'LONG BEACH PORT PICKUP', 'WILMINGTON PORT PICKUP',
+  '16 YEARS ON THE DOCKS', 'SAME-DAY PORT ESCORT', 'JDM IMPORT — READY FOR PICKUP',
+  'YOUR CAR, DELIVERED SAFE', 'NO BROKER FEES', 'DIRECT PORT ESCORT SERVICE',
+  'PORT TO YOUR DOOR', 'ANOTHER SUCCESSFUL PICKUP', 'CUSTOMS CLEARED — ON THE MOVE',
+  'PORT ESCORT — DONE RIGHT', 'KEI TRUCK PICKUP COMPLETE', 'KNOW YOUR PORT ESCORT',
+  'KEEPING IT MOVING SINCE DAY ONE', 'KEI TRUCKS, CLASSICS & MORE',
+]
+const FOOTER_IDEAS = [
+  '(310) 748-0040 · Book Now', 'Link in Bio to Book', 'TWIC-Certified — 16 Years Experience',
+  'Long Beach & Wilmington — Same-Day Available', 'Direct Escort Service — No Broker Fees',
+  'Book Your Port Pickup Today', 'DM to Book Your Escort', 'ship2shorebooking.com',
+  'Serving All Southern California Ports', 'Reliable. Certified. On Time.',
+  'Ask About JDM Import Help', 'Your Trusted Port Escort', 'Escorts • Transport • JDM Imports',
+  'Call or Text (310) 748-0040', 'Booking Now for This Week', '16 Years, Thousands of Safe Pickups',
+  'Free Basic Consults', 'Fast, Friendly, Certified', 'Ship2Shore Booking — Long Beach',
+  'Get Your Free Quote Today',
+]
+
 function howToSteps(platform, autoPublishTiktok) {
   if (platform === 'tiktok' && autoPublishTiktok) {
     return ['This one posts itself at the scheduled time — nothing else for you to do.']
@@ -267,6 +291,9 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
   const [headerText, setHeaderText] = useState('')
   const [footerText, setFooterText] = useState('')
   const [applyingOverlay, setApplyingOverlay] = useState(false)
+  const [aiHeaderIdeas, setAiHeaderIdeas] = useState([])
+  const [aiFooterIdeas, setAiFooterIdeas] = useState([])
+  const [loadingIdeas, setLoadingIdeas] = useState(false)
 
   // The photo library -- bulk-imported (or previously posted) photos, so
   // Shawn can pick from a running pool instead of hunting through Google
@@ -423,6 +450,31 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
       setErr(e2.message || 'Could not add text to the photo.')
     } finally {
       setApplyingOverlay(false)
+    }
+  }
+
+  // Fresh header/footer ideas tailored to whatever's actually in this photo
+  // (looks at it via Claude vision) -- a supplement to the 20 fixed presets
+  // above for when those start feeling repetitive with a new vehicle.
+  const handleGetAiIdeas = async () => {
+    if (!imageUrl || loadingIdeas) return
+    setLoadingIdeas(true)
+    setErr('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/.netlify/functions/generate-photo-banners', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ imageUrl }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not get ideas for this photo')
+      setAiHeaderIdeas(data.headers || [])
+      setAiFooterIdeas(data.footers || [])
+    } catch (e2) {
+      setErr(e2.message || 'Could not get ideas for this photo')
+    } finally {
+      setLoadingIdeas(false)
     }
   }
 
@@ -695,7 +747,33 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
                       ✕ Remove
                     </button>
                   </div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Header / footer text on the photo (optional)</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Header / footer text on the photo (optional)</p>
+                    <button
+                      type="button"
+                      onClick={handleGetAiIdeas}
+                      disabled={loadingIdeas}
+                      className="shrink-0 text-[10px] font-semibold text-accent-600 hover:underline disabled:opacity-50"
+                    >
+                      {loadingIdeas ? 'Thinking…' : '✨ Get AI ideas for this photo'}
+                    </button>
+                  </div>
+
+                  <select
+                    defaultValue=""
+                    onChange={(e) => { if (e.target.value) setHeaderText(e.target.value); e.target.value = '' }}
+                    className="w-full rounded-md border border-line bg-canvas px-2 py-1 text-[11px] text-ink"
+                  >
+                    <option value="" disabled>💡 Pick a header idea…</option>
+                    {aiHeaderIdeas.length > 0 && (
+                      <optgroup label="✨ AI ideas for this photo">
+                        {aiHeaderIdeas.map((h, i) => <option key={`aih-${i}`} value={h}>{h}</option>)}
+                      </optgroup>
+                    )}
+                    <optgroup label="Presets">
+                      {HEADER_IDEAS.map((h, i) => <option key={`h-${i}`} value={h}>{h}</option>)}
+                    </optgroup>
+                  </select>
                   <input
                     type="text"
                     value={headerText}
@@ -704,6 +782,22 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
                     disabled={applyingOverlay}
                     className="w-full rounded-md border border-line bg-canvas px-2 py-1 text-xs outline-none focus:border-accent"
                   />
+
+                  <select
+                    defaultValue=""
+                    onChange={(e) => { if (e.target.value) setFooterText(e.target.value); e.target.value = '' }}
+                    className="w-full rounded-md border border-line bg-canvas px-2 py-1 text-[11px] text-ink"
+                  >
+                    <option value="" disabled>💡 Pick a footer idea…</option>
+                    {aiFooterIdeas.length > 0 && (
+                      <optgroup label="✨ AI ideas for this photo">
+                        {aiFooterIdeas.map((f, i) => <option key={`aif-${i}`} value={f}>{f}</option>)}
+                      </optgroup>
+                    )}
+                    <optgroup label="Presets">
+                      {FOOTER_IDEAS.map((f, i) => <option key={`f-${i}`} value={f}>{f}</option>)}
+                    </optgroup>
+                  </select>
                   <input
                     type="text"
                     value={footerText}
@@ -712,6 +806,7 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
                     disabled={applyingOverlay}
                     className="w-full rounded-md border border-line bg-canvas px-2 py-1 text-xs outline-none focus:border-accent"
                   />
+
                   <button
                     type="button"
                     onClick={handleApplyOverlay}
