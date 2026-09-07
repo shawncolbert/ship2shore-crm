@@ -121,6 +121,39 @@ export const handler = async (event) => {
       result.createPostReturnTypeError = String(e.message || e)
     }
 
+    // 5. AssetInput pointed at ImageAssetInput for photos -- get its real
+    // field name (almost certainly "url", but confirm rather than assume).
+    // Also get the fields on the success type and every error type in the
+    // PostActionPayload union, so error handling reads real field names
+    // instead of guessing "message" exists on all of them.
+    const detailTypeNames = [
+      'ImageAssetInput',
+      'PostActionSuccess',
+      'NotFoundError',
+      'UnauthorizedError',
+      'UnexpectedError',
+      'RestProxyError',
+      'LimitReachedError',
+      'InvalidInputError',
+    ]
+    result.detailTypes = {}
+    for (const typeName of detailTypeNames) {
+      try {
+        const t = await gql(
+          apiKey,
+          `query($n: String!) { __type(name: $n) {
+            name kind
+            inputFields { name type { name kind ofType { name kind } } }
+            fields { name type { name kind ofType { name kind } } }
+          } }`,
+          { n: typeName }
+        )
+        result.detailTypes[typeName] = t?.__type || null
+      } catch (e) {
+        result.detailTypes[typeName] = { error: String(e.message || e) }
+      }
+    }
+
     return json(200, result)
   } catch (e) {
     return json(500, { error: String(e.message || e) })
