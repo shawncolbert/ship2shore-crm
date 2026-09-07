@@ -355,6 +355,22 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
     setLibraryId(item.id)
   }
 
+  // For a photo added to the library by mistake (wrong import, personal
+  // photo caught up in a batch, etc.) -- removes the file itself, not just
+  // the library entry, so it doesn't keep taking up storage.
+  const handleDeleteFromLibrary = async (item, e) => {
+    e.stopPropagation()
+    if (!window.confirm('Remove this photo from your library? This deletes the file too.')) return
+    if (item.storage_path) {
+      await supabase.storage.from('card-assets').remove([item.storage_path])
+    }
+    await supabase.from('media_library').delete().eq('id', item.id)
+    if (libraryId === item.id) {
+      setImageUrl(''); setImagePath(''); setLibraryId('')
+    }
+    qc.invalidateQueries({ queryKey: ['mediaLibrary'] })
+  }
+
   // Bakes header/footer text straight into the photo's pixels (a dark
   // gradient band behind white text, top and/or bottom) using the browser's
   // own Canvas -- not AI, on purpose: an AI model asked to render text into
@@ -701,14 +717,23 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
               </p>
             )}
             {activeLibraryList.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => libraryTab === 'unused' && pickFromLibrary(item)}
-                className={`relative aspect-square overflow-hidden rounded-md border-2 bg-cover bg-center ${libraryId === item.id ? 'border-accent' : 'border-transparent'}`}
-                style={{ backgroundImage: `url(${item.url})` }}
-                title={libraryTab === 'unused' ? 'Use this photo' : 'Already posted'}
-              />
+              <div key={item.id} className="relative aspect-square">
+                <button
+                  type="button"
+                  onClick={() => libraryTab === 'unused' && pickFromLibrary(item)}
+                  className={`h-full w-full overflow-hidden rounded-md border-2 bg-cover bg-center ${libraryId === item.id ? 'border-accent' : 'border-transparent'}`}
+                  style={{ backgroundImage: `url(${item.url})` }}
+                  title={libraryTab === 'unused' ? 'Use this photo' : 'Already posted'}
+                />
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteFromLibrary(item, e)}
+                  title="Remove from library"
+                  className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-xs font-bold leading-none text-white hover:bg-port"
+                >
+                  ✕
+                </button>
+              </div>
             ))}
           </div>
           <label className="m-2 block cursor-pointer rounded-md border border-dashed border-line bg-canvas px-2 py-2 text-center text-[11px] font-semibold text-muted hover:bg-canvas/70">
