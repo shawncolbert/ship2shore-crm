@@ -264,6 +264,9 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
   const [genPrompt, setGenPrompt] = useState('')
   const [generating, setGenerating] = useState(false)
   const [libraryTab, setLibraryTab] = useState('unused')
+  const [headerText, setHeaderText] = useState('')
+  const [footerText, setFooterText] = useState('')
+  const [applyingOverlay, setApplyingOverlay] = useState(false)
 
   // The photo library -- bulk-imported (or previously posted) photos, so
   // Shawn can pick from a running pool instead of hunting through Google
@@ -323,6 +326,104 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
     setImageUrl(item.url)
     setImagePath(item.storage_path || '')
     setLibraryId(item.id)
+  }
+
+  // Bakes header/footer text straight into the photo's pixels (a dark
+  // gradient band behind white text, top and/or bottom) using the browser's
+  // own Canvas -- not AI, on purpose: an AI model asked to render text into
+  // an image routinely misspells or garbles it, which is unacceptable for
+  // something like a real phone number or price. Canvas draws the exact
+  // characters typed, every time. Re-uploads the result as a new image
+  // (same bucket/path convention as everything else here) so the result
+  // works everywhere a normal photo does -- library, preview, TikTok, etc.
+  const handleApplyOverlay = async () => {
+    if (!imageUrl || (!headerText.trim() && !footerText.trim())) return
+    setApplyingOverlay(true)
+    setErr('')
+    try {
+      const img = new window.Image()
+      img.crossOrigin = 'anonymous'
+      await new Promise((resolve, reject) => {
+        img.onload = resolve
+        img.onerror = () => reject(new Error('Could not load the photo to add text to it.'))
+        img.src = imageUrl
+      })
+
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0)
+
+      const wrapText = (text, maxWidth, fontSize) => {
+        ctx.font = `bold ${fontSize}px sans-serif`
+        const words = text.split(' ')
+        const lines = []
+        let line = ''
+        for (const word of words) {
+          const test = line ? `${line} ${word}` : word
+          if (line && ctx.measureText(test).width > maxWidth) {
+            lines.push(line)
+            line = word
+          } else {
+            line = test
+          }
+        }
+        if (line) lines.push(line)
+        return lines
+      }
+
+      const drawBand = (lines, fontSize, align) => {
+        const lineHeight = fontSize * 1.3
+        const padding = fontSize * 0.6
+        const bandHeight = lines.length * lineHeight + padding * 2
+        const bandY = align === 'top' ? 0 : canvas.height - bandHeight
+
+        const gradient = ctx.createLinearGradient(0, bandY, 0, bandY + bandHeight)
+        if (align === 'top') {
+          gradient.addColorStop(0, 'rgba(0,0,0,.78)')
+          gradient.addColorStop(1, 'rgba(0,0,0,0)')
+        } else {
+          gradient.addColorStop(0, 'rgba(0,0,0,0)')
+          gradient.addColorStop(1, 'rgba(0,0,0,.78)')
+        }
+        ctx.fillStyle = gradient
+        ctx.fillRect(0, bandY, canvas.width, bandHeight)
+
+        ctx.fillStyle = '#ffffff'
+        ctx.font = `bold ${fontSize}px sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'top'
+        const textTop = align === 'top' ? padding * 0.5 : bandY + bandHeight - lines.length * lineHeight - padding * 0.3
+        lines.forEach((line, i) => ctx.fillText(line, canvas.width / 2, textTop + i * lineHeight))
+      }
+
+      const maxTextWidth = canvas.width * 0.88
+      if (headerText.trim()) {
+        const fontSize = Math.round(canvas.width * 0.055)
+        drawBand(wrapText(headerText.trim(), maxTextWidth, fontSize), fontSize, 'top')
+      }
+      if (footerText.trim()) {
+        const fontSize = Math.round(canvas.width * 0.038)
+        drawBand(wrapText(footerText.trim(), maxTextWidth, fontSize), fontSize, 'bottom')
+      }
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
+      if (!blob) throw new Error('Could not create the image with text on it.')
+
+      const orgId = await fetchMyOrgId()
+      const path = `${orgId}/social-posts/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+      const { error: upErr } = await supabase.storage.from('card-assets').upload(path, blob, { upsert: false, contentType: 'image/jpeg' })
+      if (upErr) throw upErr
+      const { data } = supabase.storage.from('card-assets').getPublicUrl(path)
+      setImageUrl(data.publicUrl)
+      setImagePath(path)
+      setLibraryId('')
+    } catch (e2) {
+      setErr(e2.message || 'Could not add text to the photo.')
+    } finally {
+      setApplyingOverlay(false)
+    }
   }
 
   // Voice input for the image description -- same browser SpeechRecognition
@@ -584,15 +685,41 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
                 // both "Upload a photo" and "Generate photo" side by side
                 // even after a real photo was already attached.
                 <>
-                  <p className="text-xs font-semibold text-ink">✅ Photo attached</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-ink">✅ Photo attached</p>
+                    <button
+                      type="button"
+                      onClick={() => { setImageUrl(''); setImagePath(''); setLibraryId(''); setHeaderText(''); setFooterText('') }}
+                      className="text-[11px] font-semibold text-port hover:underline"
+                    >
+                      ✕ Remove
+                    </button>
+                  </div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Header / footer text on the photo (optional)</p>
+                  <input
+                    type="text"
+                    value={headerText}
+                    onChange={(e) => setHeaderText(e.target.value)}
+                    placeholder="Header, e.g. 'PORT ESCORT AVAILABLE TODAY'"
+                    disabled={applyingOverlay}
+                    className="w-full rounded-md border border-line bg-canvas px-2 py-1 text-xs outline-none focus:border-accent"
+                  />
+                  <input
+                    type="text"
+                    value={footerText}
+                    onChange={(e) => setFooterText(e.target.value)}
+                    placeholder="Footer, e.g. '(310) 748-0040 · ship2shorebooking.com'"
+                    disabled={applyingOverlay}
+                    className="w-full rounded-md border border-line bg-canvas px-2 py-1 text-xs outline-none focus:border-accent"
+                  />
                   <button
                     type="button"
-                    onClick={() => { setImageUrl(''); setImagePath(''); setLibraryId('') }}
-                    className="text-[11px] font-semibold text-port hover:underline"
+                    onClick={handleApplyOverlay}
+                    disabled={applyingOverlay || (!headerText.trim() && !footerText.trim())}
+                    className="rounded-md border border-line bg-canvas px-2 py-1 text-[11px] font-semibold text-ink hover:bg-canvas/70 disabled:opacity-50"
                   >
-                    ✕ Remove this photo
+                    {applyingOverlay ? 'Adding to photo…' : '🖋️ Add to photo'}
                   </button>
-                  <p className="text-[10px] text-muted">Remove it first if you want an AI-generated photo instead.</p>
                 </>
               ) : (
                 <>
