@@ -27,54 +27,13 @@ export default function SocialPosts() {
     },
   })
 
-  const { data: tiktokStatus } = useQuery({
-    queryKey: ['tiktokStatus'],
-    queryFn: async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch('/.netlify/functions/social-posts-tiktok-status', {
-        headers: { Authorization: `Bearer ${session?.access_token || ''}` },
-      })
-      if (!res.ok) return { connected: false }
-      return res.json()
-    },
-    staleTime: 60 * 1000,
-  })
-
   const [connectNotice, setConnectNotice] = useState(null)
-
-  // Landed back here after TikTok's own consent screen (see tiktok-oauth-callback).
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const result = params.get('tiktok')
-    if (!result) return
-    if (result === 'connected') setConnectNotice({ type: 'success', text: 'TikTok account connected.' })
-    else setConnectNotice({ type: 'error', text: params.get('msg') || 'Could not connect TikTok.' })
-    qc.invalidateQueries({ queryKey: ['tiktokStatus'] })
-    window.history.replaceState({}, '', window.location.pathname)
-  }, [qc])
 
   const handlePostCreated = (message) => {
     setShowDraft(false)
     setEditingPost(null)
     if (message) setConnectNotice({ type: 'success', text: message })
     qc.invalidateQueries({ queryKey: ['socialPosts'] })
-  }
-
-  const [connecting, setConnecting] = useState(false)
-  const handleConnectTiktok = async () => {
-    setConnecting(true)
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch('/.netlify/functions/tiktok-oauth-start', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session?.access_token || ''}` },
-      })
-      const data = await res.json()
-      if (!res.ok) { setConnectNotice({ type: 'error', text: data.error || 'Could not start TikTok connection' }); return }
-      window.location.href = data.authorize_url
-    } finally {
-      setConnecting(false)
-    }
   }
 
   // Group posts by date
@@ -109,33 +68,6 @@ export default function SocialPosts() {
       {connectNotice && (
         <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${connectNotice.type === 'success' ? 'border-accent/40 bg-accent/10 text-ink' : 'border-red-300 bg-red-50 text-red-700'}`}>
           {connectNotice.type === 'success' ? '✅ ' : '⚠️ '}{connectNotice.text}
-        </div>
-      )}
-
-      {tiktokStatus && !tiktokStatus.connected && tiktokStatus.appConfigured && (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span>⚠️ No TikTok account connected. Connect one so posts marked "auto-publish" actually go out.</span>
-          <button
-            onClick={handleConnectTiktok}
-            disabled={connecting}
-            className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-          >
-            {connecting ? 'Redirecting…' : 'Connect TikTok'}
-          </button>
-        </div>
-      )}
-
-      {tiktokStatus && !tiktokStatus.connected && !tiktokStatus.appConfigured && (
-        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          ⚠️ TikTok isn't set up on this site yet — an admin needs to create a TikTok Developer app and set
-          TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET before a "Connect TikTok" button can appear here. Posts set
-          to auto-publish will fail until then.
-        </div>
-      )}
-
-      {tiktokStatus?.connected && (
-        <div className="mb-4 rounded-lg border border-line bg-surface px-4 py-2 text-xs text-muted">
-          ✅ TikTok connected{tiktokStatus.username ? ` as @${tiktokStatus.username}` : ''}.
         </div>
       )}
 
