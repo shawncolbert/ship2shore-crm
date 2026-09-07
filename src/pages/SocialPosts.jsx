@@ -152,6 +152,26 @@ export default function SocialPosts() {
 function PostCard({ post, onUpdated }) {
   const qc = useQueryClient()
   const [deleting, setDeleting] = useState(false)
+  const [markingPosted, setMarkingPosted] = useState(false)
+
+  // Self-reported "I actually posted this" -- for Instagram/Facebook (and
+  // TikTok when auto-publish wasn't used), the CRM has no way to know you
+  // posted it by hand on your phone. This is just Shawn's own record of
+  // what's actually done vs. still sitting as a draft.
+  const handleMarkPosted = async () => {
+    setMarkingPosted(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/.netlify/functions/social-posts-mark-posted', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ postId: post.id }),
+      })
+      if (res.ok) qc.invalidateQueries({ queryKey: ['socialPosts'] })
+    } finally {
+      setMarkingPosted(false)
+    }
+  }
 
   const handleDelete = async () => {
     if (!window.confirm('Delete this post?')) return
@@ -206,6 +226,15 @@ function PostCard({ post, onUpdated }) {
             <a href={post.published_url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs text-accent hover:underline">
               View on TikTok →
             </a>
+          )}
+          {post.status === 'draft' && (
+            <button
+              onClick={handleMarkPosted}
+              disabled={markingPosted}
+              className="mt-3 rounded-md border border-line bg-canvas px-2.5 py-1 text-[11px] font-semibold text-ink hover:bg-canvas/70 disabled:opacity-50"
+            >
+              {markingPosted ? 'Marking…' : '✅ Mark as posted'}
+            </button>
           )}
         </div>
         <button
