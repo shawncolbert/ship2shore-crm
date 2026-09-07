@@ -12,6 +12,7 @@ export default function SocialPosts() {
   const qc = useQueryClient()
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [showDraft, setShowDraft] = useState(false)
+  const [editingPost, setEditingPost] = useState(null)
 
   const { data: posts, isLoading } = useQuery({
     queryKey: ['socialPosts'],
@@ -52,8 +53,10 @@ export default function SocialPosts() {
     window.history.replaceState({}, '', window.location.pathname)
   }, [qc])
 
-  const handlePostCreated = () => {
+  const handlePostCreated = (message) => {
     setShowDraft(false)
+    setEditingPost(null)
+    if (message) setConnectNotice({ type: 'success', text: message })
     qc.invalidateQueries({ queryKey: ['socialPosts'] })
   }
 
@@ -137,10 +140,11 @@ export default function SocialPosts() {
       )}
 
       {showDraft && <DraftForm onClose={() => setShowDraft(false)} onSaved={handlePostCreated} tiktokConnected={tiktokStatus?.connected} />}
+      {editingPost && <EditPostForm post={editingPost} onClose={() => setEditingPost(null)} onSaved={handlePostCreated} tiktokConnected={tiktokStatus?.connected} />}
 
       <div className="grid gap-4 lg:grid-cols-2">
         {posts?.map((post) => (
-          <PostCard key={post.id} post={post} onUpdated={handlePostCreated} />
+          <PostCard key={post.id} post={post} onUpdated={handlePostCreated} onEdit={() => setEditingPost(post)} />
         ))}
       </div>
 
@@ -149,7 +153,7 @@ export default function SocialPosts() {
   )
 }
 
-function PostCard({ post, onUpdated }) {
+function PostCard({ post, onUpdated, onEdit }) {
   const qc = useQueryClient()
   const [deleting, setDeleting] = useState(false)
   const [markingPosted, setMarkingPosted] = useState(false)
@@ -237,13 +241,24 @@ function PostCard({ post, onUpdated }) {
             </button>
           )}
         </div>
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="shrink-0 rounded p-1 text-muted hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
-        >
-          ✕
-        </button>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {post.status !== 'published' && (
+            <button
+              onClick={onEdit}
+              className="rounded p-1 text-muted hover:bg-canvas hover:text-ink"
+              title="Edit this post"
+            >
+              ✏️
+            </button>
+          )}
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="rounded p-1 text-muted hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+          >
+            ✕
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -663,9 +678,9 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
 
     setSaving(true)
     setErr('')
+    const createdIds = []
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      let firstPostId = null
       for (const platform of targets) {
         const res = await fetch('/.netlify/functions/social-posts-create', {
           method: 'POST',
@@ -682,7 +697,7 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error || `Failed to save the ${PLATFORM_LABEL[platform]} post`)
-        if (!firstPostId) firstPostId = data.post?.id || null
+        if (data.post?.id) createdIds.push(data.post.id)
       }
 
       // Keep the library honest: whatever photo just got used moves to
@@ -690,16 +705,29 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
       if (imageUrl) {
         const orgId = await fetchMyOrgId()
         if (libraryId) {
-          await supabase.from('media_library').update({ status: 'used', used_at: new Date().toISOString(), used_in_post_id: firstPostId }).eq('id', libraryId)
+          await supabase.from('media_library').update({ status: 'used', used_at: new Date().toISOString(), used_in_post_id: createdIds[0] || null }).eq('id', libraryId)
         } else {
-          await supabase.from('media_library').insert({ org_id: orgId, url: imageUrl, storage_path: imagePath || null, status: 'used', used_at: new Date().toISOString(), used_in_post_id: firstPostId })
+          await supabase.from('media_library').insert({ org_id: orgId, url: imageUrl, storage_path: imagePath || null, status: 'used', used_at: new Date().toISOString(), used_in_post_id: createdIds[0] || null })
         }
         qc.invalidateQueries({ queryKey: ['mediaLibrary'] })
       }
 
-      onSaved()
+      onSaved(`Saved ${createdIds.length} draft${createdIds.length > 1 ? 's' : ''}: ${targets.map((p) => PLATFORM_LABEL[p]).join(', ')}.`)
     } catch (e) {
-      setErr(e.message)
+      // All-or-nothing: if platform 2 of 3 failed, don't leave platform 1's
+      // draft sitting there half-done -- roll it back so retrying Save
+      // never creates a duplicate for the ones that did go through.
+      if (createdIds.length) {
+        const { data: { session } } = await supabase.auth.getSession()
+        await Promise.all(createdIds.map((postId) =>
+          fetch('/.netlify/functions/social-posts-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+            body: JSON.stringify({ postId }),
+          }).catch(() => {})
+        ))
+      }
+      setErr(`${e.message} — nothing was saved, safe to try again.`)
     } finally {
       setSaving(false)
     }
@@ -952,6 +980,11 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
               rows={7}
               className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm leading-relaxed outline-none focus:border-accent"
             />
+            {activeTab === 'tiktok' && (
+              <p className={`mt-1 text-[11px] ${captions.tiktok.length > 150 ? 'text-port' : 'text-muted'}`}>
+                {captions.tiktok.length}/150 — TikTok cuts captions to 150 characters{captions.tiktok.length > 150 ? ' — this will be trimmed when it posts' : ''}
+              </p>
+            )}
             <div className="mt-2 rounded-lg border border-line bg-canvas/60 p-2.5 text-[11px] leading-relaxed text-muted">
               📎 {LINK_NOTE[activeTab]}
             </div>
@@ -1007,14 +1040,15 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
               <div className="flex items-center gap-1.5 border-b border-line/50 px-2 py-1.5">
                 <div className="h-4 w-4 rounded-full bg-gradient-to-br from-accent to-ink" />
                 <b className="text-[9px] text-ink">ship2shorebooking</b>
+                <span className="ml-auto text-[10px]">{{ instagram: '📸', facebook: '📘', tiktok: '🎵' }[activeTab]}</span>
               </div>
               {imageUrl ? (
-                <img src={imageUrl} alt="" className="aspect-[4/5] w-full object-cover" />
+                <img src={imageUrl} alt="" className={`w-full object-cover ${activeTab === 'tiktok' ? 'aspect-[9/16]' : 'aspect-[4/5]'}`} />
               ) : (
-                <div className="flex aspect-[4/5] w-full items-center justify-center bg-canvas text-[10px] text-muted">no photo yet</div>
+                <div className={`flex w-full items-center justify-center bg-canvas text-[10px] text-muted ${activeTab === 'tiktok' ? 'aspect-[9/16]' : 'aspect-[4/5]'}`}>no photo yet</div>
               )}
               <p className="px-2 py-1.5 text-[9px] leading-snug text-ink/80">
-                <b>ship2shorebooking</b> {(captions[activeTab] || 'Your caption will show here…').slice(0, 90)}{captions[activeTab]?.length > 90 ? '…' : ''}
+                <b>ship2shorebooking</b> {(captions[activeTab] || 'Your caption will show here…').slice(0, activeTab === 'tiktok' ? 150 : 90)}{captions[activeTab]?.length > (activeTab === 'tiktok' ? 150 : 90) ? '…' : ''}
               </p>
             </div>
           </div>
@@ -1048,6 +1082,172 @@ function DraftForm({ onClose, onSaved, tiktokConnected }) {
           className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
         >
           {saving ? 'Saving…' : `Save draft${PLATFORMS.filter((p) => enabled[p]).length > 1 ? 's' : ''}`}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Editing one existing post -- deliberately simpler than DraftForm (which
+// is for creating fresh, possibly multi-platform, posts): a single
+// platform's own post, its own photo, its own schedule. No Library/AI-photo
+// picker here -- swapping the photo on an edit is rare enough that a plain
+// upload-or-paste-URL covers it without dragging in the whole creation flow.
+function EditPostForm({ post, onClose, onSaved, tiktokConnected }) {
+  const [text, setText] = useState(post.text || '')
+  const [imageUrl, setImageUrl] = useState(post.image_url || '')
+  const [scheduledDate, setScheduledDate] = useState(post.scheduled_date ? post.scheduled_date.slice(0, 16) : '')
+  const [autoPublishTiktok, setAutoPublishTiktok] = useState(post.status === 'scheduled' && post.platform === 'tiktok')
+  const [tiktokPrivacyLevel, setTiktokPrivacyLevel] = useState(post.tiktok_privacy_level || 'SELF_ONLY')
+  const [tiktokIsAigc, setTiktokIsAigc] = useState(Boolean(post.tiktok_is_aigc))
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const isTiktok = post.platform === 'tiktok'
+  const overLimit = isTiktok && text.length > 150
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploading(true)
+    setErr('')
+    try {
+      const orgId = await fetchMyOrgId()
+      const ext = file.name.split('.').pop() || 'jpg'
+      const path = `${orgId}/social-posts/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const { error: upErr } = await supabase.storage.from('card-assets').upload(path, file, { upsert: false, contentType: file.type })
+      if (upErr) throw upErr
+      const { data } = supabase.storage.from('card-assets').getPublicUrl(path)
+      setImageUrl(data.publicUrl)
+    } catch (e2) {
+      setErr(e2.message || 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleSave = async () => {
+    if (!text.trim()) { setErr('Post text is required'); return }
+    if (!scheduledDate) { setErr('Scheduled date is required'); return }
+    setSaving(true)
+    setErr('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/.netlify/functions/social-posts-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({
+          postId: post.id,
+          text,
+          imageUrl: imageUrl || null,
+          scheduledDate,
+          autoPublishTiktok: isTiktok ? autoPublishTiktok : false,
+          tiktokPrivacyLevel,
+          tiktokIsAigc,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to save changes')
+      onSaved('Changes saved.')
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="mb-6 rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]">
+      <h2 className="mb-3 text-sm font-semibold text-ink">Edit {PLATFORM_LABEL[post.platform] || 'post'}</h2>
+      {err && <p className="mb-3 text-xs text-port">{err}</p>}
+
+      <div className="space-y-3">
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wide text-muted">Caption</label>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={5}
+            className="mt-1 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+          {isTiktok && (
+            <p className={`mt-1 text-[11px] ${overLimit ? 'text-port' : 'text-muted'}`}>
+              {text.length}/150 — TikTok cuts captions to 150 characters{overLimit ? ' — this will be trimmed when it posts' : ''}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wide text-muted">Photo</label>
+          <div className="mt-1 flex items-center gap-2">
+            <label className="cursor-pointer rounded-lg border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:bg-canvas/70">
+              {uploading ? 'Uploading…' : '📷 Replace photo'}
+              <input type="file" accept="image/*" onChange={handleUpload} disabled={uploading} className="hidden" />
+            </label>
+            {imageUrl && (
+              <a href={imageUrl} target="_blank" rel="noopener noreferrer" title="Open full size">
+                <img src={imageUrl} alt="" className="h-16 w-16 rounded-lg border border-line object-cover" />
+              </a>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wide text-muted">Scheduled date &amp; time</label>
+          <input
+            type="datetime-local"
+            value={scheduledDate}
+            onChange={(e) => setScheduledDate(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+        </div>
+
+        {isTiktok && (
+          <div className="rounded-lg border border-line bg-canvas/50 p-3">
+            <label className="flex items-center gap-2 text-xs font-semibold text-ink">
+              <input type="checkbox" checked={autoPublishTiktok} onChange={(e) => setAutoPublishTiktok(e.target.checked)} />
+              Auto-publish to TikTok at the scheduled time
+            </label>
+            {!tiktokConnected && (
+              <p className="mt-1 text-xs text-amber-600">No TikTok account connected yet — this will fail until one is.</p>
+            )}
+            {autoPublishTiktok && (
+              <div className="mt-3 space-y-2">
+                <div>
+                  <label className="block text-xs text-muted">Who can see it on TikTok</label>
+                  <select
+                    value={tiktokPrivacyLevel}
+                    onChange={(e) => setTiktokPrivacyLevel(e.target.value)}
+                    className="mt-1 w-full rounded border border-line bg-white px-2 py-1 text-xs outline-none focus:border-accent"
+                  >
+                    <option value="SELF_ONLY">Only me</option>
+                    <option value="FOLLOWER_OF_CREATOR">Followers</option>
+                    <option value="MUTUAL_FOLLOW_FRIENDS">Friends</option>
+                    <option value="PUBLIC_TO_EVERYONE">Everyone</option>
+                  </select>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-muted">
+                  <input type="checkbox" checked={tiktokIsAigc} onChange={(e) => setTiktokIsAigc(e.target.checked)} />
+                  This image is AI-generated or AI-edited (TikTok requires this disclosure)
+                </label>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:bg-canvas hover:text-ink">
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save changes'}
         </button>
       </div>
     </div>

@@ -20,6 +20,13 @@
 [functions."tiktok-publish"]
   schedule = "*/10 * * * *"
 
+# Telegram nudge for any Social Media Planner draft whose scheduled time has
+# arrived but is still just sitting there waiting to be posted by hand
+# (Instagram/Facebook, or TikTok without auto-publish) -- see
+# social-post-reminders.js.
+[functions."social-post-reminders"]
+  schedule = "*/15 * * * *"
+
 # Push notification to the org owner's phone for any lead the
 # unfollowed_lead_alerts view flags (10+ min assigned, no reply, no
 # movement) -- the phone-notification counterpart to UnfollowedLeadToast,
