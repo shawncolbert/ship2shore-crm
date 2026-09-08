@@ -269,6 +269,17 @@ function DraftForm({ onClose, onSaved }) {
   const [aiFooterIdeas, setAiFooterIdeas] = useState([])
   const [loadingIdeas, setLoadingIdeas] = useState(false)
 
+  // Batch mode -- pick a pile of library photos at once and have AI write
+  // a caption for each, landing as drafts to review/edit/schedule one at a
+  // time instead of doing this one photo at a time. Never auto-publishes;
+  // every batch-generated post comes out as a plain draft.
+  const [bulkMode, setBulkMode] = useState(false)
+  const [bulkSelected, setBulkSelected] = useState(() => new Set())
+  const [bulkPlatforms, setBulkPlatforms] = useState({ instagram: true, facebook: true, tiktok: false })
+  const [bulkGenerating, setBulkGenerating] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState('')
+  const [bulkResult, setBulkResult] = useState('')
+
   // The photo library -- bulk-imported (or previously posted) photos, so
   // Shawn can pick from a running pool instead of hunting through Google
   // Photos each time. See migration 0071_media_library.sql.
@@ -327,6 +338,82 @@ function DraftForm({ onClose, onSaved }) {
     setImageUrl(item.url)
     setImagePath(item.storage_path || '')
     setLibraryId(item.id)
+  }
+
+  const toggleBulkSelect = (id) => {
+    setBulkSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  // Writes a caption per enabled platform for every selected photo (one at
+  // a time, sequentially -- 30 photos means up to 90 real AI calls, so this
+  // just runs in the background of this open tab rather than trying to be
+  // instant), saving each as a plain draft. Nothing here schedules or
+  // auto-publishes anything; that's still a deliberate choice made per post
+  // afterward. A failure on one photo/platform doesn't stop the rest --
+  // failures are collected and reported at the end instead.
+  const handleBulkGenerate = async () => {
+    const targets = PLATFORMS.filter((p) => bulkPlatforms[p])
+    const items = unusedPhotos.filter((p) => bulkSelected.has(p.id))
+    if (!items.length) { setErr('Select at least one photo first.'); return }
+    if (!targets.length) { setErr('Turn on at least one platform first.'); return }
+
+    setBulkGenerating(true)
+    setErr('')
+    setBulkResult('')
+    const { data: { session } } = await supabase.auth.getSession()
+    const authHeader = { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` }
+    let created = 0
+    const failures = []
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      let createdPostId = null
+      for (const platform of targets) {
+        setBulkProgress(`Photo ${i + 1} of ${items.length} — writing ${PLATFORM_LABEL[platform]} caption…`)
+        try {
+          const capRes = await fetch('/.netlify/functions/generate-post-caption', {
+            method: 'POST', headers: authHeader,
+            body: JSON.stringify({ platform, imageUrl: item.url }),
+          })
+          const capData = await capRes.json()
+          if (!capRes.ok) throw new Error(capData.error || 'Could not write a caption')
+
+          const postRes = await fetch('/.netlify/functions/social-posts-create', {
+            method: 'POST', headers: authHeader,
+            body: JSON.stringify({
+              text: capData.caption, imageUrl: item.url, scheduledDate: new Date().toISOString(), platform,
+            }),
+          })
+          const postData = await postRes.json()
+          if (!postRes.ok) throw new Error(postData.error || 'Could not save the draft')
+          created++
+          createdPostId = postData.post?.id || createdPostId
+        } catch (e2) {
+          failures.push(`Photo ${i + 1} (${PLATFORM_LABEL[platform]}): ${e2.message}`)
+        }
+      }
+      if (createdPostId) {
+        await supabase.from('media_library')
+          .update({ status: 'used', used_at: new Date().toISOString(), used_in_post_id: createdPostId })
+          .eq('id', item.id)
+      }
+    }
+
+    qc.invalidateQueries({ queryKey: ['mediaLibrary'] })
+    qc.invalidateQueries({ queryKey: ['socialPosts'] })
+    setBulkProgress('')
+    setBulkGenerating(false)
+    setBulkSelected(new Set())
+    setBulkMode(false)
+    setBulkResult(
+      `Created ${created} draft${created === 1 ? '' : 's'} from ${items.length} photo${items.length === 1 ? '' : 's'}.` +
+      (failures.length ? ` ${failures.length} problem${failures.length === 1 ? '' : 's'}: ${failures.slice(0, 3).join('; ')}${failures.length > 3 ? ' …' : ''}` : '') +
+      ' Scroll down to review, edit, and schedule each one.'
+    )
   }
 
   // For a photo added to the library by mistake (wrong import, personal
@@ -670,6 +757,7 @@ function DraftForm({ onClose, onSaved }) {
         <p className="text-xs text-muted">Pick a photo, write it once, get it ready for every platform.</p>
       </div>
       {err && <p className="px-5 pt-3 text-xs text-port">{err}</p>}
+      {bulkResult && <p className="px-5 pt-3 text-xs text-accent">✅ {bulkResult}</p>}
 
       <div className="grid gap-4 p-5 lg:grid-cols-[240px_minmax(0,1fr)_280px]">
 
@@ -677,7 +765,17 @@ function DraftForm({ onClose, onSaved }) {
         <div className="rounded-lg border border-line bg-canvas/40">
           <div className="flex items-center justify-between border-b border-line px-3 py-2">
             <span className="text-xs font-semibold text-ink">Your Photo Library</span>
-            <span className="rounded-full border border-line bg-surface px-2 py-0.5 text-[10px] font-medium text-muted">{unusedPhotos.length} unused</span>
+            {libraryTab === 'unused' ? (
+              <button
+                type="button"
+                onClick={() => { setBulkMode((v) => !v); setBulkSelected(new Set()) }}
+                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${bulkMode ? 'border-accent bg-accent/15 text-accent' : 'border-line bg-surface text-muted'}`}
+              >
+                {bulkMode ? 'Cancel' : 'Select multiple'}
+              </button>
+            ) : (
+              <span className="rounded-full border border-line bg-surface px-2 py-0.5 text-[10px] font-medium text-muted">{unusedPhotos.length} unused</span>
+            )}
           </div>
           <div className="flex gap-1 p-2">
             <button
@@ -701,30 +799,72 @@ function DraftForm({ onClose, onSaved }) {
                 {libraryTab === 'unused' ? 'No photos imported yet.' : 'Nothing posted from here yet.'}
               </p>
             )}
-            {activeLibraryList.map((item) => (
-              <div key={item.id} className="relative aspect-square">
-                <button
-                  type="button"
-                  onClick={() => libraryTab === 'unused' && pickFromLibrary(item)}
-                  className={`h-full w-full overflow-hidden rounded-md border-2 bg-cover bg-center ${libraryId === item.id ? 'border-accent' : 'border-transparent'}`}
-                  style={{ backgroundImage: `url(${item.url})` }}
-                  title={libraryTab === 'unused' ? 'Use this photo' : 'Already posted'}
-                />
-                <button
-                  type="button"
-                  onClick={(e) => handleDeleteFromLibrary(item, e)}
-                  title="Remove from library"
-                  className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-xs font-bold leading-none text-white hover:bg-port"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
+            {activeLibraryList.map((item) => {
+              const selected = bulkSelected.has(item.id)
+              return (
+                <div key={item.id} className="relative aspect-square">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (bulkMode) toggleBulkSelect(item.id)
+                      else if (libraryTab === 'unused') pickFromLibrary(item)
+                    }}
+                    className={`h-full w-full overflow-hidden rounded-md border-2 bg-cover bg-center ${
+                      bulkMode ? (selected ? 'border-accent' : 'border-transparent') : (libraryId === item.id ? 'border-accent' : 'border-transparent')
+                    }`}
+                    style={{ backgroundImage: `url(${item.url})` }}
+                    title={bulkMode ? (selected ? 'Selected' : 'Select this photo') : (libraryTab === 'unused' ? 'Use this photo' : 'Already posted')}
+                  />
+                  {bulkMode ? (
+                    <div className={`pointer-events-none absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 text-[11px] font-bold leading-none ${selected ? 'border-accent bg-accent text-white' : 'border-white bg-black/40 text-transparent'}`}>
+                      ✓
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteFromLibrary(item, e)}
+                      title="Remove from library"
+                      className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-xs font-bold leading-none text-white hover:bg-port"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )
+            })}
           </div>
-          <label className="m-2 block cursor-pointer rounded-md border border-dashed border-line bg-canvas px-2 py-2 text-center text-[11px] font-semibold text-muted hover:bg-canvas/70">
-            {importing ? 'Importing…' : '⬆ Import photos from your phone'}
-            <input type="file" accept="image/*" multiple onChange={handleBulkImport} disabled={importing} className="hidden" />
-          </label>
+
+          {bulkMode ? (
+            <div className="m-2 space-y-2 rounded-md border border-line bg-canvas p-2.5">
+              <p className="text-[11px] font-semibold text-ink">{bulkSelected.size} photo{bulkSelected.size === 1 ? '' : 's'} selected</p>
+              <div className="flex flex-wrap gap-2">
+                {PLATFORMS.map((p) => (
+                  <label key={p} className="flex items-center gap-1 text-[11px] text-ink">
+                    <input
+                      type="checkbox"
+                      checked={bulkPlatforms[p]}
+                      onChange={(e) => setBulkPlatforms((prev) => ({ ...prev, [p]: e.target.checked }))}
+                    />
+                    {PLATFORM_LABEL[p]}
+                  </label>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleBulkGenerate}
+                disabled={bulkGenerating || !bulkSelected.size}
+                className="w-full rounded-md bg-brand px-2 py-1.5 text-[11px] font-bold text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {bulkGenerating ? (bulkProgress || 'Generating…') : `✨ Generate ${bulkSelected.size || ''} draft${bulkSelected.size === 1 ? '' : 's'}`}
+              </button>
+              <p className="text-[10px] text-muted">Each one lands as a plain draft below — nothing schedules or posts on its own.</p>
+            </div>
+          ) : (
+            <label className="m-2 block cursor-pointer rounded-md border border-dashed border-line bg-canvas px-2 py-2 text-center text-[11px] font-semibold text-muted hover:bg-canvas/70">
+              {importing ? 'Importing…' : '⬆ Import photos from your phone'}
+              <input type="file" accept="image/*" multiple onChange={handleBulkImport} disabled={importing} className="hidden" />
+            </label>
+          )}
         </div>
 
         {/* CENTER: editor */}
