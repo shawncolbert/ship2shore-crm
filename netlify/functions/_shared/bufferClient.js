@@ -38,10 +38,23 @@ const CREATE_POST = `
   }
 `
 
+// Facebook and Instagram both require a platform-specific "type" in
+// metadata (confirmed live against Buffer's schema, not guessed) --
+// 'post' is the plain feed post every other type variant (reel/story/
+// carousel/etc.) specializes. Instagram additionally requires
+// shouldShareToFeed. TikTok needs no metadata at all -- everything on
+// TikTokPostMetadataInput is optional.
+function metadataFor(platform) {
+  if (platform === 'facebook') return { facebook: { type: 'post' } }
+  if (platform === 'instagram') return { instagram: { type: 'post', shouldShareToFeed: true } }
+  return undefined
+}
+
 // Publishes immediately (mode: shareNow) -- buffer-publish.js only calls
 // this once a post's own scheduled_date has already arrived, so there's
 // nothing to gain from also handing Buffer a future dueAt to manage.
-export async function bufferPublishNow(apiKey, { channelId, text, imageUrl }) {
+export async function bufferPublishNow(apiKey, { channelId, text, imageUrl, platform }) {
+  const metadata = metadataFor(platform)
   const input = {
     channelId,
     text: text || '',
@@ -49,6 +62,7 @@ export async function bufferPublishNow(apiKey, { channelId, text, imageUrl }) {
     mode: 'shareNow',
     needsApproval: false,
     assets: imageUrl ? [{ image: { url: imageUrl } }] : [],
+    ...(metadata ? { metadata } : {}),
   }
   const data = await bufferGraphQL(apiKey, CREATE_POST, { input })
   const result = data?.createPost

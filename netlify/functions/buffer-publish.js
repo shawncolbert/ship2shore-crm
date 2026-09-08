@@ -40,6 +40,7 @@ export const handler = async () => {
         channelId,
         text: post.text,
         imageUrl: post.image_url,
+        platform: post.platform,
       })
 
       // Buffer's createPost only returns its own internal post id, not the
