@@ -135,6 +135,9 @@ export const handler = async (event) => {
       'RestProxyError',
       'LimitReachedError',
       'InvalidInputError',
+      'FacebookPostMetadataInput',
+      'InstagramPostMetadataInput',
+      'TikTokPostMetadataInput',
     ]
     result.detailTypes = {}
     for (const typeName of detailTypeNames) {
@@ -146,6 +149,31 @@ export const handler = async (event) => {
             inputFields { name type { name kind ofType { name kind } } }
             fields { name type { name kind ofType { name kind } } }
           } }`,
+          { n: typeName }
+        )
+        result.detailTypes[typeName] = t?.__type || null
+      } catch (e) {
+        result.detailTypes[typeName] = { error: String(e.message || e) }
+      }
+    }
+
+    // 6. Whatever field types those platform-metadata inputs themselves
+    // reference (almost certainly an enum for "type": post/story/reel) --
+    // one more pass so those enum values are confirmed too, not guessed.
+    const referencedTypeNames = new Set()
+    for (const t of Object.values(result.detailTypes)) {
+      for (const f of t?.inputFields || []) {
+        const name = unwrapType(f.type)
+        if (name && !['String', 'Boolean', 'Int', 'Float', 'ID'].includes(name) && !result.detailTypes[name]) {
+          referencedTypeNames.add(name)
+        }
+      }
+    }
+    for (const typeName of referencedTypeNames) {
+      try {
+        const t = await gql(
+          apiKey,
+          `query($n: String!) { __type(name: $n) { name kind enumValues { name } inputFields { name type { name kind ofType { name kind } } } } }`,
           { n: typeName }
         )
         result.detailTypes[typeName] = t?.__type || null
