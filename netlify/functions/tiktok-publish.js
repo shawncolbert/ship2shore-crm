@@ -23,6 +23,18 @@ export const handler = async () => {
   let failed = 0
 
   for (const post of due || []) {
+    // Atomic claim -- see buffer-publish.js for why this exists: Netlify
+    // can fire a scheduled function more than once for the same tick, and
+    // without this a second concurrent run would republish the same post.
+    const { data: claimed } = await admin
+      .from('social_posts')
+      .update({ claimed_at: new Date().toISOString() })
+      .eq('id', post.id)
+      .eq('status', 'scheduled')
+      .is('claimed_at', null)
+      .select('id')
+    if (!claimed?.length) continue
+
     if (!(await tiktokConfigured(post.org_id))) {
       await admin.from('social_posts').update({
         status: 'failed',

@@ -28,6 +28,21 @@ export const handler = async () => {
   let failed = 0
 
   for (const post of due || []) {
+    // Atomic claim: only the invocation that actually flips claimed_at
+    // from null to now() proceeds. Netlify can fire a scheduled function
+    // more than once for the same tick (confirmed live -- every post got
+    // sent to Buffer 3 times before this existed), so without this a
+    // second/third concurrent run would all see status still 'scheduled'
+    // and publish the same post again.
+    const { data: claimed } = await admin
+      .from('social_posts')
+      .update({ claimed_at: new Date().toISOString() })
+      .eq('id', post.id)
+      .eq('status', 'scheduled')
+      .is('claimed_at', null)
+      .select('id')
+    if (!claimed?.length) continue
+
     try {
       const conn = await bufferConnection(post.org_id)
       if (!conn) throw new Error('No Buffer account connected for this org yet.')

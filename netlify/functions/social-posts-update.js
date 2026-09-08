@@ -35,9 +35,13 @@ export const handler = async (event) => {
     image_url: imageUrl || null,
     scheduled_date: scheduledDate,
     publish_via: publishVia || null,
-    // Editing un-does a stale reminder/failure state -- it's effectively a
-    // fresh draft again until the new schedule time actually arrives.
+    // Editing un-does a stale reminder/failure/claim state -- it's
+    // effectively a fresh draft again until the new schedule time actually
+    // arrives. claimed_at in particular must reset here, or a post that
+    // got claimed (see buffer-publish.js) but never finished publishing
+    // could never be retried through the normal edit flow.
     reminded_at: null,
+    claimed_at: null,
     tiktok_privacy_level: tiktokPrivacyLevel || 'SELF_ONLY',
     tiktok_is_aigc: Boolean(tiktokIsAigc),
   }
