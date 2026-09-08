@@ -74,7 +74,7 @@ export default function SocialPosts() {
       {showDraft && <DraftForm onClose={() => setShowDraft(false)} onSaved={handlePostCreated} />}
       {editingPost && <EditPostForm post={editingPost} onClose={() => setEditingPost(null)} onSaved={handlePostCreated} />}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {posts?.map((post) => (
           <PostCard key={post.id} post={post} onUpdated={handlePostCreated} onEdit={() => setEditingPost(post)} />
         ))}
@@ -146,7 +146,7 @@ function PostCard({ post, onUpdated, onEdit }) {
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1">
           {post.image_url && (
-            <img src={post.image_url} alt="Post" className="mb-3 max-h-40 w-full rounded-lg object-cover" />
+            <img src={post.image_url} alt="Post" className="mb-3 h-28 w-full rounded-lg border border-line bg-canvas object-contain" />
           )}
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{post.text}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
