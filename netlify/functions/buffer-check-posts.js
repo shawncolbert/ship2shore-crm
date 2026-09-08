@@ -39,6 +39,14 @@ export const handler = async (event) => {
     const orgData = await gql(conn.api_key, `query { account { organizations { id } } }`)
     const bufferOrgId = orgData?.account?.organizations?.[0]?.id
 
+    // Shawn just reconnected TikTok to the correct account -- need the new
+    // channel id so buffer_connections.channel_tiktok can be updated.
+    const chData = await gql(
+      conn.api_key,
+      `query GetChannels($organizationId: OrganizationId!) { channels(input: { organizationId: $organizationId }) { id name service } }`,
+      { organizationId: bufferOrgId }
+    )
+
     // Introspect Post's own fields first -- haven't looked at these yet.
     const postType = await gql(
       conn.api_key,
@@ -63,7 +71,13 @@ export const handler = async (event) => {
       { organizationId: bufferOrgId, channelIds }
     )
 
-    return json(200, { bufferOrgId, postTypeFields: postType?.__type?.fields || [], posts: posts?.posts?.edges || [], connChannels: { instagram: conn.channel_instagram, facebook: conn.channel_facebook, tiktok: conn.channel_tiktok } })
+    return json(200, {
+      bufferOrgId,
+      channels: chData?.channels || [],
+      postTypeFields: postType?.__type?.fields || [],
+      posts: posts?.posts?.edges || [],
+      connChannels: { instagram: conn.channel_instagram, facebook: conn.channel_facebook, tiktok: conn.channel_tiktok },
+    })
   } catch (e) {
     return json(500, { error: String(e.message || e) })
   }
