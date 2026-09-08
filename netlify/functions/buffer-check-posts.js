@@ -53,7 +53,11 @@ export const handler = async (event) => {
       `query { __type(name: "Post") { name fields { name type { name kind ofType { name kind } } } } }`
     )
 
-    const channelIds = [conn.channel_instagram, conn.channel_facebook, conn.channel_tiktok].filter(Boolean)
+    // Use channels Buffer just told us this key can actually see, not the
+    // possibly-stale ones stored in buffer_connections -- querying posts
+    // for a channel the key no longer has access to (e.g. TikTok just
+    // switched accounts) throws FORBIDDEN and aborts the whole response.
+    const channelIds = (chData?.channels || []).map((c) => c.id)
     const posts = await gql(
       conn.api_key,
       `query GetPosts($organizationId: OrganizationId!, $channelIds: [ChannelId!]) {
