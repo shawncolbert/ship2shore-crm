@@ -50,18 +50,32 @@ function metadataFor(platform) {
   return undefined
 }
 
+// TikTok photo posts cap out at 2,073,600 pixels (1920x1080) -- a real
+// phone/library photo is routinely well past that (a 12MP photo is ~6x
+// over), and Buffer rejects the whole post outright rather than resizing
+// it. wsrv.nl is a long-standing free image proxy: fetches the original,
+// resizes it, and serves the result from its own URL -- no image library
+// or Supabase transform tier needed on our side. fit=inside keeps the
+// aspect ratio and guarantees both dimensions stay under the cap for any
+// source shape, landscape or portrait.
+function tiktokSafeImageUrl(url) {
+  if (!url) return url
+  return `https://images.weserv.nl/?url=${encodeURIComponent(url.replace(/^https?:\/\//, ''))}&w=1400&h=1400&fit=inside`
+}
+
 // Publishes immediately (mode: shareNow) -- buffer-publish.js only calls
 // this once a post's own scheduled_date has already arrived, so there's
 // nothing to gain from also handing Buffer a future dueAt to manage.
 export async function bufferPublishNow(apiKey, { channelId, text, imageUrl, platform }) {
   const metadata = metadataFor(platform)
+  const safeImageUrl = platform === 'tiktok' ? tiktokSafeImageUrl(imageUrl) : imageUrl
   const input = {
     channelId,
     text: text || '',
     schedulingType: 'automatic',
     mode: 'shareNow',
     needsApproval: false,
-    assets: imageUrl ? [{ image: { url: imageUrl } }] : [],
+    assets: safeImageUrl ? [{ image: { url: safeImageUrl } }] : [],
     ...(metadata ? { metadata } : {}),
   }
   const data = await bufferGraphQL(apiKey, CREATE_POST, { input })
