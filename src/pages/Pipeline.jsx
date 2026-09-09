@@ -98,8 +98,8 @@ const PORT_ADDRESS = {
 // the B/L number to the clipboard instead so it's a paste, not a retype.
 const PORTS_AMERICA_URL = 'https://dockworks.portsamerica.com/Operations/Cargo/CargoAvailableAndDemurrage.aspx'
 
-async function openCarrierTracking(blNumber) {
-  const clean = String(blNumber || '').trim()
+async function openCarrierTracking(billingNumber) {
+  const clean = String(billingNumber || '').trim()
   if (!clean) return
   // window.open has to fire synchronously, in the same tick as the click --
   // Safari (especially iOS) silently blocks it as a popup if anything gets
@@ -1579,10 +1579,10 @@ function JobDetailModal({
                     />
                     <button
                       type="button"
-                      disabled={!blNumber}
-                      title="Just copies the number -- doesn't open anything."
+                      disabled={!billingNumber}
+                      title="Copies the plain number (no carrier letters) -- doesn't open anything."
                       onClick={async () => {
-                        if (await copyToClipboard(blNumber)) {
+                        if (await copyToClipboard(billingNumber)) {
                           setCopiedBlNumber(true)
                           setTimeout(() => setCopiedBlNumber(false), 2000)
                         }
@@ -1593,12 +1593,12 @@ function JobDetailModal({
                     </button>
                     <button
                       type="button"
-                      disabled={!blNumber || trackingShipment}
-                      title="Copies the number and opens Ports America's cargo lookup in a new tab -- paste the number in and hit their Search."
+                      disabled={!billingNumber || trackingShipment}
+                      title="Copies the plain number (no carrier letters -- Ports America's own search won't accept them) and opens Ports America's cargo lookup in a new tab -- paste the number in and hit their Search."
                       onClick={async () => {
                         setTrackingShipment(true)
                         try {
-                          await openCarrierTracking(blNumber)
+                          await openCarrierTracking(billingNumber)
                           setTrackedCarrier(true)
                           setTimeout(() => setTrackedCarrier(null), 3000)
                         } finally {
