@@ -464,8 +464,8 @@ function JobsTable({ jobs }) {
                         <div>Port: <span className="text-ink">{j.port || '—'}</span></div>
                         <div>Scheduled: <span className="text-ink">{fmtDate(j.scheduled_at)}</span></div>
                         <div>VIN: <CopyableValue value={j.vehicle_vin} /></div>
-                        <div>Billing #: <CopyableValue value={j.billing_number} /></div>
-                        {j.bl_number && <div className="sm:col-span-2">Bill of Lading #: <CopyableValue value={j.bl_number} /></div>}
+                        {j.bl_number && <div>Ship billing #: <CopyableValue value={j.bl_number} /></div>}
+                        <div className="sm:col-span-2">Bill of Lading #: <CopyableValue value={j.billing_number} /></div>
                       </div>
                     </td>
                   </tr>

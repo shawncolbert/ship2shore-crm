@@ -1312,7 +1312,7 @@ function JobDetailModal({
               {c.contacts?.full_name || c.title || 'Job'}
             </h2>
             <p className={`${mono} mt-0.5 text-xs text-muted`}>
-              {c.booking_number || 'No booking #'}{c.billing_number ? ` · Ship billing ${c.billing_number}` : ''}
+              {c.booking_number || 'No booking #'}{c.bl_number ? ` · Ship billing ${c.bl_number}` : ''}
             </p>
           </div>
           <button
@@ -1562,20 +1562,25 @@ function JobDetailModal({
                   </button>
                 </div>
                 <div>
-                  <label className={label} title="Auto-fills from the Bill of Lading # below once that's entered -- only type here directly for a job with no B/L (e.g. a domestic job).">Ship billing #</label>
-                  <input value={billingNumber} onChange={(e) => setBillingNumber(e.target.value.slice(0, 16))} maxLength={16} placeholder="Ship billing #" className={`${field} ${mono}`} />
+                  <label className={label} title="The full number from the waybill, including the carrier prefix (e.g. MOLU18009385790). The Bill of Lading # box (right) fills in automatically from this -- carrier letters stripped, matching what the port's own lookup expects.">Ship billing #</label>
+                  <input
+                    value={blNumber}
+                    onChange={(e) => {
+                      const v = e.target.value.trim()
+                      setBlNumber(v)
+                      setBillingNumber(v.replace(/^[A-Za-z]+/, '').slice(0, 16))
+                    }}
+                    placeholder="e.g. MOLU18009385790" className={`${field} ${mono}`}
+                  />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className={label} title="From the waybill/Bill of Lading -- include the carrier prefix (e.g. MOLU18009385790). Ship billing # (left) fills in automatically from this -- carrier letters stripped, matching what the port's own lookup expects.">Bill of Lading #</label>
+                  <label className={label} title="Auto-fills from Ship billing # (left) once that's entered, with the carrier letters stripped -- this plain number is what Ports America's own lookup expects. Only type here directly for a job with no full number (e.g. a domestic job).">Bill of Lading #</label>
                   <div className="flex gap-1.5">
                     <input
-                      value={blNumber}
-                      onChange={(e) => {
-                        const v = e.target.value.trim()
-                        setBlNumber(v)
-                        setBillingNumber(v.replace(/^[A-Za-z]+/, '').slice(0, 16))
-                      }}
-                      placeholder="e.g. MOLU18009385790" className={`${field} ${mono} flex-1`}
+                      value={billingNumber}
+                      onChange={(e) => setBillingNumber(e.target.value.slice(0, 16))}
+                      maxLength={16}
+                      placeholder="e.g. 18009385790" className={`${field} ${mono} flex-1`}
                     />
                     <button
                       type="button"
