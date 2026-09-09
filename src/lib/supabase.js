@@ -416,7 +416,7 @@ export async function fetchContact(id) {
   const [contact, jobs, appts, activities] = await Promise.all([
     supabase.from('contacts').select('*').eq('id', id).single(),
     supabase.from('opportunities')
-      .select('id, title, service_code, port, value, status, scheduled_at, stage_id, stages(name)')
+      .select('id, title, service_code, port, value, status, scheduled_at, stage_id, stages(name), vehicle, vehicle_vin, billing_number, bl_number')
       .eq('contact_id', id).order('created_at', { ascending: false }),
     supabase.from('appointments')
       .select('id, title, port, service_code, start_at, status, pickup_address, dropoff_address, distance_miles')

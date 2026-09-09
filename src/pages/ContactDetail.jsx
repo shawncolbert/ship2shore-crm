@@ -10,6 +10,7 @@ import {
 import { fetchConnections, addConnection, deleteConnection } from '../lib/prospecting'
 import { fetchDocumentPresets, renderPresetBody } from '../lib/documentPresets'
 import { calendlyPrefillUrl, mailtoUrl } from '../lib/config'
+import { copyToClipboard } from '../lib/shareBooking'
 import Badge from '../components/Badge'
 import EmailComposer from '../components/EmailComposer'
 
@@ -396,6 +397,28 @@ const CUSTOM_PRESET = { id: 'custom', label: 'Custom', subject: '', body_templat
 // Compact by default -- one row per job, tap to expand for the fields that
 // don't fit on a line (status, service, port, scheduled date) instead of
 // spreading every job out full-height on the page all the time.
+// A customer with more than one vehicle just gets one job row per car
+// (each with its own stage, price, and billing #) rather than one combined
+// row -- this is what makes them tell apart-able at a glance, and each
+// one's billing # is copyable right here without opening its pipeline card.
+function CopyableValue({ value }) {
+  const [copied, setCopied] = useState(false)
+  if (!value) return <span className="text-ink">—</span>
+  return (
+    <button
+      type="button"
+      onClick={async (e) => {
+        e.stopPropagation()
+        if (await copyToClipboard(value)) { setCopied(true); setTimeout(() => setCopied(false), 1500) }
+      }}
+      title="Copy"
+      className="inline-flex items-center gap-1 font-[family-name:var(--font-mono)] text-ink hover:text-accent"
+    >
+      {value} {copied ? '✓' : '📋'}
+    </button>
+  )
+}
+
 function JobsTable({ jobs }) {
   const [expanded, setExpanded] = useState(() => new Set())
   const toggle = (id) => setExpanded((s) => {
@@ -411,6 +434,7 @@ function JobsTable({ jobs }) {
           <tr className="border-b border-line text-left text-xs font-semibold uppercase tracking-wide text-muted">
             <th className="w-5 py-1.5"></th>
             <th className="py-1.5 pr-2">Job</th>
+            <th className="py-1.5 pr-2">Vehicle</th>
             <th className="py-1.5 pr-2">Stage</th>
             <th className="py-1.5 pr-0 text-right">Price</th>
           </tr>
@@ -426,18 +450,22 @@ function JobsTable({ jobs }) {
                 >
                   <td className="py-2 text-muted">{isOpen ? '▾' : '▸'}</td>
                   <td className="py-2 pr-2 text-ink">{j.title || j.service_code || 'Job'}</td>
+                  <td className="py-2 pr-2 text-xs text-muted">{j.vehicle || '—'}</td>
                   <td className="py-2 pr-2 text-xs text-muted">{j.stages?.name || '—'}</td>
                   <td className="py-2 pr-0 text-right font-[family-name:var(--font-mono)] text-ink">{money(j.value)}</td>
                 </tr>
                 {isOpen && (
                   <tr className="border-b border-line bg-canvas/50">
                     <td />
-                    <td colSpan={3} className="py-2 pr-2">
+                    <td colSpan={4} className="py-2 pr-2">
                       <div className="grid gap-x-4 gap-y-1 text-xs text-muted sm:grid-cols-2">
                         <div>Status: <span className="text-ink">{j.status || '—'}</span></div>
                         <div>Service: <span className="text-ink">{j.service_code || '—'}</span></div>
                         <div>Port: <span className="text-ink">{j.port || '—'}</span></div>
                         <div>Scheduled: <span className="text-ink">{fmtDate(j.scheduled_at)}</span></div>
+                        <div>VIN: <CopyableValue value={j.vehicle_vin} /></div>
+                        <div>Billing #: <CopyableValue value={j.billing_number} /></div>
+                        {j.bl_number && <div className="sm:col-span-2">Bill of Lading #: <CopyableValue value={j.bl_number} /></div>}
                       </div>
                     </td>
                   </tr>
