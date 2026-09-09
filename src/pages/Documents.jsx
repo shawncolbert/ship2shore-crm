@@ -9,6 +9,7 @@ const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 sha
 const btn = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:bg-canvas'
 const btnAccent = 'inline-flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-accent px-3 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50'
 
+const fmtDate = (d) => (d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '')
 const kindLabel = (k) =>
   k === 'gate_pass' ? 'Gate pass' : k === 'delivery_order' ? 'Delivery Order' : 'Shipping doc'
 const kb = (n) => (n ? `${Math.max(1, Math.round(n / 1024))} KB` : '')
@@ -78,6 +79,23 @@ export default function Documents() {
   const { data: jobs } = useQuery({ queryKey: ['linkableJobs'], queryFn: fetchLinkableJobs })
   const [err, setErr] = useState('')
   const [clearing, setClearing] = useState(false)
+  const [query, setQuery] = useState('')
+
+  // Search by billing/BL number (either the plain 1800... number or the
+  // full MOLU... one -- letters are ignored either way) instead of having
+  // to scroll the whole list looking for one document.
+  const queryDigits = digits(query)
+  const filteredDocs = useMemo(() => {
+    if (!query.trim()) return docs || []
+    const q = query.trim().toLowerCase()
+    return (docs || []).filter((f) => {
+      if (queryDigits.length >= 3) {
+        const haystack = `${digits(f.bl_number)} ${digits(prettyName(f.file_name))}`
+        if (haystack.includes(queryDigits)) return true
+      }
+      return prettyName(f.file_name).toLowerCase().includes(q)
+    })
+  }, [docs, query, queryDigits])
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['reviewDocs'] })
 
@@ -129,15 +147,34 @@ export default function Documents() {
 
       {err && <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-port">⚠️ {err}</p>}
 
+      {docs?.length > 0 && (
+        <div className="mb-4">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="🔎 Find by billing # / BL # (e.g. 18009386055 or MOLU18009386055)…"
+            className="w-full max-w-md rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+          {query.trim() && (
+            <p className="mt-1 text-xs text-muted">Showing {filteredDocs.length} of {docs.length}</p>
+          )}
+        </div>
+      )}
+
       {isLoading ? (
         <p className="text-sm text-muted">Loading…</p>
       ) : !docs || docs.length === 0 ? (
         <div className={card}>
           <p className="text-sm text-muted">Nothing to review. New Delivery Orders and gate passes that can’t be matched automatically will show up here.</p>
         </div>
+      ) : filteredDocs.length === 0 ? (
+        <div className={card}>
+          <p className="text-sm text-muted">No documents match "{query}".</p>
+        </div>
       ) : (
         <div className="space-y-3">
-          {docs.map((f) => (
+          {filteredDocs.map((f) => (
             <DocRow key={f.id} f={f} jobs={jobs || []} onDownload={download} onDelete={del}
               onLinked={refresh} onError={setErr} />
           ))}
@@ -190,6 +227,7 @@ function DocRow({ f, jobs, onDownload, onDelete, onLinked, onError }) {
             )}
             <span className="rounded bg-canvas px-2 py-0.5 text-ink">{kindLabel(f.kind)}</span>
             {kb(f.size_bytes) && <span className="text-muted">{kb(f.size_bytes)}</span>}
+            {f.created_at && <span className="text-muted">{fmtDate(f.created_at)}</span>}
           </div>
           {suggestion?.job && (
             <p className="mt-1.5 text-xs text-muted">
