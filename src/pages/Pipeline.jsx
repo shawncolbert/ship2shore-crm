@@ -16,6 +16,7 @@ import {
   sendWaveInvoice,
   extractGatePassFields, sendGatePassRequest,
   fetchMyProfile,
+  uploadDeliveryOrder,
 } from '../lib/supabase'
 import { createInvoice } from '../lib/invoices'
 import { buildBookingSummary, buildCarrierQuoteAsk, shareBooking, copyToClipboard } from '../lib/shareBooking'
@@ -954,6 +955,7 @@ function JobDetailModal({
   const [gatePassFields, setGatePassFields] = useState({
     vessel: '', blNumber: '', driverName: '', vehicleDescription: '', vin: '', pickupDate: '',
   })
+  const [gatePassUploading, setGatePassUploading] = useState(false)
 
   async function openGatePass() {
     setGatePassOpen(true)
@@ -973,6 +975,37 @@ function JobDetailModal({
       setGatePassError(err.message)
     } finally {
       setGatePassLoading(false)
+    }
+  }
+
+  // Lets a dispatcher attach the delivery order right here instead of only
+  // relying on gmail-sync having already auto-pulled it in from email --
+  // covers a DO that's just a file on hand (a photo, a forward that hasn't
+  // landed yet). Uploads it as a normal delivery_order attachment on this
+  // job (the same path DeliveryOrderFix.jsx's "Save to customer file" and
+  // gmail-sync itself use), then re-reads it so the form's fields refresh
+  // from whatever was actually just uploaded -- gate-pass-send.js always
+  // attaches the MOST RECENT delivery_order attachment on the job, so this
+  // one becomes the one that goes out with no other change needed.
+  async function handleGatePassFileUpload(file) {
+    if (!file) return
+    setGatePassUploading(true)
+    setGatePassError('')
+    try {
+      const orgId = await fetchMyOrgId()
+      await uploadDeliveryOrder({ orgId, contactId: c.contact_id, opportunityId: c.id, file, kind: 'delivery_order' })
+      const extracted = await extractGatePassFields(c.id)
+      setGatePassFields((f) => ({
+        ...f,
+        vessel: extracted.vessel || f.vessel,
+        blNumber: extracted.blNumber || f.blNumber,
+        vehicleDescription: extracted.vehicleDescription || f.vehicleDescription,
+        vin: extracted.vin || f.vin,
+      }))
+    } catch (err) {
+      setGatePassError(err.message)
+    } finally {
+      setGatePassUploading(false)
     }
   }
 
@@ -2031,12 +2064,25 @@ function JobDetailModal({
                                 onChange={(e) => setGatePassFields((f) => ({ ...f, pickupDate: e.target.value }))} />
                             </label>
                           </div>
+                          <label className="mt-3 block border-t border-line pt-3">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                              Attach delivery order {gatePassUploading && '-- uploading & reading…'}
+                            </span>
+                            <input
+                              type="file" accept="application/pdf,image/*" disabled={gatePassUploading}
+                              className="mt-1 block w-full text-xs text-muted file:mr-2 file:rounded-md file:border file:border-line file:bg-surface file:px-2 file:py-1 file:text-xs file:font-semibold file:text-ink disabled:opacity-50"
+                              onChange={(e) => { handleGatePassFileUpload(e.target.files[0]); e.target.value = '' }}
+                            />
+                            <span className="mt-1 block text-[11px] text-muted">
+                              Only needed if one hasn't already come in by email -- this replaces which one gets attached to the request.
+                            </span>
+                          </label>
                           <div className="mt-3 flex justify-end gap-2">
                             <button type="button" onClick={() => setGatePassOpen(false)} className="rounded-md px-3 py-1.5 text-xs font-medium text-muted hover:text-ink">
                               Cancel
                             </button>
                             <button
-                              type="button" onClick={handleSendGatePass} disabled={gatePassSending}
+                              type="button" onClick={handleSendGatePass} disabled={gatePassSending || gatePassUploading}
                               className="rounded-md bg-accent px-4 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
                             >
                               {gatePassSending ? 'Sending…' : 'Send'}
