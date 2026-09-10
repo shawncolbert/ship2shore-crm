@@ -520,6 +520,13 @@ function JobCard({ c, autoOpen, isWon, stages, dragId, setDragId, cancelling, on
   const invoice = c.invoices?.find((i) => i.kind !== 'deposit')
   const depositInvoice = c.invoices?.find((i) => i.kind === 'deposit')
 
+  // Pulses the customer name on the board for 48h after a gate pass reply
+  // auto-matches (gmail-sync sets gate_pass_received_at) -- there's no
+  // dedicated "seen it" flag, so this decays on its own after two days
+  // rather than flashing forever until someone remembers to dismiss it.
+  const gatePassJustReceived = c.gate_pass_received_at &&
+    (Date.now() - new Date(c.gate_pass_received_at).getTime()) < 48 * 60 * 60 * 1000
+
   // `e` is optional -- these fire both from a card's own quick-action icon
   // (inside a draggable card, so it stops propagation) and from a plain
   // button inside JobDetailModal (no drag/propagation concern there).
@@ -593,16 +600,18 @@ function JobCard({ c, autoOpen, isWon, stages, dragId, setDragId, cancelling, on
         {c.contact_id ? (
           <button
             type="button"
-            title="Open contact — email, call or text"
+            title={gatePassJustReceived ? 'Gate pass came back — open contact — email, call or text' : 'Open contact — email, call or text'}
             draggable={false}
             style={{ touchAction: 'manipulation' }}
             onClick={(e) => { e.stopPropagation(); navigate(`/contacts/${c.contact_id}`) }}
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onDragStart={(e) => e.preventDefault()}
-            className="min-w-0 flex-1 truncate text-left text-sm font-medium text-ink underline decoration-transparent underline-offset-2 hover:text-accent hover:decoration-accent"
+            className={`min-w-0 flex-1 truncate text-left text-sm font-medium underline decoration-transparent underline-offset-2 hover:text-accent hover:decoration-accent ${
+              gatePassJustReceived ? 'animate-pulse rounded bg-starboard/20 px-1 text-starboard' : 'text-ink'
+            }`}
           >
-            {c.contacts?.full_name || c.title || 'Job'}
+            {gatePassJustReceived && '🛂 '}{c.contacts?.full_name || c.title || 'Job'}
           </button>
         ) : (
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
@@ -2018,11 +2027,18 @@ function JobDetailModal({
                       className="flex w-full items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent"
                     >
                       <span>{c.gate_pass_requested_at ? 'Resend gate pass request' : 'Request gate pass'}</span>
-                      {c.gate_pass_requested_at && (
-                        <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-ink">
-                          Requested {new Date(c.gate_pass_requested_at).toLocaleDateString()} ✓
-                        </span>
-                      )}
+                      <span className="flex gap-1.5">
+                        {c.gate_pass_requested_at && (
+                          <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-ink">
+                            Requested {new Date(c.gate_pass_requested_at).toLocaleDateString()} ✓
+                          </span>
+                        )}
+                        {c.gate_pass_received_at && (
+                          <span className="rounded-full bg-starboard/15 px-2 py-0.5 text-[10px] font-semibold text-starboard">
+                            Received {new Date(c.gate_pass_received_at).toLocaleDateString()} ✓
+                          </span>
+                        )}
+                      </span>
                     </button>
                   ) : (
                     <div className="rounded-md border border-line bg-canvas p-3">
