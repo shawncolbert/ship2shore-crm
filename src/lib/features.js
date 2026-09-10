@@ -23,6 +23,7 @@ export const FEATURES = [
   { key: 'calendar', label: 'Calendar', path: '/calendar' },
   { key: 'documents', label: 'Documents', path: '/documents' },
   { key: 'do_fix', label: 'DO / Contract Editor', path: '/do-fix' },
+  { key: 'gate_pass', label: 'Gate Pass Request', path: '/gate-pass' },
   { key: 'automations', label: 'Automations', path: '/automations' },
   { key: 'services', label: 'Services', path: '/services' },
   { key: 'invoices', label: 'Invoices', path: '/invoices' },

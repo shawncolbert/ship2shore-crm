@@ -48,6 +48,7 @@ const ContractSign = lazy(() => import('./pages/ContractSign'))
 const PipelineStages = lazy(() => import('./pages/PipelineStages'))
 const AdminOrgs = lazy(() => import('./pages/AdminOrgs'))
 const DeliveryOrderFix = lazy(() => import('./pages/DeliveryOrderFix'))
+const GatePassBulk = lazy(() => import('./pages/GatePassBulk'))
 const LandingPages = lazy(() => import('./pages/LandingPages'))
 const LandingPageEditor = lazy(() => import('./pages/LandingPageEditor'))
 const PublicUpload = lazy(() => import('./pages/PublicUpload'))
@@ -146,6 +147,7 @@ function App() {
                   <Route path="calendar" element={<FeatureGate featureKey="calendar"><Calendar /></FeatureGate>} />
                   <Route path="documents" element={<FeatureGate featureKey="documents"><Documents /></FeatureGate>} />
                   <Route path="do-fix" element={<FeatureGate featureKey="do_fix"><DeliveryOrderFix /></FeatureGate>} />
+                  <Route path="gate-pass" element={<FeatureGate featureKey="gate_pass"><GatePassBulk /></FeatureGate>} />
                   <Route path="automations" element={<FeatureGate featureKey="automations"><Automations /></FeatureGate>} />
                   <Route path="payment-settings" element={<FeatureGate featureKey="payments"><PaymentSettings /></FeatureGate>} />
                   <Route path="settings/appearance" element={<FeatureGate featureKey="appearance"><Appearance /></FeatureGate>} />
