@@ -934,6 +934,37 @@ export async function sendGatePassRequest(opportunityId, fields) {
   return data
 }
 
+// Reads one uploaded delivery order (multi-vehicle aware) for the bulk
+// "Gate Pass Request" tool -- routed through a Netlify function since it
+// calls Claude. Never saves anything; the page fills its review form with
+// whatever comes back and the dispatcher edits/confirms before Send.
+export async function scanGatePassDocument(fileBase64, mimeType) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/gate-pass-scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ fileBase64, mimeType }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Could not read that document')
+  return data
+}
+
+// Sends the reviewed bulk gate pass request (one or more BL# groups, each
+// with its own vehicles and attached document) -- routed through a Netlify
+// function since it needs the org's Gmail token.
+export async function sendBulkGatePassRequest(payload) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/gate-pass-bulk-send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify(payload),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Could not send the gate pass request')
+  return data
+}
+
 // A driver's quote history -- every carrier_quote_requests row that came
 // back matched to this contact (see carrier-quote.js's phone match on
 // submit). Only ever the ones that actually got a price back; a link
