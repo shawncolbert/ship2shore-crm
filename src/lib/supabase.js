@@ -903,6 +903,37 @@ export async function requestCarrierQuote(opportunityId) {
   return data
 }
 
+// Prefills the "Request gate pass" form (Pipeline.jsx) from the job's
+// delivery order -- routed through a Netlify function since reading the
+// stored PDF and calling Claude both need service-role access. Never
+// saves anything; the dispatcher still reviews and can edit every field
+// before Send.
+export async function extractGatePassFields(opportunityId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/gate-pass-extract', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ opportunityId }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Could not read the delivery order')
+  return data
+}
+
+// Sends the reviewed gate pass request -- routed through a Netlify function
+// since it needs the org's Gmail token, which never reaches the client.
+export async function sendGatePassRequest(opportunityId, fields) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/gate-pass-send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ opportunityId, ...fields }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Could not send the gate pass request')
+  return data
+}
+
 // A driver's quote history -- every carrier_quote_requests row that came
 // back matched to this contact (see carrier-quote.js's phone match on
 // submit). Only ever the ones that actually got a price back; a link

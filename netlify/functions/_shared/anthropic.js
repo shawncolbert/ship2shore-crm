@@ -28,6 +28,41 @@ export async function askClaude({ system, prompt, maxTokens = 600 }) {
   return (data.content || []).map((b) => b.text || '').join('').trim()
 }
 
+// PDF variant of askClaude -- the message content is a document block (a
+// base64 PDF) plus a text instruction. Claude reads the PDF's rendered
+// pages directly, so this works whether or not the PDF has a text layer --
+// unlike gmail-sync's extractPdfText, which only ever sees embedded text
+// and returns nothing for a scanned/image-only PDF (common for delivery
+// orders forwarded from a phone or an HP scanner, per gate-pass-extract.js).
+export async function askClaudeDocument({ system, prompt, pdfBase64, maxTokens = 600 }) {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured')
+
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: maxTokens,
+      system,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+          { type: 'text', text: prompt },
+        ],
+      }],
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error('Claude API error: ' + JSON.stringify(data))
+  return (data.content || []).map((b) => b.text || '').join('').trim()
+}
+
 // Vision variant of askClaude -- same model/auth, but the message content is
 // an image block plus a text instruction instead of a plain string. Used by
 // the business-card scanner to read printed contact details off a photo.

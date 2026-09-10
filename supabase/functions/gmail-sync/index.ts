@@ -187,6 +187,64 @@ function collectDocParts(payload: any): Array<{ filename: string; mimeType: stri
 
 const safeName = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 120);
 
+// When the port's own gate pass reply lands and auto-matches to a job
+// (classifyKind() above already tags it "gate_pass" whenever the text
+// mentions "gate pass" or "ports america"), draft a "ready for pickup"
+// message into that customer's conversation -- same "AI drafts it into the
+// Inbox, a human reviews and sends" rule as ai-draft-reply.js and
+// photography-reminders.js, so there's no second review queue to build or
+// learn. Fetches vehicle/port fields separately rather than widening the
+// opportunities query every message is matched against, since this only
+// runs on the rare gate_pass hit, not the hot path. No-ops quietly if the
+// job has no linked contact/email -- the gate pass itself is still stored
+// and matched either way, this is just the customer-facing half.
+async function draftGatePassIssuedMessage(
+  supabase: any,
+  orgId: string,
+  opportunityId: string,
+  contactId: string | null | undefined,
+) {
+  if (!contactId) return;
+  const { data: contact } = await supabase
+    .from("contacts").select("email, full_name").eq("id", contactId).maybeSingle();
+  if (!contact?.email) return;
+
+  const { data: opp } = await supabase
+    .from("opportunities")
+    .select("vehicle, vehicle_year, vehicle_make, vehicle_model, port")
+    .eq("id", opportunityId).maybeSingle();
+
+  const vehicleDesc = [opp?.vehicle_year, opp?.vehicle_make, opp?.vehicle_model].filter(Boolean).join(" ") ||
+    opp?.vehicle || "your vehicle";
+  const firstName = (contact.full_name || "").split(" ")[0] || "there";
+  const body =
+    `Hi ${firstName},\n\nGood news -- the gate pass for ${vehicleDesc} has been issued. It's ready for pickup` +
+    `${opp?.port ? ` at ${opp.port}` : ""}. We'll be in touch shortly to coordinate.`;
+
+  let { data: convo } = await supabase
+    .from("conversations").select("id")
+    .eq("org_id", orgId).eq("contact_id", contactId).eq("channel", "email").maybeSingle();
+  if (!convo) {
+    const { data: created } = await supabase
+      .from("conversations").insert({ org_id: orgId, contact_id: contactId, channel: "email" })
+      .select("id").single();
+    convo = created;
+  }
+  if (!convo) return;
+
+  await supabase.from("messages").insert({
+    org_id: orgId,
+    conversation_id: convo.id,
+    direction: "outbound",
+    channel: "email",
+    body,
+    to_addr: contact.email,
+    provider: "gmail",
+    ai_generated: true,
+    status: "draft",
+  });
+}
+
 // Scan one message's PDF and image attachments, match Delivery Orders / gate
 // passes to a job, store them in the delivery-orders bucket + attachments
 // table, and flag anything unmatched for manual review. Returns per-message counts.
@@ -273,6 +331,9 @@ async function processAttachments(
         if (bl && !match.bl_number) {
           await supabase.from("opportunities").update({ bl_number: bl }).eq("id", match.id);
           match.bl_number = bl;
+        }
+        if (kind === "gate_pass") {
+          await draftGatePassIssuedMessage(supabase, orgId, match.id, linkContactId);
         }
       } else {
         stats.review++;

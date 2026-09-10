@@ -14,6 +14,8 @@ import {
   parseJobBrief,
   logAudit, fetchAuditLogsForEntity,
   sendWaveInvoice,
+  extractGatePassFields, sendGatePassRequest,
+  fetchMyProfile,
 } from '../lib/supabase'
 import { createInvoice } from '../lib/invoices'
 import { buildBookingSummary, buildCarrierQuoteAsk, shareBooking, copyToClipboard } from '../lib/shareBooking'
@@ -936,6 +938,56 @@ function JobDetailModal({
       alert(err.message)
     } finally {
       setSendingContract(false)
+    }
+  }
+
+  // "Request gate pass" -- prefills from the job's delivery order (vessel
+  // is the one field that's genuinely new; bl_number/vin/vehicle usually
+  // already sit on the opportunity from gmail-sync's own matching), but
+  // every field stays editable and nothing sends until Shawn reviews and
+  // presses Send -- same "AI suggests, human confirms" rule as the audio
+  // brief above and vehicle pricing.
+  const [gatePassOpen, setGatePassOpen] = useState(false)
+  const [gatePassLoading, setGatePassLoading] = useState(false)
+  const [gatePassSending, setGatePassSending] = useState(false)
+  const [gatePassError, setGatePassError] = useState('')
+  const [gatePassFields, setGatePassFields] = useState({
+    vessel: '', blNumber: '', driverName: '', vehicleDescription: '', vin: '', pickupDate: '',
+  })
+
+  async function openGatePass() {
+    setGatePassOpen(true)
+    setGatePassError('')
+    setGatePassLoading(true)
+    try {
+      const [extracted, profile] = await Promise.all([extractGatePassFields(c.id), fetchMyProfile()])
+      setGatePassFields({
+        vessel: extracted.vessel || c.vessel_name || '',
+        blNumber: extracted.blNumber || c.bl_number || '',
+        driverName: profile?.full_name || '',
+        vehicleDescription: extracted.vehicleDescription || '',
+        vin: extracted.vin || c.vehicle_vin || '',
+        pickupDate: '',
+      })
+    } catch (err) {
+      setGatePassError(err.message)
+    } finally {
+      setGatePassLoading(false)
+    }
+  }
+
+  async function handleSendGatePass() {
+    if (gatePassSending) return
+    setGatePassSending(true)
+    setGatePassError('')
+    try {
+      await sendGatePassRequest(c.id, gatePassFields)
+      qc.invalidateQueries({ queryKey: ['pipeline'] })
+      setGatePassOpen(false)
+    } catch (err) {
+      setGatePassError(err.message)
+    } finally {
+      setGatePassSending(false)
     }
   }
 
@@ -1922,6 +1974,81 @@ function JobDetailModal({
               >
                 {requestingQuote ? 'Creating link…' : '🚚 Ask driver for quote'}
               </button>
+
+              {(c.bl_number || c.port) && (
+                <>
+                  <h4 className="mb-2 mt-4 border-t border-line pt-3 text-[11px] font-semibold uppercase tracking-wide text-muted">Port / Gate Pass</h4>
+                  {!gatePassOpen ? (
+                    <button
+                      type="button"
+                      onClick={openGatePass}
+                      className="flex w-full items-center justify-between rounded-md border border-line bg-canvas px-3 py-2 text-xs font-semibold text-ink hover:border-accent"
+                    >
+                      <span>{c.gate_pass_requested_at ? 'Resend gate pass request' : 'Request gate pass'}</span>
+                      {c.gate_pass_requested_at && (
+                        <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-ink">
+                          Requested {new Date(c.gate_pass_requested_at).toLocaleDateString()} ✓
+                        </span>
+                      )}
+                    </button>
+                  ) : (
+                    <div className="rounded-md border border-line bg-canvas p-3">
+                      {gatePassLoading ? (
+                        <p className="text-xs text-muted">Reading the delivery order…</p>
+                      ) : (
+                        <>
+                          {gatePassError && <p className="mb-2 text-xs font-medium text-port">⚠️ {gatePassError}</p>}
+                          <p className="mb-2 text-[11px] text-muted">Review before sending -- this goes to the port's gate desk.</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="col-span-2 block">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Vessel</span>
+                              <input className={field} value={gatePassFields.vessel}
+                                onChange={(e) => setGatePassFields((f) => ({ ...f, vessel: e.target.value }))} />
+                            </label>
+                            <label className="block">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">BL#</span>
+                              <input className={field} value={gatePassFields.blNumber}
+                                onChange={(e) => setGatePassFields((f) => ({ ...f, blNumber: e.target.value }))} />
+                            </label>
+                            <label className="block">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">VIN</span>
+                              <input className={field} value={gatePassFields.vin}
+                                onChange={(e) => setGatePassFields((f) => ({ ...f, vin: e.target.value }))} />
+                            </label>
+                            <label className="col-span-2 block">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Vehicle</span>
+                              <input className={field} value={gatePassFields.vehicleDescription}
+                                onChange={(e) => setGatePassFields((f) => ({ ...f, vehicleDescription: e.target.value }))} />
+                            </label>
+                            <label className="block">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Driver</span>
+                              <input className={field} value={gatePassFields.driverName}
+                                onChange={(e) => setGatePassFields((f) => ({ ...f, driverName: e.target.value }))} />
+                            </label>
+                            <label className="block">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Pickup date</span>
+                              <input type="date" className={field} value={gatePassFields.pickupDate}
+                                onChange={(e) => setGatePassFields((f) => ({ ...f, pickupDate: e.target.value }))} />
+                            </label>
+                          </div>
+                          <div className="mt-3 flex justify-end gap-2">
+                            <button type="button" onClick={() => setGatePassOpen(false)} className="rounded-md px-3 py-1.5 text-xs font-medium text-muted hover:text-ink">
+                              Cancel
+                            </button>
+                            <button
+                              type="button" onClick={handleSendGatePass} disabled={gatePassSending}
+                              className="rounded-md bg-accent px-4 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
+                            >
+                              {gatePassSending ? 'Sending…' : 'Send'}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
               {isWon && (
                 <div className="mt-3">
                   <CompletionVideoField opportunityId={c.id} contactId={c.contact_id} onInteractStart={() => {}} onInteractEnd={() => {}} />
