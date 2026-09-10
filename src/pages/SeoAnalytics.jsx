@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { supabase, fetchSearchPerformance, fetchSiteAnalytics } from '../lib/supabase'
+import { supabase, fetchSearchPerformance, fetchSiteAnalytics, fetchSeoKeywordAlerts, updateSeoKeywordAlertStatus } from '../lib/supabase'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
 const field = 'mt-1.5 w-full rounded-md border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/30'
@@ -48,6 +48,7 @@ export default function SeoAnalytics() {
   const [savingPicks, setSavingPicks] = useState(false)
   const [pickedSite, setPickedSite] = useState('')
   const [pickedProperty, setPickedProperty] = useState('')
+  const [updatingAlertId, setUpdatingAlertId] = useState(null)
 
   const { data: status } = useQuery({
     queryKey: ['googleMarketingStatus'],
@@ -97,8 +98,24 @@ export default function SeoAnalytics() {
     enabled: hasPicks,
   })
 
+  const { data: alerts } = useQuery({
+    queryKey: ['seoKeywordAlerts'],
+    queryFn: fetchSeoKeywordAlerts,
+    enabled: hasPicks,
+  })
+
   const queries = useMemo(() => topQueries(searchRows), [searchRows])
   const pages = useMemo(() => topPages(trafficRows), [trafficRows])
+
+  const setAlertStatus = async (id, status) => {
+    setUpdatingAlertId(id)
+    try {
+      await updateSeoKeywordAlertStatus(id, status)
+      qc.invalidateQueries({ queryKey: ['seoKeywordAlerts'] })
+    } finally {
+      setUpdatingAlertId(null)
+    }
+  }
 
   const handleConnect = async () => {
     setConnecting(true)
@@ -199,6 +216,61 @@ export default function SeoAnalytics() {
           >
             {savingPicks ? 'Saving…' : 'Save'}
           </button>
+        </div>
+      )}
+
+      {hasPicks && (
+        <div className={`${card} mb-4`}>
+          <h2 className="mb-1 text-sm font-semibold text-ink">Striking distance keywords</h2>
+          <p className="mb-3 text-xs text-muted">
+            Queries you already rank for at position 6-15 (page two) with real search volume behind them --
+            close enough that improving the page is likely to move them onto page one. Recomputed nightly.
+          </p>
+          {!alerts?.length ? (
+            <p className="text-sm text-muted">Nothing flagged right now -- either nothing's in that range yet, or there isn't enough search volume to tell.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide text-muted">
+                  <th className="pb-2">Query</th>
+                  <th className="pb-2 text-right">Avg. position</th>
+                  <th className="pb-2 text-right">Impressions (28d)</th>
+                  <th className="pb-2 text-right">Clicks (28d)</th>
+                  <th className="pb-2 text-right">Status</th>
+                  <th className="pb-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {alerts.map((a) => (
+                  <tr key={a.id} className="border-t border-line">
+                    <td className="py-1.5 pr-2 text-ink">{a.query}</td>
+                    <td className="py-1.5 text-right font-[family-name:var(--font-mono)] tabular-nums text-ink">{Number(a.avg_position).toFixed(1)}</td>
+                    <td className="py-1.5 text-right font-[family-name:var(--font-mono)] tabular-nums text-muted">{a.window_impressions}</td>
+                    <td className="py-1.5 text-right font-[family-name:var(--font-mono)] tabular-nums text-muted">{a.window_clicks}</td>
+                    <td className="py-1.5 text-right text-muted">{a.status === 'acknowledged' ? 'Acknowledged' : 'New'}</td>
+                    <td className="py-1.5 pl-2 text-right whitespace-nowrap">
+                      {a.status === 'new' && (
+                        <button
+                          onClick={() => setAlertStatus(a.id, 'acknowledged')}
+                          disabled={updatingAlertId === a.id}
+                          className="mr-2 text-xs font-medium text-accent hover:underline disabled:opacity-50"
+                        >
+                          Acknowledge
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setAlertStatus(a.id, 'dismissed')}
+                        disabled={updatingAlertId === a.id}
+                        className="text-xs font-medium text-muted hover:text-port hover:underline disabled:opacity-50"
+                      >
+                        Dismiss
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 
