@@ -215,6 +215,28 @@ export async function fetchSiteAnalytics(days = 30) {
   return data
 }
 
+// "Striking distance" keywords -- queries at position 6-15 with real
+// volume, recomputed nightly by seo-striking-distance.js. Only 'new' and
+// 'acknowledged' are shown here; 'dismissed' and 'resolved' are done, not
+// actionable, so they'd just be clutter in the list someone actually works.
+export async function fetchSeoKeywordAlerts() {
+  const { data, error } = await supabase
+    .from('seo_keyword_alerts')
+    .select('id, query, avg_position, window_impressions, window_clicks, status, first_flagged_at')
+    .in('status', ['new', 'acknowledged'])
+    .order('avg_position', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function updateSeoKeywordAlertStatus(id, status) {
+  const { error } = await supabase
+    .from('seo_keyword_alerts')
+    .update({ status })
+    .eq('id', id)
+  if (error) throw error
+}
+
 // Editable outbound-from-California pricing adjustment (Settings >
 // Pricing) -- see PriceEstimator.jsx for where it's applied. `orgId` is
 // passed explicitly (not resolved via fetchMyOrgId) since PriceEstimator
@@ -878,6 +900,37 @@ export async function requestCarrierQuote(opportunityId) {
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Failed to create quote request')
+  return data
+}
+
+// Prefills the "Request gate pass" form (Pipeline.jsx) from the job's
+// delivery order -- routed through a Netlify function since reading the
+// stored PDF and calling Claude both need service-role access. Never
+// saves anything; the dispatcher still reviews and can edit every field
+// before Send.
+export async function extractGatePassFields(opportunityId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/gate-pass-extract', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ opportunityId }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Could not read the delivery order')
+  return data
+}
+
+// Sends the reviewed gate pass request -- routed through a Netlify function
+// since it needs the org's Gmail token, which never reaches the client.
+export async function sendGatePassRequest(opportunityId, fields) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/gate-pass-send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ opportunityId, ...fields }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Could not send the gate pass request')
   return data
 }
 

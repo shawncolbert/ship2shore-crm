@@ -94,23 +94,14 @@ function encodeAddressHeader(value) {
 // Body/html are base64-encoded UTF-8 so any characters survive intact.
 const b64part = (s) => Buffer.from(String(s ?? ''), 'utf8').toString('base64').replace(/(.{76})/g, '$1\r\n')
 
-// `html` is optional -- every existing caller that only passes `body` keeps
-// getting the exact same single-part plain-text message as before. Passing
-// `html` sends a proper multipart/alternative message (plain-text fallback +
-// styled HTML), which is what payment-request emails need for their
-// Venmo/Cash App pay buttons to actually render instead of a wall of text.
-export function buildRaw({ from, to, subject, body, html }) {
-  const headers = [
-    `From: ${encodeAddressHeader(from)}`,
-    `To: ${encodeAddressHeader(to)}`,
-    `Subject: ${encodeHeaderWord(subject)}`,
-    'MIME-Version: 1.0',
-  ]
-  let msg
+// The plain-or-html body, as a standalone MIME part (its own Content-Type
+// line through to its content, no top-level headers) -- used either as the
+// whole message or nested inside an outer multipart/mixed wrapper when
+// `attachments` are present.
+function buildBodyPart(body, html) {
   if (html) {
     const boundary = `s2s_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    msg = [
-      ...headers,
+    return [
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
       '',
       `--${boundary}`,
@@ -125,17 +116,56 @@ export function buildRaw({ from, to, subject, body, html }) {
       b64part(html),
       `--${boundary}--`,
     ].join('\r\n')
-  } else {
+  }
+  return [
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    b64part(body),
+  ].join('\r\n')
+}
+
+// `html` is optional -- every existing caller that only passes `body` keeps
+// getting the exact same single-part plain-text message as before. Passing
+// `html` sends a proper multipart/alternative message (plain-text fallback +
+// styled HTML), which is what payment-request emails need for their
+// Venmo/Cash App pay buttons to actually render instead of a wall of text.
+// `attachments` (optional) is [{ filename, mimeType, base64 }] -- e.g. the
+// original delivery order PDF on a gate pass request -- wrapped in an outer
+// multipart/mixed alongside the body part. Omitting it keeps every existing
+// caller's message byte-identical to before this existed.
+export function buildRaw({ from, to, subject, body, html, attachments }) {
+  const headers = [
+    `From: ${encodeAddressHeader(from)}`,
+    `To: ${encodeAddressHeader(to)}`,
+    `Subject: ${encodeHeaderWord(subject)}`,
+    'MIME-Version: 1.0',
+  ]
+  let msg
+  if (attachments?.length) {
+    const boundary = `s2s_mix_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const attachmentParts = attachments.map((a) => [
+      `--${boundary}`,
+      `Content-Type: ${a.mimeType}; name="${encodeHeaderWord(a.filename)}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${encodeHeaderWord(a.filename)}"`,
+      '',
+      String(a.base64).replace(/(.{76})/g, '$1\r\n'),
+    ].join('\r\n'))
     msg = [
       ...headers,
-      'Content-Type: text/plain; charset="UTF-8"',
-      'Content-Transfer-Encoding: base64',
+      `Content-Type: multipart/mixed; boundary="${boundary}"`,
       '',
-      b64part(body),
+      `--${boundary}`,
+      buildBodyPart(body, html),
+      ...attachmentParts,
+      `--${boundary}--`,
     ].join('\r\n')
+  } else {
+    msg = [...headers, buildBodyPart(body, html)].join('\r\n')
   }
-  // msg is now pure ASCII (encoded headers + base64 body), so the final
-  // base64url wrapping can't double-encode anything.
+  // msg is now pure ASCII (encoded headers + base64 body/attachments), so
+  // the final base64url wrapping can't double-encode anything.
   return Buffer.from(msg, 'utf8').toString('base64')
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }

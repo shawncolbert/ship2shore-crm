@@ -75,3 +75,9 @@
 # so once a day is plenty -- there's nothing new to pull more often than that.
 [functions."google-marketing-sync"]
   schedule = "0 15 * * *"
+
+# Recomputes seo_keyword_alerts (page-two "striking distance" keywords) from
+# the trailing 28 days of search_performance. Runs 20 minutes after
+# google-marketing-sync so it's always working off that day's fresh pull.
+[functions."seo-striking-distance"]
+  schedule = "20 15 * * *"
