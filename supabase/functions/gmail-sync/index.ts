@@ -333,6 +333,7 @@ async function processAttachments(
           match.bl_number = bl;
         }
         if (kind === "gate_pass") {
+          await supabase.from("opportunities").update({ gate_pass_received_at: new Date().toISOString() }).eq("id", match.id);
           await draftGatePassIssuedMessage(supabase, orgId, match.id, linkContactId);
         }
       } else {
