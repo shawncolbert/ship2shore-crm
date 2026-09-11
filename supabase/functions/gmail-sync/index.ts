@@ -104,12 +104,18 @@ const normalize = (s: unknown): string =>
   typeof s === "string" ? s.toUpperCase().replace(/[^A-Z0-9]/g, "") : "";
 
 // Ocean bill-of-lading / container / booking numbers look like 4 letters + 6-12
-// digits (e.g. MOLU18009201655). Used to store a bl_number and to report on
-// unmatched docs; matching to a job is done via the job's known numbers below.
-const BL_RE = /\b([A-Z]{4}\d{6,12})\b/g;
+// digits, e.g. "MOLU18009201655" -- but the carrier's own paperwork almost
+// always prints it with a space or hyphen between the two ("MOLU 18009386815"),
+// which the old digits-must-immediately-follow-letters regex never matched.
+// That silently left bl_number null on most real delivery orders even when
+// classification and storage otherwise worked -- the actual root cause behind
+// "MOLU numbers messing up." Optional separator, and the result is always
+// reassembled with a single space so every stored value looks the same
+// regardless of how the source document spaced it.
+const BL_RE = /\b([A-Z]{4})[\s-]?(\d{6,12})\b/;
 function firstBl(text: string): string | null {
   const m = text.match(BL_RE);
-  return m && m[0] ? m[0] : null;
+  return m ? `${m[1]} ${m[2]}` : null;
 }
 
 // Match a document to a job by looking for the job's billing_number or
@@ -262,7 +268,7 @@ async function processAttachments(
   opps: any[],
   orgId: string,
 ) {
-  const stats = { stored: 0, matched: 0, review: 0, irrelevant: 0, errors: [] as any[] };
+  const stats = { stored: 0, matched: 0, review: 0, irrelevant: 0, autoCreated: 0, errors: [] as any[] };
   const parts = collectDocParts(payload);
 
   for (const part of parts) {
@@ -290,7 +296,7 @@ async function processAttachments(
       const pdfText = part.isImage ? "" : await extractPdfText(bytes);
       const docText = filename + "\n" + pdfText;
       const kind = classifyKind(docText);
-      const match = matchOpportunity(opps, normalize(docText));
+      let match = matchOpportunity(opps, normalize(docText));
 
       // An unmatched, unclassified PDF is almost always an unrelated customs
       // form (7501, ABI, etc.) -- safe to skip. A photo attachment has no such
@@ -300,6 +306,23 @@ async function processAttachments(
       if (!match && !kind && !part.isImage) { stats.irrelevant++; continue; }
 
       const bl = firstBl(docText);
+
+      // A delivery order with a real carrier BL# but no existing job to land
+      // on -- read it now rather than leaving it inert in the review queue.
+      // Vehicles come off the document itself, so the resulting card(s) are
+      // ready for "Request Gate Pass" the moment a dispatcher opens them.
+      if (!match && kind === "delivery_order" && bl) {
+        const info = await extractDeliveryOrderInfo(bytes, part.isImage, part.mimeType);
+        if (info) {
+          const newOppId = await autoCreateJobsFromDeliveryOrder(supabase, orgId, contactId || null, bl, info);
+          if (newOppId) {
+            stats.autoCreated += info.vehicles.filter((v: any) => v?.description).length;
+            match = { id: newOppId, contact_id: contactId || null, billing_number: null, bl_number: bl };
+            opps.push(match);
+          }
+        }
+      }
+
       const linkContactId = match?.contact_id || contactId || null;
       const path = `${orgId}/${linkContactId || "unmatched"}/${msgId}_${safeName(filename)}`;
 
@@ -716,6 +739,113 @@ async function extractDispatchInfo(subject: string, bodyText: string): Promise<a
   return parsed;
 }
 
+// ---------------------------------------------------------------------------
+// Delivery Order auto-extraction -- MOLU-numbered DOs land ready to send
+// ---------------------------------------------------------------------------
+//
+// Shawn's standing rule: any delivery order that carries a carrier BL# (MOLU
+// and friends -- see BL_RE) should already have vessel/vehicle/VIN pulled and
+// a job card waiting on the Pipeline, not just a stored PDF nobody's looked
+// at. This only fires for a document that classifyKind() already called
+// "delivery_order" AND that matched no EXISTING job (matchOpportunity()
+// above) AND that has a BL#-shaped number in it -- a document missing all
+// three of those is either something else entirely or already handled by the
+// normal matched path a few lines down, so this never runs on the hot path.
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+const DELIVERY_ORDER_EXTRACT_SYSTEM = `You read freight delivery order / pickup order documents that may list MULTIPLE vehicles under one Bill of Lading. Respond with ONLY a JSON object, no other text, no markdown code fences. Use exactly these keys:
+{
+  "vessel": string or null,
+  "voyage": string or null,
+  "vehicles": [{"description": string, "vin": string or null}]
+}
+vessel is the ship/importing carrier name. voyage is the voyage number if shown. vehicles is EVERY line item on the document, in the order listed -- description is the year/make/model/color as written, vin is that line's VIN/chassis number, often shown right after the description or on its own line. If a field isn't on the document, use null -- never guess or invent a value that isn't actually printed on it. Never skip a vehicle line item.`;
+
+// Best-effort: any failure here (bad scan, non-JSON reply, no API key) just
+// means the document keeps sitting in the review queue exactly as it did
+// before this existed -- it never blocks storing the attachment itself.
+async function extractDeliveryOrderInfo(bytes: Uint8Array, isImage: boolean, mimeType: string): Promise<any | null> {
+  if (!ANTHROPIC_API_KEY) return null;
+  try {
+    const content: any[] = [
+      isImage
+        ? { type: "image", source: { type: "base64", media_type: mimeType || "image/jpeg", data: bytesToBase64(bytes) } }
+        : { type: "document", source: { type: "base64", media_type: "application/pdf", data: bytesToBase64(bytes) } },
+      { type: "text", text: "Extract the fields from this delivery order." },
+    ];
+    const res = await fetch(CLAUDE_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 1200,
+        system: DELIVERY_ORDER_EXTRACT_SYSTEM,
+        messages: [{ role: "user", content }],
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error("Claude API error: " + JSON.stringify(data));
+    const raw = (data.content || []).map((b: any) => b.text || "").join("").trim();
+    const parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, ""));
+    if (!Array.isArray(parsed?.vehicles) || !parsed.vehicles.some((v: any) => v?.description)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+// One job per vehicle on the document -- same convention used everywhere
+// else a multi-vehicle DO gets turned into Pipeline cards (the bulk Gate
+// Pass tool, the manual jobs built from a scanned DO). All of them share the
+// same bl_number, so a gate pass reply on that BL# later matches every one
+// of them via matchOpportunity() above -- and a re-send of the same email
+// (different thread, same BL#) will find these on its own next time instead
+// of creating duplicates, since matchOpportunity() now has something to find.
+async function autoCreateJobsFromDeliveryOrder(
+  supabase: any,
+  orgId: string,
+  contactId: string | null,
+  bl: string,
+  info: any,
+): Promise<string | null> {
+  const pipelineStage = await getIntakePipelineStage(supabase, orgId);
+  if (!pipelineStage) return null;
+
+  let firstOppId: string | null = null;
+  for (const v of info.vehicles) {
+    if (!v?.description) continue;
+    const { data: created, error } = await supabase
+      .from("opportunities")
+      .insert({
+        org_id: orgId,
+        contact_id: contactId,
+        pipeline_id: pipelineStage.pipelineId,
+        stage_id: pipelineStage.stageId,
+        title: v.description,
+        port: "wilmington",
+        value: 0,
+        status: "open",
+        bl_number: bl,
+        vessel_name: info.vessel || null,
+        vehicle: v.description,
+        vehicle_vin: v.vin || null,
+        source_board: "gmail_auto",
+      })
+      .select("id")
+      .single();
+    if (!error && created && !firstOppId) firstOppId = created.id;
+  }
+  return firstOppId;
+}
+
 // Same "take the oldest match, phone as a second key" shape as
 // gmail-enrichment's contact matching -- kept independent here rather than
 // shared, since gmail-enrichment matches on the EMAIL SENDER while this
@@ -882,7 +1012,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
 
   const messages = listData.messages || [];
   let created = 0, skipped = 0, notContact = 0;
-  const docs = { stored: 0, matched: 0, review: 0, irrelevant: 0 };
+  const docs = { stored: 0, matched: 0, review: 0, irrelevant: 0, autoCreated: 0 };
   const dispatches = { detected: 0, opportunitiesCreated: 0 };
   const zelle = { detected: 0 };
   const paymentClaims = { detected: 0 };
@@ -958,6 +1088,7 @@ async function syncAccount(supabase: any, tokenRow: any, emailToContact: Map<str
     docs.matched += aStats.matched;
     docs.review += aStats.review;
     docs.irrelevant += aStats.irrelevant;
+    docs.autoCreated += aStats.autoCreated;
     if (aStats.errors.length) errors.push(...aStats.errors);
 
     if (!contactId) { notContact++; continue; }
