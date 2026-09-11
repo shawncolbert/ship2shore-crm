@@ -13,6 +13,13 @@ const json = (statusCode, body) => ({
 // lookup would key off of.
 const GATE_PASS_RECIPIENT = 'NATSS.TricorSupport@portsamerica.com'
 
+// Every gate pass request names Shawn as the driver of record, regardless
+// of who's actually behind the wheel or what a dispatcher types into the
+// form -- his standing instruction, no exceptions. Hardcoded rather than
+// read from the job or the signed-in profile so it can't drift if either
+// changes.
+const DRIVER_NAME = 'SHAWN COLBERT'
+
 // Sends the gate pass request email (see the Pipeline "Request gate pass"
 // modal) with the job's delivery order attached, from the org's own
 // connected Gmail (never a shared/global account -- same reasoning as
@@ -32,9 +39,9 @@ export const handler = async (event) => {
 
   let body
   try { body = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'Invalid request body' }) }
-  const { opportunityId, vessel, blNumber, driverName, vehicleDescription, vin, pickupDate } = body
+  const { opportunityId, vessel, blNumber, vehicleDescription, vin, pickupDate } = body
   if (!opportunityId) return json(400, { error: 'opportunityId is required' })
-  const missing = ['vessel', 'blNumber', 'driverName', 'vehicleDescription', 'vin', 'pickupDate']
+  const missing = ['vessel', 'blNumber', 'vehicleDescription', 'vin', 'pickupDate']
     .filter((k) => !String(body[k] || '').trim())
   if (missing.length) return json(400, { error: `Missing: ${missing.join(', ')}` })
 
@@ -84,7 +91,7 @@ export const handler = async (event) => {
     '',
     `VESSEL- ${vessel}`,
     `BL# ${blNumber}`,
-    `DRIVER- ${driverName}`,
+    `DRIVER- ${DRIVER_NAME}`,
     vehicleDescription,
     `VIN# ${vin}`,
     '',
