@@ -39,7 +39,6 @@ const newGroup = (overrides = {}) => ({
 export default function GatePassBulk() {
   const [vessel, setVessel] = useState('')
   const [voyage, setVoyage] = useState('')
-  const [driverName, setDriverName] = useState('')
   const [pickupDate, setPickupDate] = useState(todayISO())
   const [groups, setGroups] = useState([])
   const [sending, setSending] = useState(false)
@@ -113,7 +112,6 @@ export default function GatePassBulk() {
   const anyScanning = groups.some((g) => g.scanning)
   const missing = []
   if (!vessel.trim()) missing.push('Vessel')
-  if (!driverName.trim()) missing.push('Driver name')
   if (!pickupDate.trim()) missing.push('Pickup date')
   if (!groups.length) missing.push('At least one document/BL#')
   groups.forEach((g, i) => {
@@ -129,7 +127,6 @@ export default function GatePassBulk() {
       const payload = {
         vessel: vessel.trim(),
         voyage: voyage.trim() || null,
-        driverName: driverName.trim(),
         pickupDate,
         groups: groups.map((g) => ({
           blNumber: g.blNumber.trim(),
@@ -154,7 +151,6 @@ export default function GatePassBulk() {
   function startOver() {
     setVessel('')
     setVoyage('')
-    setDriverName('')
     setPickupDate(todayISO())
     setGroups([])
     setSent(null)
@@ -221,7 +217,7 @@ export default function GatePassBulk() {
           />
         </label>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Vessel</label>
             <input
@@ -240,14 +236,6 @@ export default function GatePassBulk() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Driver name</label>
-            <input
-              value={driverName}
-              onChange={(e) => setDriverName(e.target.value)}
-              className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
-            />
-          </div>
-          <div>
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Pickup date</label>
             <input
               type="date"
@@ -257,6 +245,9 @@ export default function GatePassBulk() {
             />
           </div>
         </div>
+        {/* Driver is always Shawn Colbert on every gate pass request, by his
+            own standing rule -- not a field a dispatcher can change here. */}
+        <p className="mt-3 text-xs text-muted">Driver on record: <span className="font-semibold text-ink">Shawn Colbert</span></p>
       </div>
 
       <div className="mb-6 space-y-4">

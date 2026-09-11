@@ -9,6 +9,13 @@ const json = (statusCode, body) => ({
 
 const GATE_PASS_RECIPIENT = 'NATSS.TricorSupport@portsamerica.com'
 
+// Every gate pass request names Shawn as the driver of record, regardless
+// of who's actually behind the wheel or what a dispatcher types into the
+// form -- his standing instruction, no exceptions. Hardcoded rather than
+// read from the job or the signed-in profile so it can't drift if either
+// changes.
+const DRIVER_NAME = 'SHAWN COLBERT'
+
 // Same normalization gmail-sync uses to match a document to a job -- strip
 // everything but A-Z0-9 and uppercase, so "MOLU 1800-9386800" and
 // "molu18009386800" compare equal.
@@ -34,9 +41,9 @@ export const handler = async (event) => {
 
   let body
   try { body = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'Invalid request body' }) }
-  const { vessel, voyage, driverName, pickupDate, groups } = body
+  const { vessel, voyage, pickupDate, groups } = body
   if (!Array.isArray(groups) || !groups.length) return json(400, { error: 'At least one BL# group is required' })
-  const missing = ['vessel', 'driverName', 'pickupDate'].filter((k) => !String(body[k] || '').trim())
+  const missing = ['vessel', 'pickupDate'].filter((k) => !String(body[k] || '').trim())
   if (missing.length) return json(400, { error: `Missing: ${missing.join(', ')}` })
   for (const [i, g] of groups.entries()) {
     if (!g.blNumber?.trim()) return json(400, { error: `Group ${i + 1}: BL# is required` })
@@ -68,7 +75,7 @@ export const handler = async (event) => {
   if (voyage) bodyLines.push(`VOYAGE- ${voyage}`)
 
   for (const g of groups) {
-    bodyLines.push('', `BL# ${g.blNumber}`, `DRIVER- ${driverName}`)
+    bodyLines.push('', `BL# ${g.blNumber}`, `DRIVER- ${DRIVER_NAME}`)
     g.vehicles.forEach((v, i) => {
       bodyLines.push(`${i + 1}. ${v.description}${v.vin ? ` — VIN# ${v.vin}` : ''}`)
     })

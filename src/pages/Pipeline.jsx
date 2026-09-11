@@ -15,7 +15,6 @@ import {
   logAudit, fetchAuditLogsForEntity,
   sendWaveInvoice,
   extractGatePassFields, sendGatePassRequest,
-  fetchMyProfile,
   uploadDeliveryOrder,
 } from '../lib/supabase'
 import { createInvoice } from '../lib/invoices'
@@ -962,7 +961,7 @@ function JobDetailModal({
   const [gatePassSending, setGatePassSending] = useState(false)
   const [gatePassError, setGatePassError] = useState('')
   const [gatePassFields, setGatePassFields] = useState({
-    vessel: '', blNumber: '', driverName: '', vehicleDescription: '', vin: '', pickupDate: '',
+    vessel: '', blNumber: '', vehicleDescription: '', vin: '', pickupDate: '',
   })
   const [gatePassUploading, setGatePassUploading] = useState(false)
 
@@ -971,11 +970,10 @@ function JobDetailModal({
     setGatePassError('')
     setGatePassLoading(true)
     try {
-      const [extracted, profile] = await Promise.all([extractGatePassFields(c.id), fetchMyProfile()])
+      const extracted = await extractGatePassFields(c.id)
       setGatePassFields({
         vessel: extracted.vessel || c.vessel_name || '',
         blNumber: extracted.blNumber || c.bl_number || '',
-        driverName: profile?.full_name || '',
         vehicleDescription: extracted.vehicleDescription || '',
         vin: extracted.vin || c.vehicle_vin || '',
         pickupDate: '',
@@ -2070,16 +2068,14 @@ function JobDetailModal({
                                 onChange={(e) => setGatePassFields((f) => ({ ...f, vehicleDescription: e.target.value }))} />
                             </label>
                             <label className="block">
-                              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Driver</span>
-                              <input className={field} value={gatePassFields.driverName}
-                                onChange={(e) => setGatePassFields((f) => ({ ...f, driverName: e.target.value }))} />
-                            </label>
-                            <label className="block">
                               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Pickup date</span>
                               <input type="date" className={field} value={gatePassFields.pickupDate}
                                 onChange={(e) => setGatePassFields((f) => ({ ...f, pickupDate: e.target.value }))} />
                             </label>
                           </div>
+                          {/* Driver is always Shawn Colbert on every gate pass request, by his
+                              own standing rule -- not a field to change per job. */}
+                          <p className="mt-2 text-[11px] text-muted">Driver on record: <span className="font-semibold text-ink">Shawn Colbert</span></p>
                           <label className="mt-3 block border-t border-line pt-3">
                             <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
                               Attach delivery order {gatePassUploading && '-- uploading & reading…'}
