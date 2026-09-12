@@ -1819,3 +1819,19 @@ export async function deleteVessel(id) {
   const { error } = await supabase.from('vessels').delete().eq('id', id)
   if (error) throw error
 }
+
+// Called the moment a dispatcher tabs off the vessel name field with no
+// MMSI typed yet (Vessels.jsx) -- looks it up via VesselAPI's free tier
+// (vessel-lookup-mmsi.js) instead of that dispatcher having to ask Claude
+// or hunt it down by hand every time a new vessel comes up.
+export async function lookupVesselMmsi(name) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/vessel-lookup-mmsi', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ name }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'MMSI lookup failed.')
+  return data
+}
