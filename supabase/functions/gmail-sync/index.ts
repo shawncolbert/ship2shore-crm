@@ -320,6 +320,8 @@ async function processAttachments(
             match = { id: newOppId, contact_id: contactId || null, billing_number: null, bl_number: bl };
             opps.push(match);
           }
+          const iso = usDateToIso(info.free_time_exp);
+          if (info.vessel && iso) await upsertVesselFreeTime(supabase, orgId, info.vessel, iso);
         }
       }
 
@@ -358,6 +360,14 @@ async function processAttachments(
         if (kind === "gate_pass") {
           await supabase.from("opportunities").update({ gate_pass_received_at: new Date().toISOString() }).eq("id", match.id);
           await draftGatePassIssuedMessage(supabase, orgId, match.id, linkContactId);
+        }
+        // Gated behind a keyword pre-filter (see mentionsFreeTime) so a
+        // routine matched delivery order -- the common case -- doesn't cost
+        // a Claude call just to check a field that's almost always blank.
+        if (kind === "delivery_order" && mentionsFreeTime(docText)) {
+          const info = await extractDeliveryOrderInfo(bytes, part.isImage, part.mimeType);
+          const iso = usDateToIso(info?.free_time_exp);
+          if (info?.vessel && iso) await upsertVesselFreeTime(supabase, orgId, info.vessel, iso);
         }
       } else {
         stats.review++;
@@ -765,9 +775,10 @@ const DELIVERY_ORDER_EXTRACT_SYSTEM = `You read freight delivery order / pickup 
 {
   "vessel": string or null,
   "voyage": string or null,
+  "free_time_exp": string or null,
   "vehicles": [{"description": string, "vin": string or null}]
 }
-vessel is the ship/importing carrier name. voyage is the voyage number if shown. vehicles is EVERY line item on the document, in the order listed -- description is the year/make/model/color as written, vin is that line's VIN/chassis number, often shown right after the description or on its own line. If a field isn't on the document, use null -- never guess or invent a value that isn't actually printed on it. Never skip a vehicle line item.`;
+vessel is the ship/importing carrier name. voyage is the voyage number if shown. free_time_exp is the date in the "FREE TIME EXP." field, exactly as printed (e.g. "09/25/26") -- this field is usually left blank by the carrier, so use null unless a real date is actually printed there; never guess or compute one. vehicles is EVERY line item on the document, in the order listed -- description is the year/make/model/color as written, vin is that line's VIN/chassis number, often shown right after the description or on its own line. If a field isn't on the document, use null -- never guess or invent a value that isn't actually printed on it. Never skip a vehicle line item.`;
 
 // Best-effort: any failure here (bad scan, non-JSON reply, no API key) just
 // means the document keeps sitting in the review queue exactly as it did
@@ -799,6 +810,54 @@ async function extractDeliveryOrderInfo(bytes: Uint8Array, isImage: boolean, mim
     return parsed;
   } catch {
     return null;
+  }
+}
+
+// MM/DD/YY(YY) as printed on a delivery order -> ISO date, matching the
+// vessels.last_free_day column. A 2-digit year is treated as 20xx -- every
+// delivery order this app has ever seen is from this decade, and a
+// pre-2000 shipment isn't a real case worth the extra ambiguity.
+function usDateToIso(s: string | null): string | null {
+  if (!s) return null;
+  const m = String(s).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (!m) return null;
+  const [, mm, dd, yRaw] = m;
+  const yyyy = yRaw.length === 2 ? `20${yRaw}` : yRaw.padStart(4, "0");
+  return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+}
+
+// Cheap keyword gate so a matched delivery order (the common case -- a job
+// that already exists) doesn't cost a Claude call on every single one just
+// to check a field that's almost always blank. Only unmatched DOs already
+// pay for a Claude call regardless (to build the job card itself), so this
+// gate doesn't apply there.
+const mentionsFreeTime = (text: string) => /free\s*time/i.test(text);
+
+// Fills in a vessel's last_free_day the moment a document actually prints
+// one -- but only ever fills a BLANK, never overwrites an existing value.
+// Shawn sets these by hand from a call/email with the terminal (Settings >
+// Vessels); a document that happens to repeat an old free-time date on a
+// later re-send should never silently clobber a real correction he already
+// entered. Matching is bidirectional substring containment (normalized),
+// same reasoning as matchOpportunity() above -- a job's vessel_name is
+// often the carrier's full string ("MOLU ADRIA ACE 159A") while the extracted
+// name here might be just "ADRIA ACE", or vice versa.
+async function upsertVesselFreeTime(supabase: any, orgId: string, vesselNameRaw: string | null, isoDate: string | null) {
+  if (!vesselNameRaw?.trim() || !isoDate) return;
+  const name = vesselNameRaw.trim().toUpperCase();
+  const normName = normalize(name);
+
+  const { data: existing } = await supabase.from("vessels").select("id, name, last_free_day").eq("org_id", orgId);
+  const match = (existing || []).find((v: any) => {
+    const vn = normalize(v.name);
+    return vn.includes(normName) || normName.includes(vn);
+  });
+
+  if (match) {
+    if (match.last_free_day) return; // never overwrite -- Shawn's own entry wins
+    await supabase.from("vessels").update({ last_free_day: isoDate, updated_at: new Date().toISOString() }).eq("id", match.id);
+  } else {
+    await supabase.from("vessels").insert({ org_id: orgId, name, last_free_day: isoDate });
   }
 }
 
