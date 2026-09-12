@@ -30,6 +30,7 @@ const nav = [
   { to: '/documents', label: 'Documents', key: 'documents', group: 'Production' },
   { to: '/do-fix', label: 'DO / Contract Editor', key: 'do_fix', group: 'Production' },
   { to: '/gate-pass', label: 'Gate Pass Request', key: 'gate_pass', group: 'Production' },
+  { to: '/settings/vessels', label: 'Vessels', key: 'vessels', group: 'Production' },
   { to: '/automations', label: 'Automations', key: 'automations', group: 'Production' },
   { to: '/services', label: 'Services', key: 'services', group: 'Money' },
   { to: '/invoices', label: 'Invoices', key: 'invoices', group: 'Money' },

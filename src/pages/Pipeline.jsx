@@ -15,7 +15,7 @@ import {
   logAudit, fetchAuditLogsForEntity,
   sendWaveInvoice,
   extractGatePassFields, sendGatePassRequest,
-  uploadDeliveryOrder,
+  uploadDeliveryOrder, fetchVessels,
 } from '../lib/supabase'
 import { createInvoice } from '../lib/invoices'
 import { buildBookingSummary, buildCarrierQuoteAsk, shareBooking, copyToClipboard } from '../lib/shareBooking'
@@ -526,6 +526,24 @@ function JobCard({ c, autoOpen, isWon, stages, dragId, setDragId, cancelling, on
   const gatePassJustReceived = c.gate_pass_received_at &&
     (Date.now() - new Date(c.gate_pass_received_at).getTime()) < 48 * 60 * 60 * 1000
 
+  // Free-time countdown -- matches this job's vessel_name against Settings >
+  // Vessels (same substring match free-time-alerts.js uses server-side,
+  // since a job's vessel_name is often the carrier's full string while the
+  // vessel is registered under just its name). Hidden once the gate pass
+  // has already come back, same as the Telegram digest.
+  const { data: vesselsForCard } = useQuery({ queryKey: ['vessels'], queryFn: fetchVessels })
+  let freeTime = null
+  if (c.vessel_name && !c.gate_pass_received_at) {
+    const norm = (s) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const cNorm = norm(c.vessel_name)
+    const match = vesselsForCard?.find((v) => v.last_free_day && cNorm.includes(norm(v.name)))
+    if (match) {
+      const today = new Date(); today.setHours(0, 0, 0, 0)
+      const days = Math.round((new Date(match.last_free_day + 'T00:00:00') - today) / 86400000)
+      freeTime = { days }
+    }
+  }
+
   // `e` is optional -- these fire both from a card's own quick-action icon
   // (inside a draggable card, so it stops propagation) and from a plain
   // button inside JobDetailModal (no drag/propagation concern there).
@@ -680,6 +698,20 @@ function JobCard({ c, autoOpen, isWon, stages, dragId, setDragId, cancelling, on
       {c.vehicle_vin && (
         <div className="mt-0.5 font-[family-name:var(--font-mono)] text-[10px] text-muted" title="VIN / chassis number">
           VIN {c.vehicle_vin}
+        </div>
+      )}
+      {freeTime && (
+        <div className="mt-1">
+          <span
+            title={`${c.vessel_name} — last free day before per-diem/demurrage`}
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${
+              freeTime.days <= 2
+                ? 'bg-red-100 text-port ring-port/40'
+                : 'bg-canvas text-muted ring-line'
+            }`}
+          >
+            ⏰ {freeTime.days < 0 ? `Free time ${Math.abs(freeTime.days)}d past due` : freeTime.days === 0 ? 'Free time due today' : `Free time ${freeTime.days}d left`}
+          </span>
         </div>
       )}
       {c.scheduled_at && (
