@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchReviewDocuments, fetchLinkableJobs, linkDocumentToJob,
-  signedAttachmentUrl, deleteAttachment,
+  signedAttachmentUrl, deleteAttachment, fetchSignedUrls,
 } from '../lib/supabase'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
@@ -16,6 +16,90 @@ const kb = (n) => (n ? `${Math.max(1, Math.round(n / 1024))} KB` : '')
 // Auto-pulled email attachments are stored with URL-encoded names
 // ("Delivery%20Order%20...pdf"); show them readable.
 const prettyName = (s) => { try { return decodeURIComponent(s) } catch { return s } }
+// One-time pdf.js load, same vendor bundle DeliveryOrderFix.jsx already
+// ships for the DO editor -- shared script tag if both happen to be on
+// screen, one in-flight load if several thumbnails mount at once.
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve()
+    const s = document.createElement('script')
+    s.src = src
+    s.onload = () => resolve()
+    s.onerror = () => reject(new Error(`Could not load ${src}`))
+    document.head.appendChild(s)
+  })
+}
+let pdfjsReady = null
+function ensurePdfJs() {
+  if (!pdfjsReady) {
+    pdfjsReady = loadScript('/vendor/pdf.min.js').then(() => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.js'
+    })
+  }
+  return pdfjsReady
+}
+
+// Renders a PDF's first page to a PNG data URL for the hover preview --
+// cached by signed URL so re-rendering the same document (a re-render of
+// this list, hovering twice) doesn't re-run pdf.js each time.
+const pdfThumbCache = new Map()
+async function renderPdfThumb(url) {
+  if (pdfThumbCache.has(url)) return pdfThumbCache.get(url)
+  await ensurePdfJs()
+  const pdf = await window.pdfjsLib.getDocument({ url }).promise
+  const page = await pdf.getPage(1)
+  const unscaled = page.getViewport({ scale: 1 })
+  const viewport = page.getViewport({ scale: 500 / unscaled.width })
+  const canvas = document.createElement('canvas')
+  canvas.width = viewport.width
+  canvas.height = viewport.height
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
+  const dataUrl = canvas.toDataURL('image/png')
+  pdfThumbCache.set(url, dataUrl)
+  return dataUrl
+}
+
+const isImageFile = (f) => /^image\//.test(f.mime_type || '') || /\.(jpe?g|png|heic|heif|webp|gif)$/i.test(f.file_name || '')
+const isPdfFile = (f) => f.mime_type === 'application/pdf' || /\.pdf$/i.test(f.file_name || '')
+
+// Small thumbnail so a dispatcher can tell what a document IS at a glance
+// instead of guessing from a filename like "18009386800.pdf" -- hover it
+// for a bigger read of the page without leaving this list. Renders a PDF's
+// first page client-side (pdf.js); an image attachment just shows itself.
+function DocThumb({ f, url }) {
+  const isImage = isImageFile(f)
+  const isPdf = !isImage && isPdfFile(f)
+  const [thumb, setThumb] = useState(isImage ? url : null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    if (isImage) { setThumb(url); return }
+    if (!isPdf || !url) return
+    let cancelled = false
+    renderPdfThumb(url).then((dataUrl) => { if (!cancelled) setThumb(dataUrl) }).catch(() => { if (!cancelled) setFailed(true) })
+    return () => { cancelled = true }
+  }, [url, isImage, isPdf])
+
+  const box = 'flex h-14 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-canvas'
+
+  if (!url || failed || (!thumb && !isImage && !isPdf)) {
+    return <span className={box + ' text-lg'}>📄</span>
+  }
+
+  return (
+    <div className="group/thumb relative shrink-0">
+      <div className={box}>
+        {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" /> : <span className="text-lg">📄</span>}
+      </div>
+      {thumb && (
+        <div className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-56 overflow-hidden rounded-lg border border-line bg-surface shadow-xl group-hover/thumb:block">
+          <img src={thumb} alt="" className="w-full" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 const jobLabel = (j) => {
   const who = j.contacts?.full_name || j.title || 'Job'
   const num = j.billing_number || j.bl_number
@@ -77,6 +161,16 @@ export default function Documents() {
   const qc = useQueryClient()
   const { data: docs, isLoading } = useQuery({ queryKey: ['reviewDocs'], queryFn: fetchReviewDocuments })
   const { data: jobs } = useQuery({ queryKey: ['linkableJobs'], queryFn: fetchLinkableJobs })
+
+  // Batched, longer-lived signed URLs (1hr) since these sit in thumbnails for
+  // as long as the page is open -- same helper/reasoning as the Photos grid
+  // on a contact's own page.
+  const docPaths = useMemo(() => (docs || []).map((f) => f.file_path), [docs])
+  const { data: thumbUrls } = useQuery({
+    queryKey: ['reviewDocThumbs', docPaths.join('|')],
+    queryFn: () => fetchSignedUrls(docPaths),
+    enabled: docPaths.length > 0,
+  })
   const [err, setErr] = useState('')
   const [clearing, setClearing] = useState(false)
   const [query, setQuery] = useState('')
@@ -175,7 +269,7 @@ export default function Documents() {
       ) : (
         <div className="space-y-3">
           {filteredDocs.map((f) => (
-            <DocRow key={f.id} f={f} jobs={jobs || []} onDownload={download} onDelete={del}
+            <DocRow key={f.id} f={f} jobs={jobs || []} thumbUrl={thumbUrls?.[f.file_path]} onDownload={download} onDelete={del}
               onLinked={refresh} onError={setErr} />
           ))}
         </div>
@@ -184,7 +278,7 @@ export default function Documents() {
   )
 }
 
-function DocRow({ f, jobs, onDownload, onDelete, onLinked, onError }) {
+function DocRow({ f, jobs, thumbUrl, onDownload, onDelete, onLinked, onError }) {
   const [jobId, setJobId] = useState('')
   const [busy, setBusy] = useState(false)
   const touched = useRef(false)
@@ -213,9 +307,11 @@ function DocRow({ f, jobs, onDownload, onDelete, onLinked, onError }) {
   return (
     <div className={card}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="flex min-w-0 gap-3">
+          <DocThumb f={f} url={thumbUrl} />
+          <div className="min-w-0">
           <button onClick={() => onDownload(f)} className="block max-w-full truncate text-left text-sm font-medium text-ink hover:text-accent">
-            📄 {prettyName(f.file_name)}
+            {prettyName(f.file_name)}
           </button>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
             {f.bl_number ? (
@@ -236,6 +332,7 @@ function DocRow({ f, jobs, onDownload, onDelete, onLinked, onError }) {
               {!suggestion.exact && <span> ({suggestion.score} of {suggestion.total} digits) — please confirm</span>}
             </p>
           )}
+          </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <select value={jobId} onChange={onPick}
