@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -10,6 +10,11 @@ import { fetchCustomLinks } from '../lib/customLinks'
 import { isFeatureEnabled } from '../lib/features'
 import DrillDownModal from '../components/DrillDownModal'
 import BookingSidebar from '../components/BookingSidebar'
+
+// mapbox-gl is a large library (~1MB) -- loaded on demand instead of
+// bundled into the main app chunk, which otherwise blew past the PWA
+// service worker's 2MB precache limit and broke the build.
+const LiveMap = lazy(() => import('../components/LiveMap'))
 
 // Quick-action tiles for the grouped-sidebar layouts' dashboard grid --
 // each a big icon badge linking straight to the feature, the way both
@@ -152,6 +157,12 @@ export default function Dashboard() {
             <Stat label="New files from customers" value={newFilesCount ?? '—'} accent={!!newFilesCount}
               hint="Sent via their upload link" onClick={() => openDrillDown('newFiles')} />
           </div>
+
+          {isFeatureEnabled(org, 'vessels') && (
+            <Suspense fallback={null}>
+              <LiveMap />
+            </Suspense>
+          )}
 
           {showQuickActions && (
             <div className="mt-6">
