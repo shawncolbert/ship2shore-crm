@@ -174,6 +174,10 @@ export default function Documents() {
   const [err, setErr] = useState('')
   const [clearing, setClearing] = useState(false)
   const [query, setQuery] = useState('')
+  // Deliberately no "select all" / "delete all" -- Shawn wants deletes picked
+  // one by one via checkbox, just several at once instead of one-at-a-time,
+  // never the whole list in one shot.
+  const [selected, setSelected] = useState(() => new Set())
 
   // Search by billing/BL number (either the plain 1800... number or the
   // full MOLU... one -- letters are ignored either way) instead of having
@@ -200,18 +204,32 @@ export default function Documents() {
 
   async function del(f) {
     if (!confirm(`Delete ${prettyName(f.file_name)}? This removes the file.`)) return
-    try { await deleteAttachment({ id: f.id, filePath: f.file_path }); refresh() }
-    catch (e) { setErr(e.message || String(e)) }
+    try {
+      await deleteAttachment({ id: f.id, filePath: f.file_path })
+      setSelected((prev) => { if (!prev.has(f.id)) return prev; const next = new Set(prev); next.delete(f.id); return next })
+      refresh()
+    } catch (e) { setErr(e.message || String(e)) }
   }
 
-  async function deleteAll() {
-    if (!docs?.length) return
-    if (!confirm(`Delete all ${docs.length} document${docs.length === 1 ? '' : 's'} in this list? This removes the files.`)) return
+  function toggleSelect(id) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function deleteSelected() {
+    const targets = (docs || []).filter((f) => selected.has(f.id))
+    if (!targets.length) return
+    if (!confirm(`Delete ${targets.length} selected document${targets.length === 1 ? '' : 's'}? This removes the files.`)) return
     setClearing(true); setErr('')
     try {
-      for (const f of docs) {
+      for (const f of targets) {
         await deleteAttachment({ id: f.id, filePath: f.file_path })
       }
+      setSelected(new Set())
       refresh()
     } catch (e) {
       setErr(e.message || String(e)); refresh()
@@ -228,13 +246,13 @@ export default function Documents() {
             The closest job is suggested by BL#; confirm it with Link, pick another, or delete.
           </p>
         </div>
-        {docs?.length > 0 && (
+        {selected.size > 0 && (
           <button
-            onClick={deleteAll}
+            onClick={deleteSelected}
             disabled={clearing}
             className="shrink-0 rounded-lg border border-line px-3 py-2 text-sm font-medium text-port hover:bg-red-50 disabled:opacity-50"
           >
-            {clearing ? 'Deleting…' : `🗑️ Delete all (${docs.length})`}
+            {clearing ? 'Deleting…' : `🗑️ Delete selected (${selected.size})`}
           </button>
         )}
       </header>
@@ -269,8 +287,9 @@ export default function Documents() {
       ) : (
         <div className="space-y-3">
           {filteredDocs.map((f) => (
-            <DocRow key={f.id} f={f} jobs={jobs || []} thumbUrl={thumbUrls?.[f.file_path]} onDownload={download} onDelete={del}
-              onLinked={refresh} onError={setErr} />
+            <DocRow key={f.id} f={f} jobs={jobs || []} thumbUrl={thumbUrls?.[f.file_path]}
+              checked={selected.has(f.id)} onToggleSelect={() => toggleSelect(f.id)}
+              onDownload={download} onDelete={del} onLinked={refresh} onError={setErr} />
           ))}
         </div>
       )}
@@ -278,7 +297,7 @@ export default function Documents() {
   )
 }
 
-function DocRow({ f, jobs, thumbUrl, onDownload, onDelete, onLinked, onError }) {
+function DocRow({ f, jobs, thumbUrl, checked, onToggleSelect, onDownload, onDelete, onLinked, onError }) {
   const [jobId, setJobId] = useState('')
   const [busy, setBusy] = useState(false)
   const touched = useRef(false)
@@ -335,6 +354,15 @@ function DocRow({ f, jobs, thumbUrl, onDownload, onDelete, onLinked, onError }) 
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-muted" title="Select for deletion">
+            <input
+              type="checkbox"
+              checked={!!checked}
+              onChange={onToggleSelect}
+              className="h-4 w-4 rounded border-line accent-port"
+            />
+            Select
+          </label>
           <select value={jobId} onChange={onPick}
             className="max-w-[18rem] rounded-lg border border-line px-2 py-2 text-sm outline-none focus:border-accent">
             <option value="">Choose the customer / job…</option>
