@@ -10,6 +10,7 @@ import { fetchCustomLinks } from '../lib/customLinks'
 import { isFeatureEnabled } from '../lib/features'
 import DrillDownModal from '../components/DrillDownModal'
 import BookingSidebar from '../components/BookingSidebar'
+import ErrorBoundary from '../components/ErrorBoundary'
 
 // mapbox-gl is a large library (~1MB) -- loaded on demand instead of
 // bundled into the main app chunk, which otherwise blew past the PWA
@@ -159,9 +160,11 @@ export default function Dashboard() {
           </div>
 
           {isFeatureEnabled(org, 'vessels') && (
-            <Suspense fallback={null}>
-              <LiveMap />
-            </Suspense>
+            <ErrorBoundary fallback={null}>
+              <Suspense fallback={null}>
+                <LiveMap />
+              </Suspense>
+            </ErrorBoundary>
           )}
 
           {showQuickActions && (

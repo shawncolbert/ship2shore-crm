@@ -56,6 +56,7 @@ export default function LiveMap() {
   const mapRef = useRef(null)
   const markersRef = useRef({ vessels: new Map(), trucks: new Map() })
   const [mapReady, setMapReady] = useState(false)
+  const [mapFailed, setMapFailed] = useState(false)
 
   const { data: vessels } = useQuery({ queryKey: ['trackedVessels'], queryFn: fetchTrackedVessels, refetchInterval: 30_000 })
   const { data: trucks } = useQuery({ queryKey: ['trackedTrucks'], queryFn: fetchTrackedTrucks, refetchInterval: 30_000 })
@@ -66,19 +67,37 @@ export default function LiveMap() {
   // Mounts the actual GL map (a billed "map load" on Mapbox's free tier)
   // only once there's something worth showing -- no point spending one on
   // an empty ocean every time the Dashboard loads.
+  //
+  // mapboxgl.Map() needs WebGL, which some mobile browsers/in-app webviews
+  // don't support or have disabled -- discovered the hard way when it took
+  // the entire CRM down to a blank screen on a phone, since an uncaught
+  // error here has nothing else stopping it from crashing the whole React
+  // tree. mapboxgl.supported() checks first, and the try/catch is a second
+  // net in case construction itself throws for some other device-specific
+  // reason -- either way this widget disappears quietly instead of taking
+  // the app with it (see the ErrorBoundary wrapped around this component
+  // in Dashboard.jsx for anything this doesn't catch).
   useEffect(() => {
     if (!token || !hasAnything || mapRef.current || !mapDiv.current) return
+    if (!mapboxgl.supported()) { setMapFailed(true); return }
     mapboxgl.accessToken = token
-    const map = new mapboxgl.Map({
-      container: mapDiv.current,
-      style: 'mapbox://styles/mapbox/navigation-night-v1',
-      center: DEFAULT_CENTER,
-      zoom: 4,
-    })
-    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
-    map.on('load', () => setMapReady(true))
-    mapRef.current = map
-    return () => { map.remove(); mapRef.current = null; setMapReady(false) }
+    try {
+      const map = new mapboxgl.Map({
+        container: mapDiv.current,
+        style: 'mapbox://styles/mapbox/navigation-night-v1',
+        center: DEFAULT_CENTER,
+        zoom: 4,
+      })
+      map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
+      map.on('load', () => setMapReady(true))
+      map.on('error', (e) => console.error('LiveMap: mapbox error', e?.error || e))
+      mapRef.current = map
+    } catch (e) {
+      console.error('LiveMap: failed to create map', e)
+      setMapFailed(true)
+      return
+    }
+    return () => { mapRef.current?.remove(); mapRef.current = null; setMapReady(false) }
   }, [token, hasAnything])
 
   // Reconciles markers on every poll instead of tearing the map down and
@@ -145,7 +164,11 @@ export default function LiveMap() {
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Live tracking</h2>
         <span className="text-xs text-muted">{vessels?.length || 0} vessel{vessels?.length === 1 ? '' : 's'} · {trucks?.length || 0} truck{trucks?.length === 1 ? '' : 's'} in transit</span>
       </div>
-      {hasAnything ? (
+      {mapFailed ? (
+        <p className="p-5 text-sm text-muted">
+          The live map isn't supported in this browser — everything else in the CRM still works fine. Try a different browser, or check Settings &gt; Vessels for the same position/ETA info as plain text.
+        </p>
+      ) : hasAnything ? (
         <div ref={mapDiv} className="mt-4 h-[420px] w-full" />
       ) : (
         <p className="p-5 text-sm text-muted">
