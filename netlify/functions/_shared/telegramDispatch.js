@@ -215,3 +215,30 @@ export async function sendTelegramArrivalAlert({ orgId, opportunityId, stage }) 
 
   return sendTelegramMessage({ orgId, chatId, text, context: 'arrival_alert' })
 }
+
+// Posted once a day by free-time-alerts.js -- one digest message covering
+// every job whose vessel's last free day is coming up (or already passed)
+// and hasn't been picked up yet, rather than a separate message per job
+// (a multi-vehicle vessel like an 8-car load would otherwise spam the
+// group with near-identical pings). `jobs` is already resolved by the
+// caller (customer name, vehicle, BL#, days left) -- this function only
+// formats and sends.
+export async function sendTelegramFreeTimeAlert({ orgId, vesselName, lastFreeDay, jobs }) {
+  const { token, groupChatId: chatId } = await getOrgTelegramConfig(orgId)
+  if (!token || !chatId) return { sent: false, reason: 'Telegram not configured' }
+  if (!jobs?.length) return { sent: false, reason: 'No jobs to alert on' }
+
+  const lines = [
+    `⏰ FREE TIME ENDING -- ${vesselName} (last free day ${lastFreeDay})`,
+    '',
+    ...jobs.map((j) => {
+      const when = j.daysLeft < 0 ? `${Math.abs(j.daysLeft)}d PAST DUE` : j.daysLeft === 0 ? 'TODAY' : `${j.daysLeft}d left`
+      return `• ${j.customerName} — ${j.vehicleDesc}${j.blNumber ? ` (BL# ${j.blNumber})` : ''} — ${when}`
+    }),
+    '',
+    'No gate pass received yet on these — check with the port if a pickup isn\'t already moving.',
+    `🔗 ${siteOrigin()}/pipeline`,
+  ]
+
+  return sendTelegramMessage({ orgId, chatId, text: lines.join('\n'), context: 'free_time_alert' })
+}

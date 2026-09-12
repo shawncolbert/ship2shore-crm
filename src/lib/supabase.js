@@ -1785,3 +1785,35 @@ export async function deleteLandingPage(id) {
   const { error } = await supabase.from('landing_pages').delete().eq('id', id)
   if (error) throw error
 }
+
+// Per-vessel "last free day" (Settings > Vessels) -- set by hand from
+// whatever the carrier/terminal tells the dispatcher, since the "FREE TIME
+// EXP." field on a delivery order is almost always left blank by the
+// carrier. free-time-alerts.js (Netlify scheduled function) matches this
+// against every open job's vessel_name to send a Telegram digest before
+// per-diem/demurrage kicks in.
+export async function fetchVessels() {
+  const { data, error } = await supabase
+    .from('vessels').select('id, name, last_free_day, updated_at').order('last_free_day', { ascending: true, nullsFirst: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function upsertVessel({ name, lastFreeDay }) {
+  const orgId = await fetchMyOrgId()
+  const { data, error } = await supabase
+    .from('vessels')
+    .upsert(
+      { org_id: orgId, name: name.trim().toUpperCase(), last_free_day: lastFreeDay || null, updated_at: new Date().toISOString() },
+      { onConflict: 'org_id,name' },
+    )
+    .select('id, name, last_free_day')
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteVessel(id) {
+  const { error } = await supabase.from('vessels').delete().eq('id', id)
+  if (error) throw error
+}

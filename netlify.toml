@@ -81,3 +81,9 @@
 # google-marketing-sync so it's always working off that day's fresh pull.
 [functions."seo-striking-distance"]
   schedule = "20 15 * * *"
+
+# Telegram digest for any vessel (Settings > Vessels -- last_free_day set by
+# hand from the carrier/terminal) within 2 days of its free-time deadline
+# (or already past it) that still has open jobs with no gate pass received.
+[functions."free-time-alerts"]
+  schedule = "0 15 * * *"
