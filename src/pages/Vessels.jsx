@@ -24,6 +24,16 @@ function vesselsMapUrl(vessels) {
 // are normal, same as the real MarineTraffic embed goes quiet there. So
 // "stale" here means the feed hasn't heard from the ship in a while, not
 // that anything's broken.
+// AIS ETA is crew-entered on the ship's own transponder, same source real
+// trackers (MarineTraffic, VesselFinder) show as "ETA" -- it's the best
+// automatic docking estimate that exists without a paid terminal feed, but
+// it's only as good as whoever on the ship last updated it.
+function formatEta(iso) {
+  if (!iso) return null
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+    + ' ' + new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }) + ' UTC'
+}
+
 function positionAge(iso) {
   if (!iso) return null
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
@@ -105,8 +115,10 @@ export default function Vessels() {
         <p className="max-w-2xl text-sm text-muted">
           Set each vessel's last free day once here — the carrier/terminal rarely fills it in on the
           delivery order itself. Every open job whose vessel matches gets covered by a daily Telegram
-          alert starting 2 days out, until its gate pass comes back. Add an MMSI number too and its
-          live position (from the free AISStream feed) shows up below, refreshed every 30 minutes.
+          alert starting 2 days out, until its gate pass comes back. Add an MMSI number too and the
+          ship's own reported destination/ETA and live position (from the free AISStream feed) show up
+          below, refreshed every 30 minutes — the ETA is whatever the crew last entered on their end,
+          not an official terminal berth time, so treat it as an estimate.
         </p>
       </header>
 
@@ -158,11 +170,20 @@ export default function Vessels() {
                     {b && <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${b.cls}`}>{b.text}</span>}
                   </div>
                   {v.mmsi && (
-                    <span className="text-xs text-muted">
-                      {v.last_lat != null
-                        ? `${v.last_lat.toFixed(3)}°, ${v.last_lon.toFixed(3)}° · ${v.last_speed_kn ?? '?'} kn · updated ${age}`
-                        : 'No position yet — checked every 30 min'}
-                    </span>
+                    <>
+                      {v.reported_eta ? (
+                        <span className="text-sm font-medium text-ink">
+                          🚢 {v.reported_destination ? `→ ${v.reported_destination} · ` : ''}ETA {formatEta(v.reported_eta)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted">No ETA reported by the ship yet</span>
+                      )}
+                      <span className="text-xs text-muted">
+                        {v.last_lat != null
+                          ? `${v.last_lat.toFixed(3)}°, ${v.last_lon.toFixed(3)}° · ${v.last_speed_kn ?? '?'} kn · updated ${age}`
+                          : 'No position yet — checked every 30 min'}
+                      </span>
+                    </>
                   )}
                 </div>
                 <div className="flex items-center gap-2">

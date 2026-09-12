@@ -1,10 +1,13 @@
 import { admin } from './_shared/supabaseAdmin.js'
-import { fetchVesselPositions } from './_shared/aisStream.js'
+import { fetchVesselData } from './_shared/aisStream.js'
 
-// Scheduled (see netlify.toml). Refreshes last_lat/last_lon/etc. on every
-// vessel that has an MMSI set (Settings > Vessels) from the free AISStream
-// feed -- same "set once per vessel by hand" pattern as last_free_day,
-// except this field comes from AIS instead of a phone call to the carrier.
+// Scheduled (see netlify.toml). Refreshes each vessel's position AND its
+// crew-reported destination/ETA -- Settings > Vessels, mmsi set by hand --
+// from the free AISStream feed. Same "set once per vessel by hand" pattern
+// as last_free_day, except this field comes from AIS instead of a phone
+// call to the carrier. Position and static data (destination/ETA) can
+// arrive independently within a single poll -- only overwrite whichever
+// half actually showed up, never null out the other on a partial read.
 export const handler = async () => {
   const { data: vessels, error } = await admin
     .from('vessels')
@@ -19,22 +22,29 @@ export const handler = async () => {
   }
 
   const mmsiList = vessels.map((v) => v.mmsi)
-  const positions = await fetchVesselPositions(mmsiList)
+  const data = await fetchVesselData(mmsiList)
 
   let updated = 0
   for (const vessel of vessels) {
-    const pos = positions.get(vessel.mmsi)
-    if (!pos) continue
-    const { error: updateErr } = await admin
-      .from('vessels')
-      .update({
-        last_lat: pos.lat,
-        last_lon: pos.lon,
-        last_speed_kn: pos.speedKn,
-        last_course_deg: pos.courseDeg,
-        position_updated_at: pos.atIso,
-      })
-      .eq('id', vessel.id)
+    const d = data.get(vessel.mmsi)
+    if (!d) continue
+
+    const patch = {}
+    if (d.lat != null) {
+      patch.last_lat = d.lat
+      patch.last_lon = d.lon
+      patch.last_speed_kn = d.speedKn
+      patch.last_course_deg = d.courseDeg
+      patch.position_updated_at = d.positionAtIso
+    }
+    if (d.destination !== undefined || d.etaIso !== undefined) {
+      patch.reported_destination = d.destination ?? null
+      patch.reported_eta = d.etaIso ?? null
+      patch.static_data_updated_at = d.staticAtIso
+    }
+    if (!Object.keys(patch).length) continue
+
+    const { error: updateErr } = await admin.from('vessels').update(patch).eq('id', vessel.id)
     if (updateErr) console.error(`❌ vessel-position-poll: update failed for ${vessel.mmsi}:`, updateErr)
     else updated++
   }

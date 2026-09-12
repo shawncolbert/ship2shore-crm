@@ -1795,7 +1795,7 @@ export async function deleteLandingPage(id) {
 export async function fetchVessels() {
   const { data, error } = await supabase
     .from('vessels')
-    .select('id, name, last_free_day, mmsi, last_lat, last_lon, last_speed_kn, last_course_deg, position_updated_at, updated_at')
+    .select('id, name, last_free_day, mmsi, last_lat, last_lon, last_speed_kn, last_course_deg, position_updated_at, reported_destination, reported_eta, updated_at')
     .order('last_free_day', { ascending: true, nullsFirst: false })
   if (error) throw error
   return data || []
