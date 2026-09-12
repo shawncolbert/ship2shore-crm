@@ -1820,6 +1820,39 @@ export async function deleteVessel(id) {
   if (error) throw error
 }
 
+// Dashboard's live map (LiveMap.jsx) -- only vessels that have actually
+// reported a position are worth putting a pin down for.
+export async function fetchTrackedVessels() {
+  const { data, error } = await supabase
+    .from('vessels')
+    .select('id, name, last_lat, last_lon, last_speed_kn, last_course_deg, position_updated_at, reported_destination, reported_eta')
+    .not('last_lat', 'is', null)
+  if (error) throw error
+  return data || []
+}
+
+// Dashboard's live map (LiveMap.jsx) -- one row per job actively being
+// driven (dropoff_arrived_at still null; see 0069_driver_tracking.sql),
+// joined back to the vehicle/customer so a pin means something on click
+// instead of just a bare coordinate.
+export async function fetchTrackedTrucks() {
+  const { data, error } = await supabase
+    .from('job_tracking')
+    .select('opportunity_id, last_lat, last_lng, last_ping_at, pickup_arrived_at, opportunities!inner(title, vehicle, vehicle_year, vehicle_make, vehicle_model, contacts!contact_id(full_name))')
+    .not('last_lat', 'is', null)
+    .is('dropoff_arrived_at', null)
+  if (error) throw error
+  return (data || []).map((t) => ({
+    opportunityId: t.opportunity_id,
+    lat: t.last_lat,
+    lon: t.last_lng,
+    lastPingAt: t.last_ping_at,
+    pickupArrivedAt: t.pickup_arrived_at,
+    customerName: t.opportunities?.contacts?.full_name || 'Unknown',
+    vehicleDesc: [t.opportunities?.vehicle_year, t.opportunities?.vehicle_make, t.opportunities?.vehicle_model].filter(Boolean).join(' ') || t.opportunities?.vehicle || t.opportunities?.title || 'Vehicle',
+  }))
+}
+
 // Called the moment a dispatcher tabs off the vessel name field with no
 // MMSI typed yet (Vessels.jsx) -- looks it up via VesselAPI's free tier
 // (vessel-lookup-mmsi.js) instead of that dispatcher having to ask Claude
