@@ -5,6 +5,34 @@ import { fetchVessels, upsertVessel, deleteVessel } from '../lib/supabase'
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
 const input = 'rounded-md border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent'
 
+// Mapbox Static Images API -- a plain <img>, no client-side map library.
+// Consistent with how this app already talks to Mapbox everywhere else
+// (geocoding/directions calls from server functions), and a flat pin map
+// reads faster at a glance than a spinning globe would for 1-3 vessels.
+function vesselsMapUrl(vessels) {
+  const token = import.meta.env.VITE_MAPBOX_TOKEN
+  const pinned = vessels.filter((v) => v.last_lat != null && v.last_lon != null)
+  if (!token || !pinned.length) return null
+  const pins = pinned
+    .map((v) => `pin-s+e8a317(${v.last_lon},${v.last_lat})`)
+    .join(',')
+  return `https://api.mapbox.com/styles/v1/mapbox/navigation-night-v1/static/${pins}/auto/900x320@2x?padding=60&access_token=${token}`
+}
+
+// AISStream (vessel-position-poll.js, every 30 min) can only report a
+// position while a terrestrial AIS receiver is in range -- mid-ocean gaps
+// are normal, same as the real MarineTraffic embed goes quiet there. So
+// "stale" here means the feed hasn't heard from the ship in a while, not
+// that anything's broken.
+function positionAge(iso) {
+  if (!iso) return null
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 48) return `${hours}h ago`
+  return `${Math.round(hours / 24)}d ago`
+}
+
 // The carrier's "FREE TIME EXP." field on a delivery order is almost always
 // left blank -- the real deadline comes later, by phone or email from the
 // terminal/carrier. Set it here once per vessel and every open job on that
@@ -30,6 +58,7 @@ export default function Vessels() {
   const { data: vessels, isLoading } = useQuery({ queryKey: ['vessels'], queryFn: fetchVessels })
   const [name, setName] = useState('')
   const [date, setDate] = useState('')
+  const [mmsi, setMmsi] = useState('')
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -40,8 +69,8 @@ export default function Vessels() {
     if (!name.trim()) return
     setSaving(true); setErr('')
     try {
-      await upsertVessel({ name, lastFreeDay: date || null })
-      setName(''); setDate('')
+      await upsertVessel({ name, lastFreeDay: date || null, mmsi: mmsi || null })
+      setName(''); setDate(''); setMmsi('')
       refresh()
     } catch (e2) {
       setErr(e2.message || String(e2))
@@ -50,8 +79,16 @@ export default function Vessels() {
     }
   }
 
+  // Always carries every field forward -- upsertVessel writes exactly what
+  // it's given, so a bare { lastFreeDay } call here would silently null
+  // out that vessel's mmsi (and vice versa).
   async function updateDate(v, newDate) {
-    try { await upsertVessel({ name: v.name, lastFreeDay: newDate || null }); refresh() }
+    try { await upsertVessel({ name: v.name, lastFreeDay: newDate || null, mmsi: v.mmsi }); refresh() }
+    catch (e) { setErr(e.message || String(e)) }
+  }
+
+  async function updateMmsi(v, newMmsi) {
+    try { await upsertVessel({ name: v.name, lastFreeDay: v.last_free_day, mmsi: newMmsi || null }); refresh() }
     catch (e) { setErr(e.message || String(e)) }
   }
 
@@ -68,7 +105,8 @@ export default function Vessels() {
         <p className="max-w-2xl text-sm text-muted">
           Set each vessel's last free day once here — the carrier/terminal rarely fills it in on the
           delivery order itself. Every open job whose vessel matches gets covered by a daily Telegram
-          alert starting 2 days out, until its gate pass comes back.
+          alert starting 2 days out, until its gate pass comes back. Add an MMSI number too and its
+          live position (from the free AISStream feed) shows up below, refreshed every 30 minutes.
         </p>
       </header>
 
@@ -83,10 +121,24 @@ export default function Vessels() {
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Last free day</label>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={input} />
         </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">MMSI (optional)</label>
+          <input value={mmsi} onChange={(e) => setMmsi(e.target.value)} placeholder="e.g. 368207620" className={input + ' w-36'} />
+        </div>
         <button type="submit" disabled={saving || !name.trim()} className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink hover:bg-accent-600 disabled:opacity-50">
           {saving ? 'Saving…' : '+ Add / update'}
         </button>
       </form>
+
+      {(() => {
+        const mapUrl = vesselsMapUrl(vessels || [])
+        if (!mapUrl) return null
+        return (
+          <div className={card + ' mb-6 overflow-hidden p-0'}>
+            <img src={mapUrl} alt="Tracked vessel positions" className="block w-full" />
+          </div>
+        )
+      })()}
 
       {isLoading ? (
         <p className="text-sm text-muted">Loading…</p>
@@ -97,13 +149,29 @@ export default function Vessels() {
           {vessels.map((v) => {
             const d = daysLeft(v.last_free_day)
             const b = badge(d)
+            const age = positionAge(v.position_updated_at)
             return (
               <div key={v.id} className={card + ' flex flex-wrap items-center justify-between gap-3'}>
-                <div className="flex items-center gap-3">
-                  <span className="font-semibold text-ink">{v.name}</span>
-                  {b && <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${b.cls}`}>{b.text}</span>}
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold text-ink">{v.name}</span>
+                    {b && <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${b.cls}`}>{b.text}</span>}
+                  </div>
+                  {v.mmsi && (
+                    <span className="text-xs text-muted">
+                      {v.last_lat != null
+                        ? `${v.last_lat.toFixed(3)}°, ${v.last_lon.toFixed(3)}° · ${v.last_speed_kn ?? '?'} kn · updated ${age}`
+                        : 'No position yet — checked every 30 min'}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
+                  <input
+                    defaultValue={v.mmsi || ''}
+                    placeholder="MMSI"
+                    onBlur={(e) => { if (e.target.value !== (v.mmsi || '')) updateMmsi(v, e.target.value) }}
+                    className={input + ' w-28'}
+                  />
                   <input
                     type="date"
                     defaultValue={v.last_free_day || ''}

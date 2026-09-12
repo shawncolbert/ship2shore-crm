@@ -1794,20 +1794,22 @@ export async function deleteLandingPage(id) {
 // per-diem/demurrage kicks in.
 export async function fetchVessels() {
   const { data, error } = await supabase
-    .from('vessels').select('id, name, last_free_day, updated_at').order('last_free_day', { ascending: true, nullsFirst: false })
+    .from('vessels')
+    .select('id, name, last_free_day, mmsi, last_lat, last_lon, last_speed_kn, last_course_deg, position_updated_at, updated_at')
+    .order('last_free_day', { ascending: true, nullsFirst: false })
   if (error) throw error
   return data || []
 }
 
-export async function upsertVessel({ name, lastFreeDay }) {
+export async function upsertVessel({ name, lastFreeDay, mmsi }) {
   const orgId = await fetchMyOrgId()
   const { data, error } = await supabase
     .from('vessels')
     .upsert(
-      { org_id: orgId, name: name.trim().toUpperCase(), last_free_day: lastFreeDay || null, updated_at: new Date().toISOString() },
+      { org_id: orgId, name: name.trim().toUpperCase(), last_free_day: lastFreeDay || null, mmsi: mmsi?.trim() || null, updated_at: new Date().toISOString() },
       { onConflict: 'org_id,name' },
     )
-    .select('id, name, last_free_day')
+    .select('id, name, last_free_day, mmsi')
     .single()
   if (error) throw error
   return data

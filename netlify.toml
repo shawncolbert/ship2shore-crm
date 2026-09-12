@@ -87,3 +87,11 @@
 # (or already past it) that still has open jobs with no gate pass received.
 [functions."free-time-alerts"]
   schedule = "0 15 * * *"
+
+# Refreshes each vessel's last known position/speed/heading (Settings >
+# Vessels -- mmsi set by hand, same as last_free_day) from the free
+# AISStream feed. Every 30 minutes is plenty -- ships don't move fast
+# enough for anything tighter to matter, and it keeps well under
+# AISStream's free-tier connection allowance.
+[functions."vessel-position-poll"]
+  schedule = "*/30 * * * *"
