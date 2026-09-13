@@ -279,6 +279,21 @@ export async function fetchOrCreateTrackingLink(opportunityId) {
   return `${window.location.origin}/track/${data.token}`
 }
 
+// Pipeline's per-card "Track" button (TrackModal) -- the dispatcher's own
+// view of one specific job's last GPS ping, separate from the driver-facing
+// link above. Returns null if the driver's never opened their tracking
+// link (no ping yet), which the button itself checks before rendering.
+export async function fetchJobTrackingPosition(opportunityId) {
+  const { data, error } = await supabase
+    .from('job_tracking')
+    .select('last_lat, last_lng, last_ping_at, pickup_arrived_at, dropoff_arrived_at')
+    .eq('opportunity_id', opportunityId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data?.last_lat) return null
+  return { lat: data.last_lat, lon: data.last_lng, lastPingAt: data.last_ping_at, pickupArrivedAt: data.pickup_arrived_at, dropoffArrivedAt: data.dropoff_arrived_at }
+}
+
 // Settings > Appearance -- any org member can change their own org's
 // dashboard theme (the "p_org_members" RLS policy already covers this
 // update). Separate from primary_color/logo_url branding, which stay
