@@ -97,63 +97,86 @@ export default function LiveMap() {
       setMapFailed(true)
       return
     }
-    return () => { mapRef.current?.remove(); mapRef.current = null; setMapReady(false) }
+    return () => {
+      // Removing a mapbox-gl map after React has already ripped its
+      // container out of the DOM (the conditional render below swaps to
+      // the "Nothing to show yet" branch the instant hasAnything flips)
+      // throws internally -- a real crash seen in testing, not a
+      // hypothetical. Catch it here so a legitimate teardown never
+      // reads as a bug.
+      try { mapRef.current?.remove() } catch (e) { console.error('LiveMap: cleanup failed', e) }
+      mapRef.current = null
+      setMapReady(false)
+    }
   }, [token, hasAnything])
 
   // Reconciles markers on every poll instead of tearing the map down and
   // rebuilding it -- keeps existing popups open and avoids a visible flash
-  // every 30 seconds.
+  // every 30 seconds. Wrapped in try/catch because this runs on every real
+  // data update (unlike the map-creation effect above, which only ever
+  // sees the initial state) -- any bad coordinate or mapbox-gl internal
+  // hiccup here must not take the whole widget down.
   useEffect(() => {
     if (!mapReady || !mapRef.current) return
-    const map = mapRef.current
-    const bounds = new mapboxgl.LngLatBounds()
-    let any = false
+    try {
+      const map = mapRef.current
+      const bounds = new mapboxgl.LngLatBounds()
+      let any = false
 
-    const seenVesselIds = new Set()
-    for (const v of vessels || []) {
-      seenVesselIds.add(v.id)
-      const lngLat = [v.last_lon, v.last_lat]
-      bounds.extend(lngLat); any = true
-      let marker = markersRef.current.vessels.get(v.id)
-      if (!marker) {
-        const el = document.createElement('div')
-        el.textContent = '🚢'
-        el.style.fontSize = '20px'
-        marker = new mapboxgl.Marker({ element: el })
-          .setPopup(new mapboxgl.Popup({ offset: 16 }))
-          .addTo(map)
-        markersRef.current.vessels.set(v.id, marker)
+      const seenVesselIds = new Set()
+      for (const v of vessels || []) {
+        if (v.last_lat == null || v.last_lon == null) continue
+        seenVesselIds.add(v.id)
+        const lngLat = [v.last_lon, v.last_lat]
+        bounds.extend(lngLat); any = true
+        let marker = markersRef.current.vessels.get(v.id)
+        if (!marker) {
+          const el = document.createElement('div')
+          el.textContent = '🚢'
+          el.style.fontSize = '20px'
+          marker = new mapboxgl.Marker({ element: el })
+            .setPopup(new mapboxgl.Popup({ offset: 16 }))
+            .addTo(map)
+          markersRef.current.vessels.set(v.id, marker)
+        }
+        marker.setLngLat(lngLat)
+        marker.getPopup().setHTML(vesselPopupHtml(v))
       }
-      marker.setLngLat(lngLat)
-      marker.getPopup().setHTML(vesselPopupHtml(v))
-    }
-    for (const [id, marker] of markersRef.current.vessels) {
-      if (!seenVesselIds.has(id)) { marker.remove(); markersRef.current.vessels.delete(id) }
-    }
-
-    const seenTruckIds = new Set()
-    for (const t of trucks || []) {
-      seenTruckIds.add(t.opportunityId)
-      const lngLat = [t.lon, t.lat]
-      bounds.extend(lngLat); any = true
-      let marker = markersRef.current.trucks.get(t.opportunityId)
-      if (!marker) {
-        const el = document.createElement('div')
-        el.textContent = '🚚'
-        el.style.fontSize = '20px'
-        marker = new mapboxgl.Marker({ element: el })
-          .setPopup(new mapboxgl.Popup({ offset: 16 }))
-          .addTo(map)
-        markersRef.current.trucks.set(t.opportunityId, marker)
+      for (const [id, marker] of markersRef.current.vessels) {
+        if (!seenVesselIds.has(id)) { marker.remove(); markersRef.current.vessels.delete(id) }
       }
-      marker.setLngLat(lngLat)
-      marker.getPopup().setHTML(truckPopupHtml(t))
-    }
-    for (const [id, marker] of markersRef.current.trucks) {
-      if (!seenTruckIds.has(id)) { marker.remove(); markersRef.current.trucks.delete(id) }
-    }
 
-    if (any && !bounds.isEmpty()) map.fitBounds(bounds, { padding: 60, maxZoom: 10, duration: 500 })
+      const seenTruckIds = new Set()
+      for (const t of trucks || []) {
+        if (t.lat == null || t.lon == null) continue
+        seenTruckIds.add(t.opportunityId)
+        const lngLat = [t.lon, t.lat]
+        bounds.extend(lngLat); any = true
+        let marker = markersRef.current.trucks.get(t.opportunityId)
+        if (!marker) {
+          const el = document.createElement('div')
+          el.textContent = '🚚'
+          el.style.fontSize = '20px'
+          marker = new mapboxgl.Marker({ element: el })
+            .setPopup(new mapboxgl.Popup({ offset: 16 }))
+            .addTo(map)
+          markersRef.current.trucks.set(t.opportunityId, marker)
+        }
+        marker.setLngLat(lngLat)
+        marker.getPopup().setHTML(truckPopupHtml(t))
+      }
+      for (const [id, marker] of markersRef.current.trucks) {
+        if (!seenTruckIds.has(id)) { marker.remove(); markersRef.current.trucks.delete(id) }
+      }
+
+      if (any && !bounds.isEmpty()) map.fitBounds(bounds, { padding: 60, maxZoom: 10, duration: 500 })
+    } catch (e) {
+      console.error('LiveMap: marker update failed', e)
+      try { mapRef.current?.remove() } catch { /* already broken, nothing more to clean up */ }
+      mapRef.current = null
+      setMapReady(false)
+      setMapFailed(true)
+    }
   }, [vessels, trucks, mapReady])
 
   if (!token) return null // VITE_MAPBOX_TOKEN not set -- rest of the app already depends on it existing
@@ -166,7 +189,7 @@ export default function LiveMap() {
       </div>
       {mapFailed ? (
         <p className="p-5 text-sm text-muted">
-          The live map isn't supported in this browser — everything else in the CRM still works fine. Try a different browser, or check Settings &gt; Vessels for the same position/ETA info as plain text.
+          The live map couldn't load in this browser — everything else in the CRM still works fine. Try refreshing, or check Settings &gt; Vessels for the same position/ETA info as plain text.
         </p>
       ) : hasAnything ? (
         <div ref={mapDiv} className="mt-4 h-[420px] w-full" />

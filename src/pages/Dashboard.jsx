@@ -160,7 +160,11 @@ export default function Dashboard() {
           </div>
 
           {isFeatureEnabled(org, 'vessels') && (
-            <ErrorBoundary fallback={null}>
+            <ErrorBoundary fallback={
+              <p className="mt-6 rounded-[var(--radius-card)] border border-line bg-surface p-5 text-sm text-muted shadow-[var(--shadow-card)]">
+                Live tracking hit a snag loading — everything else on the Dashboard is unaffected. Refreshing usually fixes it.
+              </p>
+            }>
               <Suspense fallback={null}>
                 <LiveMap />
               </Suspense>
