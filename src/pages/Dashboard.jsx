@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -11,11 +11,7 @@ import { isFeatureEnabled } from '../lib/features'
 import DrillDownModal from '../components/DrillDownModal'
 import BookingSidebar from '../components/BookingSidebar'
 import ErrorBoundary from '../components/ErrorBoundary'
-
-// mapbox-gl is a large library (~1MB) -- loaded on demand instead of
-// bundled into the main app chunk, which otherwise blew past the PWA
-// service worker's 2MB precache limit and broke the build.
-const LiveMap = lazy(() => import('../components/LiveMap'))
+import LiveMap from '../components/LiveMap'
 
 // Quick-action tiles for the grouped-sidebar layouts' dashboard grid --
 // each a big icon badge linking straight to the feature, the way both
@@ -165,9 +161,7 @@ export default function Dashboard() {
                 Live tracking hit a snag loading — everything else on the Dashboard is unaffected. Refreshing usually fixes it.
               </p>
             }>
-              <Suspense fallback={null}>
-                <LiveMap />
-              </Suspense>
+              <LiveMap />
             </ErrorBoundary>
           )}
 

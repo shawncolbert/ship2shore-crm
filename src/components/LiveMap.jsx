@@ -1,13 +1,25 @@
-import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import mapboxgl from 'mapbox-gl'
-import 'mapbox-gl/dist/mapbox-gl.css'
 import { fetchTrackedVessels, fetchTrackedTrucks } from '../lib/supabase'
 
-// Long Beach/Wilmington port complex -- the default view when nothing has
-// reported a position yet, since that's where this business's trucks and
-// (eventually) its ships are actually headed.
-const DEFAULT_CENTER = [-118.21, 33.75]
+// Mapbox Static Images API -- a plain <img>, same approach already proven
+// out on Settings > Vessels. Tried an interactive mapbox-gl (WebGL) map
+// here first; it crashed the whole Dashboard on a phone, and after three
+// rounds of hardening it still failed outright (silently, then visibly)
+// on a completely ordinary desktop Chrome -- WebGL support turned out to
+// be too unreliable across this business's actual devices to build on.
+// A static image can't crash: worst case is a broken image icon, and
+// every browser can render an <img> tag.
+function combinedMapUrl(vessels, trucks) {
+  const token = import.meta.env.VITE_MAPBOX_TOKEN
+  const vesselPins = vessels.filter((v) => v.last_lat != null && v.last_lon != null)
+  const truckPins = trucks.filter((t) => t.lat != null && t.lon != null)
+  if (!token || vesselPins.length + truckPins.length === 0) return null
+  const pins = [
+    ...vesselPins.map((v) => `pin-s+e8a317(${v.last_lon},${v.last_lat})`),
+    ...truckPins.map((t) => `pin-s+1fa97a(${t.lon},${t.lat})`),
+  ].join(',')
+  return `https://api.mapbox.com/styles/v1/mapbox/navigation-night-v1/static/${pins}/auto/1000x360@2x?padding=60&access_token=${token}`
+}
 
 function ago(iso) {
   if (!iso) return 'never'
@@ -25,178 +37,58 @@ function formatEta(iso) {
     + ' ' + new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }) + ' UTC'
 }
 
-function vesselPopupHtml(v) {
-  const eta = v.reported_eta
-    ? `${v.reported_destination ? `→ ${v.reported_destination} · ` : ''}ETA ${formatEta(v.reported_eta)}`
-    : 'No ETA reported yet'
-  return `<div style="font:12px system-ui;min-width:160px">
-    <div style="font-weight:700;margin-bottom:2px">🚢 ${v.name}</div>
-    <div>${eta}</div>
-    <div style="color:#6b7f8c;margin-top:2px">${v.last_speed_kn ?? '?'} kn · updated ${ago(v.position_updated_at)}</div>
-  </div>`
-}
-
-function truckPopupHtml(t) {
-  return `<div style="font:12px system-ui;min-width:160px">
-    <div style="font-weight:700;margin-bottom:2px">🚚 ${t.customerName}</div>
-    <div>${t.vehicleDesc}</div>
-    <div style="color:#6b7f8c;margin-top:2px">updated ${ago(t.lastPingAt)}</div>
-  </div>`
-}
-
 // Combines the two things this business actually ships on: vessels
 // (Settings > Vessels, positioned via AISStream) and trucks (the
 // driver-tracking link texted out from Pipeline, positioned via GPS pings
 // from the driver's own phone). Polls rather than using Supabase realtime,
 // matching the rest of the app's React Query pattern (see
-// PaymentClaimToast.jsx) -- simpler to reason about, and neither position
-// source updates faster than this poll interval makes visible anyway.
+// PaymentClaimToast.jsx).
 export default function LiveMap() {
-  const mapDiv = useRef(null)
-  const mapRef = useRef(null)
-  const markersRef = useRef({ vessels: new Map(), trucks: new Map() })
-  const [mapReady, setMapReady] = useState(false)
-  const [mapFailed, setMapFailed] = useState(false)
-
   const { data: vessels } = useQuery({ queryKey: ['trackedVessels'], queryFn: fetchTrackedVessels, refetchInterval: 30_000 })
   const { data: trucks } = useQuery({ queryKey: ['trackedTrucks'], queryFn: fetchTrackedTrucks, refetchInterval: 30_000 })
 
   const token = import.meta.env.VITE_MAPBOX_TOKEN
-  const hasAnything = (vessels?.length || 0) + (trucks?.length || 0) > 0
+  if (!token) return null // rest of the app already depends on this existing
 
-  // Mounts the actual GL map (a billed "map load" on Mapbox's free tier)
-  // only once there's something worth showing -- no point spending one on
-  // an empty ocean every time the Dashboard loads.
-  //
-  // mapboxgl.Map() needs WebGL, which some mobile browsers/in-app webviews
-  // don't support or have disabled -- discovered the hard way when it took
-  // the entire CRM down to a blank screen on a phone, since an uncaught
-  // error here has nothing else stopping it from crashing the whole React
-  // tree. mapboxgl.supported() checks first, and the try/catch is a second
-  // net in case construction itself throws for some other device-specific
-  // reason -- either way this widget disappears quietly instead of taking
-  // the app with it (see the ErrorBoundary wrapped around this component
-  // in Dashboard.jsx for anything this doesn't catch).
-  useEffect(() => {
-    if (!token || !hasAnything || mapRef.current || !mapDiv.current) return
-    if (!mapboxgl.supported()) { setMapFailed(true); return }
-    mapboxgl.accessToken = token
-    try {
-      const map = new mapboxgl.Map({
-        container: mapDiv.current,
-        style: 'mapbox://styles/mapbox/navigation-night-v1',
-        center: DEFAULT_CENTER,
-        zoom: 4,
-      })
-      map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right')
-      map.on('load', () => setMapReady(true))
-      map.on('error', (e) => console.error('LiveMap: mapbox error', e?.error || e))
-      mapRef.current = map
-    } catch (e) {
-      console.error('LiveMap: failed to create map', e)
-      setMapFailed(true)
-      return
-    }
-    return () => {
-      // Removing a mapbox-gl map after React has already ripped its
-      // container out of the DOM (the conditional render below swaps to
-      // the "Nothing to show yet" branch the instant hasAnything flips)
-      // throws internally -- a real crash seen in testing, not a
-      // hypothetical. Catch it here so a legitimate teardown never
-      // reads as a bug.
-      try { mapRef.current?.remove() } catch (e) { console.error('LiveMap: cleanup failed', e) }
-      mapRef.current = null
-      setMapReady(false)
-    }
-  }, [token, hasAnything])
-
-  // Reconciles markers on every poll instead of tearing the map down and
-  // rebuilding it -- keeps existing popups open and avoids a visible flash
-  // every 30 seconds. Wrapped in try/catch because this runs on every real
-  // data update (unlike the map-creation effect above, which only ever
-  // sees the initial state) -- any bad coordinate or mapbox-gl internal
-  // hiccup here must not take the whole widget down.
-  useEffect(() => {
-    if (!mapReady || !mapRef.current) return
-    try {
-      const map = mapRef.current
-      const bounds = new mapboxgl.LngLatBounds()
-      let any = false
-
-      const seenVesselIds = new Set()
-      for (const v of vessels || []) {
-        if (v.last_lat == null || v.last_lon == null) continue
-        seenVesselIds.add(v.id)
-        const lngLat = [v.last_lon, v.last_lat]
-        bounds.extend(lngLat); any = true
-        let marker = markersRef.current.vessels.get(v.id)
-        if (!marker) {
-          const el = document.createElement('div')
-          el.textContent = '🚢'
-          el.style.fontSize = '20px'
-          marker = new mapboxgl.Marker({ element: el })
-            .setPopup(new mapboxgl.Popup({ offset: 16 }))
-            .addTo(map)
-          markersRef.current.vessels.set(v.id, marker)
-        }
-        marker.setLngLat(lngLat)
-        marker.getPopup().setHTML(vesselPopupHtml(v))
-      }
-      for (const [id, marker] of markersRef.current.vessels) {
-        if (!seenVesselIds.has(id)) { marker.remove(); markersRef.current.vessels.delete(id) }
-      }
-
-      const seenTruckIds = new Set()
-      for (const t of trucks || []) {
-        if (t.lat == null || t.lon == null) continue
-        seenTruckIds.add(t.opportunityId)
-        const lngLat = [t.lon, t.lat]
-        bounds.extend(lngLat); any = true
-        let marker = markersRef.current.trucks.get(t.opportunityId)
-        if (!marker) {
-          const el = document.createElement('div')
-          el.textContent = '🚚'
-          el.style.fontSize = '20px'
-          marker = new mapboxgl.Marker({ element: el })
-            .setPopup(new mapboxgl.Popup({ offset: 16 }))
-            .addTo(map)
-          markersRef.current.trucks.set(t.opportunityId, marker)
-        }
-        marker.setLngLat(lngLat)
-        marker.getPopup().setHTML(truckPopupHtml(t))
-      }
-      for (const [id, marker] of markersRef.current.trucks) {
-        if (!seenTruckIds.has(id)) { marker.remove(); markersRef.current.trucks.delete(id) }
-      }
-
-      if (any && !bounds.isEmpty()) map.fitBounds(bounds, { padding: 60, maxZoom: 10, duration: 500 })
-    } catch (e) {
-      console.error('LiveMap: marker update failed', e)
-      try { mapRef.current?.remove() } catch { /* already broken, nothing more to clean up */ }
-      mapRef.current = null
-      setMapReady(false)
-      setMapFailed(true)
-    }
-  }, [vessels, trucks, mapReady])
-
-  if (!token) return null // VITE_MAPBOX_TOKEN not set -- rest of the app already depends on it existing
+  const vesselList = vessels || []
+  const truckList = trucks || []
+  const mapUrl = combinedMapUrl(vesselList, truckList)
 
   return (
     <div className="mt-6 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between p-5 pb-0">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Live tracking</h2>
-        <span className="text-xs text-muted">{vessels?.length || 0} vessel{vessels?.length === 1 ? '' : 's'} · {trucks?.length || 0} truck{trucks?.length === 1 ? '' : 's'} in transit</span>
+        <span className="text-xs text-muted">{vesselList.length} vessel{vesselList.length === 1 ? '' : 's'} · {truckList.length} truck{truckList.length === 1 ? '' : 's'} in transit</span>
       </div>
-      {mapFailed ? (
-        <p className="p-5 text-sm text-muted">
-          The live map couldn't load in this browser — everything else in the CRM still works fine. Try refreshing, or check Settings &gt; Vessels for the same position/ETA info as plain text.
-        </p>
-      ) : hasAnything ? (
-        <div ref={mapDiv} className="mt-4 h-[420px] w-full" />
-      ) : (
+
+      {!mapUrl ? (
         <p className="p-5 text-sm text-muted">
           Nothing to show yet — add an MMSI to a vessel (Settings &gt; Vessels) or text a driver their tracking link from Pipeline.
         </p>
+      ) : (
+        <>
+          <img src={mapUrl} alt="Live vessel and truck positions" className="mt-4 block w-full" />
+          <div className="grid gap-3 p-5 sm:grid-cols-2">
+            {vesselList.filter((v) => v.last_lat != null).map((v) => (
+              <div key={v.id} className="rounded-md border border-line bg-canvas p-3 text-xs">
+                <div className="font-semibold text-ink">🚢 {v.name}</div>
+                <div className="mt-1 text-muted">
+                  {v.reported_eta
+                    ? `${v.reported_destination ? `→ ${v.reported_destination} · ` : ''}ETA ${formatEta(v.reported_eta)}`
+                    : 'No ETA reported yet'}
+                </div>
+                <div className="mt-1 text-muted">{v.last_speed_kn ?? '?'} kn · updated {ago(v.position_updated_at)}</div>
+              </div>
+            ))}
+            {truckList.filter((t) => t.lat != null).map((t) => (
+              <div key={t.opportunityId} className="rounded-md border border-line bg-canvas p-3 text-xs">
+                <div className="font-semibold text-ink">🚚 {t.customerName}</div>
+                <div className="mt-1 text-muted">{t.vehicleDesc}</div>
+                <div className="mt-1 text-muted">updated {ago(t.lastPingAt)}</div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
