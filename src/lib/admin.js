@@ -55,6 +55,24 @@ export async function setFeaturePrice({ orgId, featureKey, price, billingActive,
   return pricing
 }
 
+// Reminder Rules (System Controls) -- pop-up conditions Shawn sets per org,
+// e.g. "flag a lead untouched for 3 days." See ReminderPopupToast.jsx /
+// fetchActiveReminders() in supabase.js for how an org's own session
+// evaluates and shows these.
+export async function fetchReminderRules(orgId) {
+  const { rules } = await authedFetch('admin-list-reminder-rules', { orgId })
+  return rules
+}
+
+export async function saveReminderRule({ id, orgId, conditionType, thresholdDays, message, enabled }) {
+  const { rule } = await authedFetch('admin-set-reminder-rule', { id, orgId, conditionType, thresholdDays, message, enabled })
+  return rule
+}
+
+export async function deleteReminderRule({ id }) {
+  return authedFetch('admin-delete-reminder-rule', { id })
+}
+
 // Removes one person from one org -- not the org itself, and not their
 // profile/account, which may still belong to other orgs.
 export async function removeMember({ orgId, profileId }) {

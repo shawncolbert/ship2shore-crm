@@ -9,6 +9,7 @@ import { applyTheme, cacheTheme } from '../lib/theme'
 import IdleTimeout from './IdleTimeout'
 import PaymentClaimToast from './PaymentClaimToast'
 import UnfollowedLeadToast from './UnfollowedLeadToast'
+import ReminderPopupToast from './ReminderPopupToast'
 import QuickAccessBar from './QuickAccessBar'
 import AskAIWidget from './AskAIWidget'
 
@@ -377,6 +378,7 @@ export default function Layout({ children }) {
       <IdleTimeout />
       <PaymentClaimToast />
       <UnfollowedLeadToast />
+      <ReminderPopupToast />
       <AskAIWidget />
       {/* Mobile top bar */}
       <header className="flex items-center justify-between px-4 py-3 md:hidden" style={{ background: 'var(--sidebar-bg)' }}>
