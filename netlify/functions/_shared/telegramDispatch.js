@@ -242,3 +242,29 @@ export async function sendTelegramFreeTimeAlert({ orgId, vesselName, lastFreeDay
 
   return sendTelegramMessage({ orgId, chatId, text: lines.join('\n'), context: 'free_time_alert' })
 }
+
+// Fires once when a tracked vessel (Settings > Vessels, mmsi set by hand)
+// starts reporting a position after having none, or after going quiet for
+// more than VESSEL_STALE_HOURS (vessel-position-poll.js) -- AIS only
+// reaches a ship once it's within radio range of a coastal receiver
+// (roughly 20-40nm), so this is effectively "the ship just came into
+// range," which is exactly the moment a dispatcher actually cares about --
+// no point pinging on every one of the dozens of routine position updates
+// in between.
+export async function sendTelegramVesselInRangeAlert({ orgId, vesselName, destination, etaIso }) {
+  const { token, groupChatId: chatId } = await getOrgTelegramConfig(orgId)
+  if (!token || !chatId) return { sent: false, reason: 'Telegram not configured' }
+
+  const etaLine = etaIso
+    ? new Date(etaIso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+      + ' ' + new Date(etaIso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }) + ' UTC'
+    : null
+
+  const lines = [
+    `🚢 ${vesselName} just came into tracking range`,
+    destination ? `Headed to ${destination}${etaLine ? ` — ETA ${etaLine}` : ''}` : (etaLine ? `ETA ${etaLine}` : null),
+    `🔗 ${siteOrigin()}/dashboard`,
+  ].filter(Boolean)
+
+  return sendTelegramMessage({ orgId, chatId, text: lines.join('\n'), context: 'vessel_in_range_alert' })
+}
