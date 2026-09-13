@@ -56,7 +56,7 @@ function driverTextFor(c, notes, photoUrl, dropoffInfo, trackingLink) {
     text += '\n\nDrop-off access notes:\n' + dropoffInfo.notes.map((n) => `- ${n.note}`).join('\n')
   }
   if (trackingLink) {
-    text += `\n\nTap to share your location and confirm pickup/drop-off: ${trackingLink}`
+    text += `\n\nConfirm pickup and drop-off: ${trackingLink}`
   }
   return text
 }
