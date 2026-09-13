@@ -21,9 +21,12 @@ export const handler = async (event) => {
   if (!orgId) return json(400, { error: 'Missing orgId' })
 
   const { data, error } = await admin
-    .from('feature_pricing').select('feature_key, price_usd').eq('org_id', orgId)
+    .from('feature_pricing').select('feature_key, price_usd, billing_active, free_until').eq('org_id', orgId)
   if (error) return json(500, { error: error.message })
 
-  const pricing = Object.fromEntries((data || []).map((r) => [r.feature_key, r.price_usd]))
+  const pricing = Object.fromEntries((data || []).map((r) => [
+    r.feature_key,
+    { price: r.price_usd, billingActive: r.billing_active, freeUntil: r.free_until },
+  ]))
   return json(200, { pricing })
 }

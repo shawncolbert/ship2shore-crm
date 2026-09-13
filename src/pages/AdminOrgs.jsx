@@ -178,30 +178,69 @@ function MemberRow({ orgId, member, onRemoved }) {
   )
 }
 
+// Starting-point monthly prices for add-on features, based on comparable
+// SaaS pricing (general CRMs, dispatch/TMS tools, and all-in-one
+// white-label platforms like GoHighLevel this business model resembles
+// most closely) -- a real number to start from, not a rule. Anything
+// bundled into every plan (contacts, pipeline, calendar, etc.) has no
+// suggested price since it's never sold separately. Purely a UI default:
+// typing over it and saving is what actually sets a client's real price.
+const SUGGESTED_PRICES = {
+  ai_assistant: 40,
+  social_posts: 55,
+  seo_analytics: 32,
+  landing_pages: 27,
+  funnels: 27,
+  lead_finder: 40,
+  digital_business_cards: 20,
+  business_card_builder: 20,
+  document_requests: 12,
+  gate_pass: 20,
+  vessels: 57,
+}
+
 // Which sidebar items this org sees (one switch per feature) plus what
-// Shawn is charging them for each one -- his own pricing sheet, never
-// shown to the client themselves (feature_pricing has its own
-// platform-admin-only RLS policy, same gate as this whole page). A missing
-// enabled_features key means "on" -- see isFeatureEnabled -- so a
-// brand-new org with an empty enabled_features starts with everything
-// visible. Both toggle and price changes stay in local draft state until
-// Save is clicked, so flipping a switch or typing a price is instant (no
-// network round-trip to wait on) and a batch of changes commits together.
+// Shawn is charging them for each one, and whether that charge is actually
+// active right now -- his own pricing sheet, never shown to the client
+// themselves (feature_pricing has its own platform-admin-only RLS policy,
+// same gate as this whole page). A missing enabled_features key means "on"
+// -- see isFeatureEnabled -- so a brand-new org with an empty
+// enabled_features starts with everything visible. Toggle, price, billing,
+// and free-until changes all stay in local draft state until Save is
+// clicked, so editing anything is instant (no network round-trip to wait
+// on) and a batch of changes commits together.
 function SystemControlsPanel({ org, onChanged }) {
   const { data: pricing } = useQuery({
     queryKey: ['featurePricing', org.id], queryFn: () => fetchFeaturePricing(org.id),
   })
   const [enabledDraft, setEnabledDraft] = useState(() => ({ ...(org.enabled_features || {}) }))
   const [priceDraft, setPriceDraft] = useState({})
+  const [billingDraft, setBillingDraft] = useState({})
+  const [freeUntilDraft, setFreeUntilDraft] = useState({})
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [saved, setSaved] = useState(false)
 
-  // Price draft starts empty (meaning "use the saved value") until someone
-  // actually edits a box -- avoids needing to re-sync draft state against
-  // an async query that may resolve after this panel already mounted.
-  const priceFor = (key) => (key in priceDraft ? priceDraft[key] : (pricing?.[key] ?? ''))
+  // Every draft map starts empty (meaning "use the saved value") until
+  // someone actually edits that field -- avoids needing to re-sync draft
+  // state against an async query that may resolve after this panel
+  // mounted, and keeps an untouched suggested-price hint from ever being
+  // mistaken for a real saved value.
+  const savedPrice = (key) => pricing?.[key]?.price ?? null
+  const savedBilling = (key) => pricing?.[key]?.billingActive ?? true
+  const savedFreeUntil = (key) => pricing?.[key]?.freeUntil ?? null
+
+  // Shown in the box even before anyone's touched it, so there's a real
+  // number to start from -- but purely visual until Save actually commits
+  // something, per dirty-detection below.
+  const priceFor = (key) => (key in priceDraft ? priceDraft[key] : (savedPrice(key) ?? SUGGESTED_PRICES[key] ?? ''))
   const setPrice = (key, value) => { setPriceDraft((d) => ({ ...d, [key]: value })); setSaved(false) }
+
+  const billingFor = (key) => (key in billingDraft ? billingDraft[key] : savedBilling(key))
+  const setBilling = (key, value) => { setBillingDraft((d) => ({ ...d, [key]: value })); setSaved(false) }
+
+  const freeUntilFor = (key) => (key in freeUntilDraft ? freeUntilDraft[key] : (savedFreeUntil(key) || ''))
+  const setFreeUntil = (key, value) => { setFreeUntilDraft((d) => ({ ...d, [key]: value })); setSaved(false) }
 
   const isOn = (key) => enabledDraft[key] !== false
   const toggle = (key) => {
@@ -209,14 +248,15 @@ function SystemControlsPanel({ org, onChanged }) {
     setSaved(false)
   }
 
-  // Only the keys that actually differ from what's saved need a write --
-  // same reasoning as the single-toggle version this replaced.
+  // Only the keys that actually differ from what's saved need a write.
   const dirtyToggleKeys = FEATURES.map((f) => f.key).filter((key) => isOn(key) !== isFeatureEnabled(org, key))
-  const dirtyPriceKeys = Object.keys(priceDraft).filter((key) => {
-    const saved = pricing?.[key] ?? null
-    const draftValue = priceDraft[key].trim() === '' ? null : Number(priceDraft[key])
-    return draftValue !== saved
-  })
+  const billingRowDirty = (key) => {
+    const priceDirty = key in priceDraft && (priceDraft[key].trim() === '' ? null : Number(priceDraft[key])) !== savedPrice(key)
+    const billingDirty = key in billingDraft && billingDraft[key] !== savedBilling(key)
+    const freeUntilDirty = key in freeUntilDraft && (freeUntilDraft[key] || null) !== savedFreeUntil(key)
+    return priceDirty || billingDirty || freeUntilDirty
+  }
+  const dirtyBillingKeys = FEATURES.map((f) => f.key).filter(billingRowDirty)
 
   const save = async () => {
     setSaving(true); setErr('')
@@ -224,12 +264,17 @@ function SystemControlsPanel({ org, onChanged }) {
       for (const key of dirtyToggleKeys) {
         await setOrgFeature({ orgId: org.id, featureKey: key, enabled: isOn(key) })
       }
-      for (const key of dirtyPriceKeys) {
-        const trimmed = priceDraft[key].trim()
-        await setFeaturePrice({ orgId: org.id, featureKey: key, price: trimmed === '' ? null : Number(trimmed) })
+      for (const key of dirtyBillingKeys) {
+        const priceTrimmed = key in priceDraft ? priceDraft[key].trim() : null
+        const price = key in priceDraft ? (priceTrimmed === '' ? null : Number(priceTrimmed)) : savedPrice(key)
+        await setFeaturePrice({
+          orgId: org.id, featureKey: key, price,
+          billingActive: billingFor(key),
+          freeUntil: freeUntilFor(key) || null,
+        })
       }
       onChanged()
-      setPriceDraft({})
+      setPriceDraft({}); setBillingDraft({}); setFreeUntilDraft({})
       setSaved(true)
     } catch (e) {
       setErr(e.message || String(e))
@@ -238,39 +283,64 @@ function SystemControlsPanel({ org, onChanged }) {
     }
   }
 
-  const dirtyCount = dirtyToggleKeys.length + dirtyPriceKeys.length
+  const dirtyCount = dirtyToggleKeys.length + dirtyBillingKeys.length
 
   return (
     <div className="mt-4 rounded-lg border border-line bg-canvas p-4">
       <p className="mb-3 text-xs text-muted">
         <b className="text-ink">System Controls</b> — what {org.name} sees in their sidebar, and what you're
-        charging them per feature. Off means the whole feature — sidebar link and the page itself — is
-        unreachable for every user in this org. Price is just your own reference for what you quoted this
-        client; it's never shown to them and nothing here bills them automatically. Flip/type whatever you
-        need, then hit Save.
+        charging them per feature. The feature switch controls whether they can use it at all; <b>Billing</b>
+        controls whether it's actually a paid charge right now — flip Billing off (and optionally set a
+        free-until date as your own reminder) to comp a feature or run a free trial without touching whether
+        they can use it. None of this is shown to the client or bills them automatically — it's your own
+        reference sheet. Flip/type whatever you need, then hit Save.
       </p>
       {err && <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-xs text-port">⚠️ {err}</p>}
       <div className="grid gap-2 sm:grid-cols-2">
         {FEATURES.map((f) => {
           const on = isOn(f.key)
+          const billing = billingFor(f.key)
           return (
-            <div key={f.key} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-medium text-ink">
-              <button type="button" onClick={() => toggle(f.key)} className="flex flex-1 items-center gap-2 text-left">
-                <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${on ? 'bg-starboard' : 'bg-line'}`}>
-                  <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0'}`} />
-                </span>
-                <span className="truncate">{f.label}</span>
-              </button>
-              <div className="flex shrink-0 items-center gap-1 text-muted">
-                <span>$</span>
-                <input
-                  value={priceFor(f.key)}
-                  onChange={(e) => setPrice(f.key, e.target.value)}
-                  placeholder="—"
-                  inputMode="decimal"
-                  className="w-14 rounded border border-line bg-canvas px-1.5 py-1 text-right text-xs text-ink outline-none focus:border-accent"
-                />
-                <span>/mo</span>
+            <div key={f.key} className="rounded-lg border border-line bg-surface px-3 py-2 text-xs font-medium text-ink">
+              <div className="flex items-center justify-between gap-2">
+                <button type="button" onClick={() => toggle(f.key)} className="flex flex-1 items-center gap-2 text-left">
+                  <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${on ? 'bg-starboard' : 'bg-line'}`}>
+                    <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </span>
+                  <span className="truncate">{f.label}</span>
+                </button>
+                <div className="flex shrink-0 items-center gap-1 text-muted">
+                  <span>$</span>
+                  <input
+                    value={priceFor(f.key)}
+                    onChange={(e) => setPrice(f.key, e.target.value)}
+                    placeholder="—"
+                    inputMode="decimal"
+                    className="w-14 rounded border border-line bg-canvas px-1.5 py-1 text-right text-xs text-ink outline-none focus:border-accent"
+                  />
+                  <span>/mo</span>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2 border-t border-line pt-2 text-[11px] text-muted">
+                <button
+                  type="button"
+                  onClick={() => setBilling(f.key, !billing)}
+                  className={`rounded-full px-2 py-0.5 font-semibold uppercase tracking-wide ${billing ? 'bg-starboard/15 text-starboard' : 'bg-line/60 text-muted'}`}
+                  title={billing ? 'Charging this client for this feature -- click to comp it' : 'Not currently charging for this feature (comped or trial)'}
+                >
+                  {billing ? 'Billing: On' : 'Billing: Off'}
+                </button>
+                {!billing && (
+                  <label className="flex items-center gap-1">
+                    Free until
+                    <input
+                      type="date"
+                      value={freeUntilFor(f.key)}
+                      onChange={(e) => setFreeUntil(f.key, e.target.value)}
+                      className="rounded border border-line bg-canvas px-1 py-0.5 text-ink outline-none focus:border-accent"
+                    />
+                  </label>
+                )}
               </div>
             </div>
           )

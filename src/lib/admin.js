@@ -50,8 +50,8 @@ export async function fetchFeaturePricing(orgId) {
   return pricing
 }
 
-export async function setFeaturePrice({ orgId, featureKey, price }) {
-  const { pricing } = await authedFetch('admin-set-feature-price', { orgId, featureKey, price })
+export async function setFeaturePrice({ orgId, featureKey, price, billingActive, freeUntil }) {
+  const { pricing } = await authedFetch('admin-set-feature-price', { orgId, featureKey, price, billingActive, freeUntil })
   return pricing
 }
 
