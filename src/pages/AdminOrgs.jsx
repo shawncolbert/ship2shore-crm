@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchOrgs, createOrg, inviteUser, fetchOrgStats, setOrgFeature, removeMember } from '../lib/admin'
+import { fetchOrgs, createOrg, inviteUser, fetchOrgStats, setOrgFeature, removeMember, fetchFeaturePricing, setFeaturePrice } from '../lib/admin'
 import { fetchMyProfile } from '../lib/supabase'
 import { FEATURES, isFeatureEnabled } from '../lib/features'
 
@@ -103,7 +103,7 @@ export default function AdminOrgs() {
                     onClick={() => setFeaturesFor(featuresFor === org.id ? null : org.id)}
                     className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:border-accent"
                   >
-                    Features
+                    System Controls
                   </button>
                   <button
                     onClick={() => setInviteFor(inviteFor === org.id ? null : org.id)}
@@ -115,7 +115,7 @@ export default function AdminOrgs() {
               </div>
 
               {featuresFor === org.id && (
-                <OrgFeaturesPanel org={org} onChanged={invalidate} />
+                <SystemControlsPanel org={org} onChanged={invalidate} />
               )}
 
             <div className="mt-3 space-y-1">
@@ -178,35 +178,58 @@ function MemberRow({ orgId, member, onRemoved }) {
   )
 }
 
-// Which sidebar items this org sees, one switch per feature. A missing key
-// means "on" -- see isFeatureEnabled -- so a brand-new org with an empty
-// enabled_features starts with everything visible. Toggles here only
-// change local draft state -- nothing is written until Save is clicked, so
-// flipping a switch is instant (no network round-trip to wait on before it
-// visibly moves) and a batch of changes commits together.
-function OrgFeaturesPanel({ org, onChanged }) {
-  const [draft, setDraft] = useState(() => ({ ...(org.enabled_features || {}) }))
+// Which sidebar items this org sees (one switch per feature) plus what
+// Shawn is charging them for each one -- his own pricing sheet, never
+// shown to the client themselves (feature_pricing has its own
+// platform-admin-only RLS policy, same gate as this whole page). A missing
+// enabled_features key means "on" -- see isFeatureEnabled -- so a
+// brand-new org with an empty enabled_features starts with everything
+// visible. Both toggle and price changes stay in local draft state until
+// Save is clicked, so flipping a switch or typing a price is instant (no
+// network round-trip to wait on) and a batch of changes commits together.
+function SystemControlsPanel({ org, onChanged }) {
+  const { data: pricing } = useQuery({
+    queryKey: ['featurePricing', org.id], queryFn: () => fetchFeaturePricing(org.id),
+  })
+  const [enabledDraft, setEnabledDraft] = useState(() => ({ ...(org.enabled_features || {}) }))
+  const [priceDraft, setPriceDraft] = useState({})
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [saved, setSaved] = useState(false)
 
-  const isOn = (key) => draft[key] !== false
+  // Price draft starts empty (meaning "use the saved value") until someone
+  // actually edits a box -- avoids needing to re-sync draft state against
+  // an async query that may resolve after this panel already mounted.
+  const priceFor = (key) => (key in priceDraft ? priceDraft[key] : (pricing?.[key] ?? ''))
+  const setPrice = (key, value) => { setPriceDraft((d) => ({ ...d, [key]: value })); setSaved(false) }
+
+  const isOn = (key) => enabledDraft[key] !== false
   const toggle = (key) => {
-    setDraft((d) => ({ ...d, [key]: !isOn(key) }))
+    setEnabledDraft((d) => ({ ...d, [key]: !isOn(key) }))
     setSaved(false)
   }
 
   // Only the keys that actually differ from what's saved need a write --
   // same reasoning as the single-toggle version this replaced.
-  const dirtyKeys = FEATURES.map((f) => f.key).filter((key) => isOn(key) !== isFeatureEnabled(org, key))
+  const dirtyToggleKeys = FEATURES.map((f) => f.key).filter((key) => isOn(key) !== isFeatureEnabled(org, key))
+  const dirtyPriceKeys = Object.keys(priceDraft).filter((key) => {
+    const saved = pricing?.[key] ?? null
+    const draftValue = priceDraft[key].trim() === '' ? null : Number(priceDraft[key])
+    return draftValue !== saved
+  })
 
   const save = async () => {
     setSaving(true); setErr('')
     try {
-      for (const key of dirtyKeys) {
+      for (const key of dirtyToggleKeys) {
         await setOrgFeature({ orgId: org.id, featureKey: key, enabled: isOn(key) })
       }
+      for (const key of dirtyPriceKeys) {
+        const trimmed = priceDraft[key].trim()
+        await setFeaturePrice({ orgId: org.id, featureKey: key, price: trimmed === '' ? null : Number(trimmed) })
+      }
       onChanged()
+      setPriceDraft({})
       setSaved(true)
     } catch (e) {
       setErr(e.message || String(e))
@@ -215,36 +238,50 @@ function OrgFeaturesPanel({ org, onChanged }) {
     }
   }
 
+  const dirtyCount = dirtyToggleKeys.length + dirtyPriceKeys.length
+
   return (
     <div className="mt-4 rounded-lg border border-line bg-canvas p-4">
       <p className="mb-3 text-xs text-muted">
-        What {org.name} sees in their sidebar. Off means the whole feature — sidebar link and the page
-        itself — is unreachable for every user in this org. Flip whatever you need, then hit Save.
+        <b className="text-ink">System Controls</b> — what {org.name} sees in their sidebar, and what you're
+        charging them per feature. Off means the whole feature — sidebar link and the page itself — is
+        unreachable for every user in this org. Price is just your own reference for what you quoted this
+        client; it's never shown to them and nothing here bills them automatically. Flip/type whatever you
+        need, then hit Save.
       </p>
       {err && <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-xs text-port">⚠️ {err}</p>}
       <div className="grid gap-2 sm:grid-cols-2">
         {FEATURES.map((f) => {
           const on = isOn(f.key)
           return (
-            <button
-              key={f.key}
-              onClick={() => toggle(f.key)}
-              className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-left text-xs font-medium text-ink"
-            >
-              <span>{f.label}</span>
-              <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${on ? 'bg-starboard' : 'bg-line'}`}>
-                <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0'}`} />
-              </span>
-            </button>
+            <div key={f.key} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-medium text-ink">
+              <button type="button" onClick={() => toggle(f.key)} className="flex flex-1 items-center gap-2 text-left">
+                <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${on ? 'bg-starboard' : 'bg-line'}`}>
+                  <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0'}`} />
+                </span>
+                <span className="truncate">{f.label}</span>
+              </button>
+              <div className="flex shrink-0 items-center gap-1 text-muted">
+                <span>$</span>
+                <input
+                  value={priceFor(f.key)}
+                  onChange={(e) => setPrice(f.key, e.target.value)}
+                  placeholder="—"
+                  inputMode="decimal"
+                  className="w-14 rounded border border-line bg-canvas px-1.5 py-1 text-right text-xs text-ink outline-none focus:border-accent"
+                />
+                <span>/mo</span>
+              </div>
+            </div>
           )
         })}
       </div>
       <div className="mt-4 flex items-center justify-end gap-3 border-t border-line pt-3">
-        {saved && !dirtyKeys.length && <span className="text-xs font-medium text-starboard">✓ Saved</span>}
-        {!!dirtyKeys.length && <span className="text-xs text-muted">{dirtyKeys.length} unsaved change{dirtyKeys.length === 1 ? '' : 's'}</span>}
+        {saved && !dirtyCount && <span className="text-xs font-medium text-starboard">✓ Saved</span>}
+        {!!dirtyCount && <span className="text-xs text-muted">{dirtyCount} unsaved change{dirtyCount === 1 ? '' : 's'}</span>}
         <button
           onClick={save}
-          disabled={saving || !dirtyKeys.length}
+          disabled={saving || !dirtyCount}
           className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save'}
