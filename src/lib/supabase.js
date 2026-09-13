@@ -1834,13 +1834,19 @@ export async function fetchTrackedVessels() {
 // Dashboard's live map (LiveMap.jsx) -- one row per job actively being
 // driven (dropoff_arrived_at still null; see 0069_driver_tracking.sql),
 // joined back to the vehicle/customer so a pin means something on click
-// instead of just a bare coordinate.
+// instead of just a bare coordinate. Also requires a ping within the last
+// 2 days -- a driver who taps "arrived" at pickup and then never opens the
+// tracking link again (or just forgets to tap "arrived" at dropoff) would
+// otherwise leave a stale truck sitting on the live map indefinitely, long
+// after the job's actually done.
 export async function fetchTrackedTrucks() {
+  const staleCutoff = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
     .from('job_tracking')
     .select('opportunity_id, last_lat, last_lng, last_ping_at, pickup_arrived_at, opportunities!inner(title, vehicle, vehicle_year, vehicle_make, vehicle_model, contacts!contact_id(full_name))')
     .not('last_lat', 'is', null)
     .is('dropoff_arrived_at', null)
+    .gte('last_ping_at', staleCutoff)
   if (error) throw error
   return (data || []).map((t) => ({
     opportunityId: t.opportunity_id,
