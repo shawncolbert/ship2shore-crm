@@ -43,6 +43,18 @@ export async function setOrgFeature({ orgId, featureKey, enabled }) {
   return organization
 }
 
+// System Controls panel -- what Shawn is charging this org per feature.
+// Reference-only, see admin-set-feature-price.js.
+export async function fetchFeaturePricing(orgId) {
+  const { pricing } = await authedFetch('admin-get-feature-pricing', { orgId })
+  return pricing
+}
+
+export async function setFeaturePrice({ orgId, featureKey, price }) {
+  const { pricing } = await authedFetch('admin-set-feature-price', { orgId, featureKey, price })
+  return pricing
+}
+
 // Removes one person from one org -- not the org itself, and not their
 // profile/account, which may still belong to other orgs.
 export async function removeMember({ orgId, profileId }) {
