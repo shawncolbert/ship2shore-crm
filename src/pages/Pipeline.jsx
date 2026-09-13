@@ -8,6 +8,7 @@ import {
   fetchDispatcherContacts, assignDispatcher,
   fetchTransportDrivers,
   fetchOrCreateTrackingLink,
+  fetchJobTrackingPosition,
   requestCarrierQuote, fetchSimilarRouteQuotes,
   classifyVehicle, previewSuggestedPrice,
   sendContract, fetchLatestContract,
@@ -24,6 +25,7 @@ import Tooltip from '../components/Tooltip'
 import AddressAutocompleteField from '../components/AddressAutocompleteField'
 import PriceEstimator from '../components/PriceEstimator'
 import DropoffPreview from '../components/DropoffPreview'
+import TrackModal from '../components/TrackModal'
 
 // Shared by the JobCard quick action and JobDetailModal's full Share button --
 // only the latter has `notes`/`photoUrl` available (fetched while the editor
@@ -951,6 +953,14 @@ function JobDetailModal({
   const { data: trackingLink } = useQuery({
     queryKey: ['trackingLink', c.id], queryFn: () => fetchOrCreateTrackingLink(c.id), enabled: !isPhotographyOrg,
   })
+
+  // "📍 Track" button below -- the dispatcher's own look at this specific
+  // driver's last ping, separate from the link texted out above. null until
+  // the driver's actually opened their tracking link at least once.
+  const { data: trackPosition } = useQuery({
+    queryKey: ['jobTrackingPosition', c.id], queryFn: () => fetchJobTrackingPosition(c.id), enabled: !isPhotographyOrg,
+  })
+  const [trackModalOpen, setTrackModalOpen] = useState(false)
   const [projectType, setProjectType] = useState(c.project_type || '')
   const [galleryLink, setGalleryLink] = useState(c.gallery_link || '')
   const [venue, setVenue] = useState(c.custom_fields?.venue || '')
@@ -1672,6 +1682,15 @@ function JobDetailModal({
                     >
                       {copiedRoute ? 'Copied ✓' : '📋 Copy'}
                     </button>
+                    <button
+                      type="button"
+                      disabled={!trackPosition}
+                      title={trackPosition ? "See this driver's last known position" : "No position yet -- the driver hasn't opened their tracking link"}
+                      onClick={() => setTrackModalOpen(true)}
+                      className="shrink-0 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink transition-colors hover:bg-canvas disabled:opacity-40"
+                    >
+                      📍 Track
+                    </button>
                   </div>
                   <button
                     type="button"
@@ -1684,6 +1703,20 @@ function JobDetailModal({
                   >
                     Text to another driver (not in system)
                   </button>
+                  <TrackModal
+                    open={trackModalOpen}
+                    onClose={() => setTrackModalOpen(false)}
+                    icon="🚚"
+                    pinColor="1fa97a"
+                    title={c.contacts?.full_name || c.title || 'Job'}
+                    subtitle={[c.vehicle_year, c.vehicle_make, c.vehicle_model].filter(Boolean).join(' ') || vehicle || 'Vehicle transport'}
+                    lat={trackPosition?.lat}
+                    lon={trackPosition?.lon}
+                    detailLines={trackPosition ? [
+                      trackPosition.dropoffArrivedAt ? '✓ Marked arrived at drop-off' : trackPosition.pickupArrivedAt ? 'En route to drop-off' : 'Position on file',
+                      `Last ping: ${trackPosition.lastPingAt ? new Date(trackPosition.lastPingAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'unknown'}`,
+                    ] : []}
+                  />
                 </div>
                 <div>
                   <label className={label} title="The full number from the waybill, including the carrier prefix (e.g. MOLU18009385790). The Bill of Lading # box (right) fills in automatically from this -- carrier letters stripped, matching what the port's own lookup expects.">Ship billing #</label>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchVessels, upsertVessel, deleteVessel, lookupVesselMmsi } from '../lib/supabase'
+import TrackModal from '../components/TrackModal'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
 const input = 'rounded-md border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent'
@@ -73,6 +74,8 @@ export default function Vessels() {
   const [saving, setSaving] = useState(false)
   const [lookupState, setLookupState] = useState('idle') // idle | loading | multiple | none | done
   const [candidates, setCandidates] = useState([])
+  const [trackVesselId, setTrackVesselId] = useState(null)
+  const trackedVessel = vessels?.find((v) => v.id === trackVesselId)
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['vessels'] })
 
@@ -262,6 +265,14 @@ export default function Vessels() {
                     onBlur={(e) => { if (e.target.value !== (v.last_free_day || '')) updateDate(v, e.target.value) }}
                     className={input}
                   />
+                  <button
+                    onClick={() => setTrackVesselId(v.id)}
+                    disabled={v.last_lat == null}
+                    title={v.last_lat == null ? 'No position yet' : 'See this vessel on the map'}
+                    className="rounded-md border border-line bg-canvas px-2.5 py-2 text-xs font-medium text-ink transition-colors hover:bg-surface disabled:opacity-40"
+                  >
+                    📍 Track
+                  </button>
                   <button onClick={() => remove(v)} className="rounded-md px-2 py-2 text-xs font-medium text-muted hover:text-port">Remove</button>
                 </div>
               </div>
@@ -269,6 +280,22 @@ export default function Vessels() {
           })}
         </div>
       )}
+
+      <TrackModal
+        open={!!trackedVessel}
+        onClose={() => setTrackVesselId(null)}
+        icon="🚢"
+        pinColor="e8a317"
+        title={trackedVessel?.name}
+        lat={trackedVessel?.last_lat}
+        lon={trackedVessel?.last_lon}
+        detailLines={trackedVessel ? [
+          trackedVessel.reported_eta
+            ? `${trackedVessel.reported_destination ? `→ ${trackedVessel.reported_destination} · ` : ''}ETA ${formatEta(trackedVessel.reported_eta)}`
+            : 'No ETA reported yet',
+          `${trackedVessel.last_speed_kn ?? '?'} kn · updated ${positionAge(trackedVessel.position_updated_at)}`,
+        ] : []}
+      />
     </div>
   )
 }
