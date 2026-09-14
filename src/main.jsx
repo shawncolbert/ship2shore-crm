@@ -28,6 +28,7 @@ import QuickQuote from './pages/QuickQuote'
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const ImportContacts = lazy(() => import('./pages/ImportContacts'))
 const Prospecting = lazy(() => import('./pages/Prospecting'))
+const Outreach = lazy(() => import('./pages/Outreach'))
 const LeadFinder = lazy(() => import('./pages/LeadFinder'))
 const Documents = lazy(() => import('./pages/Documents'))
 const Automations = lazy(() => import('./pages/Automations'))
@@ -143,6 +144,7 @@ function App() {
                   <Route path="contacts/import" element={<FeatureGate featureKey="contacts"><ImportContacts /></FeatureGate>} />
                   <Route path="contacts/:id" element={<FeatureGate featureKey="contacts"><ContactDetail /></FeatureGate>} />
                   <Route path="prospecting" element={<FeatureGate featureKey="prospecting"><Prospecting /></FeatureGate>} />
+                  <Route path="outreach" element={<FeatureGate featureKey="outreach"><Outreach /></FeatureGate>} />
                   <Route path="lead-finder" element={<FeatureGate featureKey="lead_finder"><LeadFinder /></FeatureGate>} />
                   <Route path="pipeline" element={<FeatureGate featureKey="pipeline"><Pipeline /></FeatureGate>} />
                   <Route path="calendar" element={<FeatureGate featureKey="calendar"><Calendar /></FeatureGate>} />

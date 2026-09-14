@@ -40,6 +40,10 @@ export const FEATURES = [
   { key: 'landing_pages', label: 'Landing Pages', path: '/landing-pages' },
   { key: 'funnels', label: 'Funnels', path: '/funnels' },
   { key: 'social_posts', label: 'Social Posts', path: '/social-posts' },
+  // Distinct from 'prospecting' (warm-lead matching against existing
+  // contacts) -- this is cold-lead sourcing + compliant email sequences,
+  // its own page/nav item on purpose so the two never get confused.
+  { key: 'outreach', label: 'Prospecting & Outreach', path: '/outreach' },
 ]
 
 // Missing key = enabled. Only an explicit `false` turns a feature off.

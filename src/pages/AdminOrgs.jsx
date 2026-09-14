@@ -208,6 +208,7 @@ const SUGGESTED_PRICES = {
   document_requests: 12,
   gate_pass: 20,
   vessels: 57,
+  outreach: 55,
 }
 
 // Which sidebar items this org sees (one switch per feature) plus what

@@ -82,6 +82,12 @@
 [functions."seo-striking-distance"]
   schedule = "20 15 * * *"
 
+# Processes due outreach_enrollments (Prospecting & Outreach) once a day --
+# no need for anything finer-grained since sequence steps are scheduled in
+# whole days.
+[functions."outreach-sequence-sender"]
+  schedule = "0 16 * * *"
+
 # Telegram digest for any vessel (Settings > Vessels -- last_free_day set by
 # hand from the carrier/terminal) within 2 days of its free-time deadline
 # (or already past it) that still has open jobs with no gate pass received.

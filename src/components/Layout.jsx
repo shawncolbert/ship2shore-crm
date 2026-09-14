@@ -48,6 +48,7 @@ const nav = [
   { to: '/landing-pages', label: 'Landing Pages', key: 'landing_pages', group: 'Marketing' },
   { to: '/funnels', label: 'Funnels', key: 'funnels', group: 'Marketing' },
   { to: '/social-posts', label: 'Social Posts', key: 'social_posts', group: 'Marketing' },
+  { to: '/outreach', label: 'Prospecting & Outreach', key: 'outreach', group: 'Marketing' },
 ]
 
 // Group display order for the sectioned-sidebar layouts (Aurora, Dispatch Suite).
