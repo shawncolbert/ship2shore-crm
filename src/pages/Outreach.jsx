@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchProspects, createProspect, updateProspectStatus, updateProspectEmail, deleteProspect,
@@ -7,7 +7,9 @@ import {
   fetchSequences, saveSequence, deleteSequence,
   enrollProspects, fetchEnrollments, stopEnrollment,
   fetchDoNotContact, addDoNotContact, removeDoNotContact,
+  saveTwilioCredentials,
 } from '../lib/outreach'
+import { fetchMyOrg, fetchMyOrgId } from '../lib/supabase'
 
 const card = 'rounded-[var(--radius-card)] border border-line bg-surface p-5 shadow-[var(--shadow-card)]'
 const field = 'mt-1 w-full rounded-md border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/30'
@@ -420,7 +422,7 @@ function EnrollmentsCard() {
 /* Sequences                                                            */
 /* ------------------------------------------------------------------ */
 
-const emptyStep = () => ({ subject: '', body: '', delay_days: 0 })
+const emptyStep = () => ({ channel: 'email', subject: '', body: '', delay_days: 0 })
 
 function SequencesTab() {
   const qc = useQueryClient()
@@ -435,6 +437,7 @@ function SequencesTab() {
 
   return (
     <div className="space-y-4">
+      <TwilioSettingsCard />
       <button onClick={() => setEditing({ name: '', steps: [emptyStep()], active: true })} className={btnAccent}>+ New sequence</button>
       {isLoading && <p className="text-xs text-muted">Loading…</p>}
       {!isLoading && !sequences?.length && <p className="text-xs text-muted">No sequences yet.</p>}
@@ -444,7 +447,10 @@ function SequencesTab() {
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="font-semibold text-ink">{s.name}</p>
-                <p className="text-xs text-muted">{s.steps?.length || 0} step{s.steps?.length === 1 ? '' : 's'} · {s.active ? 'Active' : 'Paused'}</p>
+                <p className="text-xs text-muted">
+                  {s.steps?.length || 0} step{s.steps?.length === 1 ? '' : 's'} · {s.active ? 'Active' : 'Paused'}
+                  {s.steps?.some((step) => step.channel === 'sms') ? ' · includes SMS' : ''}
+                </p>
               </div>
               <div className="flex gap-1">
                 <button onClick={() => setEditing(s)} className={btnGhost}>Edit</button>
@@ -454,6 +460,79 @@ function SequencesTab() {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// One-time org setting, same isolation principle as the Telegram bot on
+// Dispatch Assignment: each org pastes in its OWN Twilio account, blank
+// means SMS steps just don't send for that org, never silently borrow
+// another org's number.
+function TwilioSettingsCard() {
+  const qc = useQueryClient()
+  const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg })
+  const [accountSid, setAccountSid] = useState('')
+  const [authToken, setAuthToken] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    setAccountSid(org?.twilio_account_sid || '')
+    setAuthToken(org?.twilio_auth_token || '')
+    setPhoneNumber(org?.twilio_phone_number || '')
+  }, [org?.twilio_account_sid, org?.twilio_auth_token, org?.twilio_phone_number])
+
+  const dirty = accountSid.trim() !== (org?.twilio_account_sid || '')
+    || authToken.trim() !== (org?.twilio_auth_token || '')
+    || phoneNumber.trim() !== (org?.twilio_phone_number || '')
+
+  const save = async () => {
+    setSaving(true); setSaved(false)
+    try {
+      const orgId = await fetchMyOrgId()
+      await saveTwilioCredentials(orgId, { accountSid, authToken, phoneNumber })
+      qc.invalidateQueries({ queryKey: ['myOrg'] })
+      setSaved(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const configured = !!(org?.twilio_account_sid && org?.twilio_auth_token && org?.twilio_phone_number)
+
+  return (
+    <div className={`${card} space-y-3`}>
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between text-left">
+        <div>
+          <h2 className="text-sm font-semibold text-ink">SMS (Twilio)</h2>
+          <p className="text-xs text-muted">
+            {configured ? `Connected — sending from ${org.twilio_phone_number}` : 'Not connected — SMS steps won\'t send until this is set up'}
+          </p>
+        </div>
+        <span className="text-xs text-muted">{open ? 'Hide ▲' : 'Set up ▼'}</span>
+      </button>
+      {open && (
+        <div className="space-y-2 border-t border-line pt-3">
+          <p className="text-xs text-muted">
+            From your own Twilio console (console.twilio.com) — Account SID and Auth Token are on the dashboard,
+            the phone number is whichever one you've purchased there. This number must be yours; texting from a
+            number you don't own risks it getting blocked by carriers.
+          </p>
+          <label className="block text-xs font-medium text-muted">Account SID
+            <input className={field} value={accountSid} onChange={(e) => setAccountSid(e.target.value)} placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
+          </label>
+          <label className="block text-xs font-medium text-muted">Auth token
+            <input type="password" className={field} value={authToken} onChange={(e) => setAuthToken(e.target.value)} />
+          </label>
+          <label className="block text-xs font-medium text-muted">Twilio phone number
+            <input className={field} value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="+15551234567" />
+          </label>
+          <button onClick={save} disabled={!dirty || saving} className={btnAccent}>{saving ? 'Saving…' : 'Save'}</button>
+          {saved && !dirty && <span className="ml-2 text-xs text-starboard">Saved</span>}
+        </div>
+      )}
     </div>
   )
 }
@@ -472,8 +551,8 @@ function SequenceEditor({ sequence, onClose, onSaved }) {
   const save = async () => {
     setErr('')
     if (!name.trim()) { setErr('Give this sequence a name.'); return }
-    if (!steps.length || steps.some((s) => !s.subject.trim() || !s.body.trim())) {
-      setErr('Every step needs a subject and a body.'); return
+    if (!steps.length || steps.some((s) => (s.channel !== 'sms' && !s.subject.trim()) || !s.body.trim())) {
+      setErr('Every step needs a body (and a subject, for email steps).'); return
     }
     setSaving(true)
     try {
@@ -511,9 +590,27 @@ function SequenceEditor({ sequence, onClose, onSaved }) {
                 <input type="number" min="0" className={`${field} w-32`} value={step.delay_days} onChange={(e) => setStep(i, { delay_days: Number(e.target.value) || 0 })} />
               </label>
             )}
-            <label className="block text-xs font-medium text-muted">Subject
-              <input className={field} value={step.subject} onChange={(e) => setStep(i, { subject: e.target.value })} />
+            <label className="block text-xs font-medium text-muted">Channel
+              <select
+                className={`${field} w-40`}
+                value={step.channel || 'email'}
+                onChange={(e) => setStep(i, { channel: e.target.value })}
+              >
+                <option value="email">Email</option>
+                <option value="sms">SMS</option>
+              </select>
             </label>
+            {step.channel === 'sms' && (
+              <p className="rounded-md bg-accent/10 px-3 py-2 text-xs text-ink">
+                SMS only sends to a prospect who's already marked "Replied" — it never goes out as a cold first
+                touch. If they haven't replied yet when this step comes due, it's skipped and the sequence moves on.
+              </p>
+            )}
+            {step.channel !== 'sms' && (
+              <label className="block text-xs font-medium text-muted">Subject
+                <input className={field} value={step.subject} onChange={(e) => setStep(i, { subject: e.target.value })} />
+              </label>
+            )}
             <label className="block text-xs font-medium text-muted">Body
               <textarea rows={5} className={field} value={step.body} onChange={(e) => setStep(i, { body: e.target.value })} />
             </label>
@@ -568,11 +665,11 @@ function SuppressionTab() {
         {!isLoading && !rows?.length && <p className="text-xs text-muted">Nobody's suppressed yet.</p>}
         {!!rows?.length && (
           <table className="w-full text-left text-xs">
-            <thead><tr className="text-muted"><th className="pb-2 pr-3">Email</th><th className="pb-2 pr-3">Reason</th><th className="pb-2"></th></tr></thead>
+            <thead><tr className="text-muted"><th className="pb-2 pr-3">Email / Phone</th><th className="pb-2 pr-3">Reason</th><th className="pb-2"></th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-t border-line">
-                  <td className="py-2 pr-3 text-ink">{r.email}</td>
+                  <td className="py-2 pr-3 text-ink">{r.email || r.phone}</td>
                   <td className="py-2 pr-3 text-muted capitalize">{r.reason}</td>
                   <td className="py-2 text-right">
                     <button onClick={async () => { await removeDoNotContact(r.id); invalidate() }} className="text-muted hover:text-red-500">Remove</button>

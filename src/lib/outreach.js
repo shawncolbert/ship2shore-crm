@@ -212,6 +212,22 @@ export async function stopEnrollment(id) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Twilio (SMS channel)                                                 */
+/* ------------------------------------------------------------------ */
+
+// Same per-org isolation as the Telegram bot credentials -- each org owns
+// its own Twilio account, blank means SMS steps just don't send for that
+// org, never silently borrow another org's number.
+export async function saveTwilioCredentials(orgId, { accountSid, authToken, phoneNumber }) {
+  const { error } = await supabase.from('organizations').update({
+    twilio_account_sid: String(accountSid || '').trim() || null,
+    twilio_auth_token: String(authToken || '').trim() || null,
+    twilio_phone_number: String(phoneNumber || '').trim() || null,
+  }).eq('id', orgId)
+  if (error) throw error
+}
+
+/* ------------------------------------------------------------------ */
 /* Suppression list                                                     */
 /* ------------------------------------------------------------------ */
 
