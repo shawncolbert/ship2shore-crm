@@ -219,7 +219,10 @@ function ProspectsTab() {
                 <tr key={p.id} className="border-t border-line">
                   <td className="py-2"><input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} /></td>
                   <td className="py-2 pr-3 font-medium text-ink">{p.business_name}{p.industry ? <span className="ml-1.5 text-muted">· {p.industry}</span> : null}</td>
-                  <td className="py-2 pr-3 text-muted"><EditableEmail prospect={p} onSaved={invalidate} /></td>
+                  <td className="py-2 pr-3 text-muted">
+                    <EditableEmail prospect={p} onSaved={invalidate} />
+                    {p.sms_opted_in && <span className="ml-1.5 rounded-full bg-starboard/15 px-1.5 py-0.5 text-[10px] font-semibold text-starboard" title="Has texted this number — eligible for SMS steps">SMS ✓</span>}
+                  </td>
                   <td className="py-2 pr-3 text-muted">{[p.city, p.state].filter(Boolean).join(', ') || '—'}</td>
                   <td className="py-2 pr-3">
                     <select
@@ -602,8 +605,9 @@ function SequenceEditor({ sequence, onClose, onSaved }) {
             </label>
             {step.channel === 'sms' && (
               <p className="rounded-md bg-accent/10 px-3 py-2 text-xs text-ink">
-                SMS only sends to a prospect who's already marked "Replied" — it never goes out as a cold first
-                touch. If they haven't replied yet when this step comes due, it's skipped and the sequence moves on.
+                SMS only sends to a prospect who has actually texted your number first — it never goes out as a cold
+                first touch, and a manual status change alone can't unlock it. If they haven't opted in yet when
+                this step comes due, it's skipped and the sequence moves on.
               </p>
             )}
             {step.channel !== 'sms' && (

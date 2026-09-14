@@ -11,16 +11,20 @@ import { sendSms } from './_shared/twilioSend.js'
 // prospect got suppressed (unsubscribe link, bounce, manual add).
 //
 // SMS steps (Phase 3) are opt-in only: a step with channel 'sms' only ever
-// sends to a prospect who's already marked 'replied' -- never a cold first
-// touch on that channel. If an SMS step comes due and they haven't
-// replied yet, it's skipped (not sent, not retried) and the sequence just
-// moves on to whatever's next, rather than stalling forever waiting for a
-// reply that may never come.
+// sends to a prospect with sms_opted_in = true -- set ONLY by the real
+// inbound-SMS webhook (twilio-sms-webhook.js), never by hand. This is
+// deliberately a separate field from the general `status` column staff use
+// for pipeline tracking: replying to a cold outreach EMAIL is not consent
+// to be texted, so a staff member flipping status to "replied" for pipeline
+// reasons must never be able to unlock texting as a side effect. If an SMS
+// step comes due and they haven't actually opted in yet, it's skipped (not
+// sent, not retried) and the sequence just moves on to whatever's next,
+// rather than stalling forever waiting for a reply that may never come.
 export const handler = async () => {
   const nowIso = new Date().toISOString()
   const { data: due, error } = await admin
     .from('outreach_enrollments')
-    .select('*, prospects(email, phone, business_name, status), outreach_sequences(steps, active)')
+    .select('*, prospects(email, phone, business_name, status, sms_opted_in), outreach_sequences(steps, active)')
     .eq('status', 'active')
     .lte('next_send_at', nowIso)
   if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) }
@@ -89,9 +93,11 @@ export const handler = async () => {
     const channel = step.channel === 'sms' ? 'sms' : 'email'
 
     if (channel === 'sms') {
-      // Opt-in gate: not replied yet, or no phone on file -- skip this
-      // step and move on, don't send, don't stall.
-      if (prospect.status !== 'replied' || !prospect.phone) { await advance(enr, steps, nowIso); skipped++; continue }
+      // Opt-in gate: not opted in yet, or no phone on file -- skip this
+      // step and move on, don't send, don't stall. sms_opted_in is set
+      // only by an actual inbound text (see twilio-sms-webhook.js), never
+      // by hand, so this can't be satisfied by a staff-entered status change.
+      if (!prospect.sms_opted_in || !prospect.phone) { await advance(enr, steps, nowIso); skipped++; continue }
       if (await isPhoneSuppressed(enr.org_id, prospect.phone)) {
         await admin.from('outreach_enrollments').update({ status: 'stopped', updated_at: nowIso }).eq('id', enr.id)
         skipped++

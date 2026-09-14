@@ -34,7 +34,7 @@ export const handler = async (event) => {
       await admin.from('do_not_contact').insert({ org_id: org.id, phone: from, reason: 'sms_stop' })
     }
     const { data: matched } = await admin
-      .from('prospects').update({ status: 'do_not_contact' }).eq('org_id', org.id).eq('phone', from).select('id')
+      .from('prospects').update({ status: 'do_not_contact', sms_opted_in: false }).eq('org_id', org.id).eq('phone', from).select('id')
     const prospectIds = (matched || []).map((p) => p.id)
     if (prospectIds.length) {
       await admin.from('outreach_enrollments').update({ status: 'stopped' }).eq('org_id', org.id).in('prospect_id', prospectIds)
@@ -42,10 +42,13 @@ export const handler = async (event) => {
     return twiml()
   }
 
-  // Any other reply opens the gate: SMS sequence steps only ever fire
-  // once a prospect has replied, so this is what lets a queued SMS step
-  // actually send instead of skipping forever.
-  await admin.from('prospects').update({ status: 'replied' }).eq('org_id', org.id).eq('phone', from)
+  // Any other reply opens the gate: sms_opted_in is what an SMS sequence
+  // step actually checks, and this webhook is the ONLY place that's ever
+  // allowed to set it -- a staff member flipping the general `status`
+  // dropdown to "replied" (say, because someone answered a cold email)
+  // must never be able to unlock texting on its own. Only an actual
+  // inbound text counts as consent to be texted.
+  await admin.from('prospects').update({ status: 'replied', sms_opted_in: true }).eq('org_id', org.id).eq('phone', from)
 
   return twiml()
 }
