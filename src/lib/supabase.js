@@ -872,6 +872,60 @@ export async function fetchUnfollowedLeadAlerts() {
   return data || []
 }
 
+// Reminder Rules (System Controls) -- evaluates each of this org's own
+// enabled reminder_rules against the real data, entirely through this
+// user's normal RLS-scoped session (no service-role function needed to
+// read contacts/opportunities/invoices, only to manage the rules
+// themselves, which is cross-org and lives in admin.js). Returns only
+// rules that currently have at least one matching record, each carrying
+// its own custom message plus the records that triggered it.
+async function matchesForRule(orgId, rule) {
+  const cutoff = new Date(Date.now() - rule.threshold_days * 24 * 60 * 60 * 1000).toISOString()
+
+  if (rule.condition_type === 'lead_not_followed_up') {
+    const { data, error } = await supabase
+      .from('opportunities')
+      .select('id, title, updated_at, contacts(full_name), stages(is_won, is_lost)')
+      .eq('org_id', orgId)
+      .is('archived_at', null)
+      .lt('updated_at', cutoff)
+    if (error) throw error
+    return (data || [])
+      .filter((o) => !o.stages?.is_won && !o.stages?.is_lost)
+      .map((o) => ({ id: o.id, label: o.contacts?.full_name || o.title || 'Untitled lead' }))
+  }
+
+  if (rule.condition_type === 'invoice_unpaid') {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('id, invoice_number, bill_to_name, sent_at, status')
+      .eq('org_id', orgId)
+      .neq('status', 'paid')
+      .not('sent_at', 'is', null)
+      .lt('sent_at', cutoff)
+    if (error) throw error
+    return (data || []).map((i) => ({ id: i.id, label: i.bill_to_name || i.invoice_number || 'Invoice' }))
+  }
+
+  return []
+}
+
+export async function fetchActiveReminders() {
+  const orgId = await fetchMyOrgId()
+  const { data: rules, error } = await supabase
+    .from('reminder_rules')
+    .select('id, condition_type, threshold_days, message')
+    .eq('org_id', orgId)
+    .eq('enabled', true)
+  if (error) throw error
+  if (!rules?.length) return []
+
+  const results = await Promise.all(
+    rules.map(async (rule) => ({ rule, matches: await matchesForRule(orgId, rule) }))
+  )
+  return results.filter((r) => r.matches.length > 0)
+}
+
 // Contacts tagged as dispatchers (e.g. Warrior Auto Transport, Team Auto
 // Transport/Dispatch) -- the pool a Pipeline job can be handed off to. RLS
 // already scopes contacts to the caller's org, same as every other contacts

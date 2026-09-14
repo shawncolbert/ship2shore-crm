@@ -9,6 +9,7 @@ import { applyTheme, cacheTheme } from '../lib/theme'
 import IdleTimeout from './IdleTimeout'
 import PaymentClaimToast from './PaymentClaimToast'
 import UnfollowedLeadToast from './UnfollowedLeadToast'
+import ReminderPopupToast from './ReminderPopupToast'
 import QuickAccessBar from './QuickAccessBar'
 import AskAIWidget from './AskAIWidget'
 
@@ -47,6 +48,7 @@ const nav = [
   { to: '/landing-pages', label: 'Landing Pages', key: 'landing_pages', group: 'Marketing' },
   { to: '/funnels', label: 'Funnels', key: 'funnels', group: 'Marketing' },
   { to: '/social-posts', label: 'Social Posts', key: 'social_posts', group: 'Marketing' },
+  { to: '/outreach', label: 'Prospecting & Outreach', key: 'outreach', group: 'Marketing' },
 ]
 
 // Group display order for the sectioned-sidebar layouts (Aurora, Dispatch Suite).
@@ -377,6 +379,7 @@ export default function Layout({ children }) {
       <IdleTimeout />
       <PaymentClaimToast />
       <UnfollowedLeadToast />
+      <ReminderPopupToast />
       <AskAIWidget />
       {/* Mobile top bar */}
       <header className="flex items-center justify-between px-4 py-3 md:hidden" style={{ background: 'var(--sidebar-bg)' }}>

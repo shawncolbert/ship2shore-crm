@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchOrgs, createOrg, inviteUser, fetchOrgStats, setOrgFeature, removeMember, fetchFeaturePricing, setFeaturePrice } from '../lib/admin'
+import { fetchOrgs, createOrg, inviteUser, fetchOrgStats, setOrgFeature, removeMember, fetchFeaturePricing, setFeaturePrice, fetchReminderRules, saveReminderRule, deleteReminderRule } from '../lib/admin'
 import { fetchMyProfile } from '../lib/supabase'
 import { FEATURES, isFeatureEnabled } from '../lib/features'
 
@@ -28,6 +28,7 @@ export default function AdminOrgs() {
   const [showNewOrg, setShowNewOrg] = useState(false)
   const [inviteFor, setInviteFor] = useState(null) // org id currently showing an invite form
   const [featuresFor, setFeaturesFor] = useState(null) // org id currently showing its feature toggles
+  const [remindersFor, setRemindersFor] = useState(null) // org id currently showing its reminder rules
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['adminOrgs'] })
@@ -106,6 +107,12 @@ export default function AdminOrgs() {
                     System Controls
                   </button>
                   <button
+                    onClick={() => setRemindersFor(remindersFor === org.id ? null : org.id)}
+                    className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:border-accent"
+                  >
+                    Reminder Rules
+                  </button>
+                  <button
                     onClick={() => setInviteFor(inviteFor === org.id ? null : org.id)}
                     className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:border-accent"
                   >
@@ -116,6 +123,10 @@ export default function AdminOrgs() {
 
               {featuresFor === org.id && (
                 <SystemControlsPanel org={org} onChanged={invalidate} />
+              )}
+
+              {remindersFor === org.id && (
+                <ReminderRulesPanel org={org} />
               )}
 
             <div className="mt-3 space-y-1">
@@ -197,6 +208,7 @@ const SUGGESTED_PRICES = {
   document_requests: 12,
   gate_pass: 20,
   vessels: 57,
+  outreach: 55,
 }
 
 // Which sidebar items this org sees (one switch per feature) plus what
@@ -355,6 +367,143 @@ function SystemControlsPanel({ org, onChanged }) {
           className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const CONDITION_LABELS = {
+  lead_not_followed_up: 'Lead not touched',
+  invoice_unpaid: 'Invoice unpaid',
+}
+
+// Pop-up reminders that show inside this org's own CRM (ReminderPopupToast.jsx)
+// whenever a lead has sat untouched, or an invoice has gone unpaid, past a
+// threshold Shawn sets here -- each with his own wording for what shows up.
+// Purely additive to the org's normal workflow: nothing here changes access
+// or billing, only what nudges their own team.
+function ReminderRulesPanel({ org }) {
+  const qc = useQueryClient()
+  const { data: rules, isLoading } = useQuery({
+    queryKey: ['reminderRules', org.id], queryFn: () => fetchReminderRules(org.id),
+  })
+  const [conditionType, setConditionType] = useState('lead_not_followed_up')
+  const [thresholdDays, setThresholdDays] = useState('3')
+  const [message, setMessage] = useState('')
+  const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['reminderRules', org.id] })
+
+  const addRule = async () => {
+    const days = Number(thresholdDays)
+    if (!Number.isInteger(days) || days <= 0) return setErr('Days must be a positive whole number.')
+    if (!message.trim()) return setErr('Write the message that should show up.')
+    setErr(''); setSaving(true)
+    try {
+      await saveReminderRule({ orgId: org.id, conditionType, thresholdDays: days, message, enabled: true })
+      setMessage('')
+      setThresholdDays('3')
+      invalidate()
+    } catch (e) {
+      setErr(e.message || String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const toggleRule = async (rule) => {
+    await saveReminderRule({
+      id: rule.id, orgId: org.id, conditionType: rule.condition_type,
+      thresholdDays: rule.threshold_days, message: rule.message, enabled: !rule.enabled,
+    })
+    invalidate()
+  }
+
+  const removeRule = async (rule) => {
+    if (!window.confirm('Delete this reminder rule?')) return
+    await deleteReminderRule({ id: rule.id })
+    invalidate()
+  }
+
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-canvas p-4">
+      <p className="mb-3 text-xs text-muted">
+        <b className="text-ink">Reminder Rules</b> — pop-ups that show inside {org.name}'s own CRM when a lead
+        sits untouched or an invoice goes unpaid past a threshold you set. Write the message the way you want
+        their team to see it.
+      </p>
+      {err && <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-xs text-port">⚠️ {err}</p>}
+
+      {isLoading && <p className="text-xs text-muted">Loading…</p>}
+      {!isLoading && !rules?.length && <p className="text-xs text-muted">No reminder rules yet for this org.</p>}
+
+      <div className="space-y-2">
+        {rules?.map((rule) => (
+          <div key={rule.id} className="rounded-lg border border-line bg-surface px-3 py-2 text-xs">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <span className="font-semibold text-ink">{CONDITION_LABELS[rule.condition_type] || rule.condition_type}</span>
+                <span className="text-muted"> — {rule.threshold_days} day{rule.threshold_days === 1 ? '' : 's'}</span>
+                <p className="mt-1 text-ink">{rule.message}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => toggleRule(rule)}
+                  className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${rule.enabled ? 'bg-starboard' : 'bg-line'}`}
+                  title={rule.enabled ? 'Enabled — click to turn off' : 'Disabled — click to turn on'}
+                >
+                  <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${rule.enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeRule(rule)}
+                  title="Delete this rule"
+                  className="rounded p-1 text-muted hover:bg-red-50 hover:text-red-500"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-2 border-t border-line pt-3 sm:grid-cols-[1fr_auto]">
+        <div className="grid gap-2 sm:grid-cols-[auto_auto_1fr]">
+          <select
+            value={conditionType}
+            onChange={(e) => setConditionType(e.target.value)}
+            className="rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-accent"
+          >
+            <option value="lead_not_followed_up">Lead not touched</option>
+            <option value="invoice_unpaid">Invoice unpaid</option>
+          </select>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min="1"
+              value={thresholdDays}
+              onChange={(e) => setThresholdDays(e.target.value)}
+              className="w-16 rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-accent"
+            />
+            <span className="text-xs text-muted">days</span>
+          </div>
+          <input
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="e.g. This lead hasn't been followed up on — call them today."
+            className="rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-accent"
+          />
+        </div>
+        <button
+          onClick={addRule}
+          disabled={saving}
+          className="rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-ink hover:bg-accent-600 disabled:opacity-50"
+        >
+          {saving ? 'Adding…' : 'Add rule'}
         </button>
       </div>
     </div>
