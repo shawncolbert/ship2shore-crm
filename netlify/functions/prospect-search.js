@@ -1,4 +1,4 @@
-import { userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
+import { admin, userFromToken, orgForUser } from './_shared/supabaseAdmin.js'
 
 const json = (statusCode, body) => ({
   statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -82,6 +82,15 @@ export const handler = async (event) => {
       },
     }
   })
+
+  // Logged regardless of how many results came back -- it's the request
+  // itself Google bills for, not the result count. Never blocks the
+  // response on a logging failure.
+  try {
+    await admin.from('place_search_log').insert({ org_id: orgId, industry: industry.trim(), location: location.trim(), result_count: results.length })
+  } catch (e) {
+    console.error('❌ prospect-search: could not log usage', e)
+  }
 
   return json(200, { results })
 }

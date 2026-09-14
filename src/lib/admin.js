@@ -73,6 +73,13 @@ export async function deleteReminderRule({ id }) {
   return authedFetch('admin-delete-reminder-rule', { id })
 }
 
+// Prospecting & Outreach Phase 2 -- rough Places API cost tracking (a
+// request-count estimate, not pulled from Google's own billing) so this
+// month's usage is visible before the actual Google Cloud bill shows up.
+export async function fetchPlacesUsage() {
+  return authedFetch('admin-places-usage')
+}
+
 // Removes one person from one org -- not the org itself, and not their
 // profile/account, which may still belong to other orgs.
 export async function removeMember({ orgId, profileId }) {

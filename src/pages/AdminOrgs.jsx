@@ -1,8 +1,41 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchOrgs, createOrg, inviteUser, fetchOrgStats, setOrgFeature, removeMember, fetchFeaturePricing, setFeaturePrice, fetchReminderRules, saveReminderRule, deleteReminderRule } from '../lib/admin'
+import { fetchOrgs, createOrg, inviteUser, fetchOrgStats, setOrgFeature, removeMember, fetchFeaturePricing, setFeaturePrice, fetchReminderRules, saveReminderRule, deleteReminderRule, fetchPlacesUsage } from '../lib/admin'
 import { fetchMyProfile } from '../lib/supabase'
 import { FEATURES, isFeatureEnabled } from '../lib/features'
+
+// Prospecting & Outreach Phase 2's Places API usage -- a request-count
+// estimate against Google's per-search price, not pulled from Google's own
+// billing, so it's "roughly this much" rather than the exact invoice.
+// Platform-wide, not per-org, since Shawn covers this cost across every
+// org using the feature (see admin-places-usage.js).
+function PlacesUsageCard() {
+  const { data: usage, isLoading } = useQuery({ queryKey: ['placesUsage'], queryFn: fetchPlacesUsage })
+  if (isLoading || !usage) return null
+
+  return (
+    <div className="mb-6 rounded-lg border border-line bg-canvas p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Places API usage (Find prospects)</p>
+          <p className="mt-1 text-sm text-ink">
+            <b>{usage.monthCount}</b> searches this month &middot; ~<b>${usage.monthCostUsd.toFixed(2)}</b> estimated
+          </p>
+          <p className="text-xs text-muted">{usage.allTimeCount} all-time &middot; ~${usage.allTimeCostUsd.toFixed(2)} all-time</p>
+        </div>
+        {!!usage.byOrg?.length && (
+          <div className="text-xs text-muted">
+            {usage.byOrg.map((o) => (
+              <div key={o.orgId} className="flex justify-between gap-4">
+                <span>{o.orgName}</span><span>{o.count}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 const ROLES = [
   { value: 'owner', label: 'Owner' },
@@ -62,6 +95,8 @@ export default function AdminOrgs() {
           New organization
         </button>
       </header>
+
+      <PlacesUsageCard />
 
       {isLoading && <p className="text-sm text-muted">Loading…</p>}
       {error && <p className="text-sm text-port">Couldn't load organizations.</p>}
