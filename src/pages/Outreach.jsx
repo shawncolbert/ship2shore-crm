@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchProspects, createProspect, updateProspectStatus, deleteProspect,
+  fetchProspects, createProspect, updateProspectStatus, updateProspectEmail, deleteProspect,
   parseCsvFile, importProspects,
+  searchBusinesses, addProspectsFromSearch,
   fetchSequences, saveSequence, deleteSequence,
   enrollProspects, fetchEnrollments, stopEnrollment,
   fetchDoNotContact, addDoNotContact, removeDoNotContact,
@@ -128,9 +129,12 @@ function ProspectsTab() {
     }
   }
 
+  const [showFind, setShowFind] = useState(false)
+
   return (
     <div className="space-y-4">
       <div className={`${card} flex flex-wrap items-center gap-3`}>
+        <button onClick={() => setShowFind((s) => !s)} className={btnAccent}>🔍 Find prospects</button>
         <button onClick={() => setShowAdd((s) => !s)} className={btnGhost}>+ Add prospect</button>
         <label className={`${btnGhost} cursor-pointer`}>
           {importing ? 'Importing…' : 'Import CSV'}
@@ -138,6 +142,8 @@ function ProspectsTab() {
         </label>
         <span className="text-xs text-muted">Columns: business_name, industry, website, phone, email, city, state</span>
       </div>
+
+      {showFind && <FindProspectsPanel onAdded={invalidate} onClose={() => setShowFind(false)} />}
 
       {importSummary && (
         <p className="text-xs text-muted">
@@ -211,7 +217,7 @@ function ProspectsTab() {
                 <tr key={p.id} className="border-t border-line">
                   <td className="py-2"><input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} /></td>
                   <td className="py-2 pr-3 font-medium text-ink">{p.business_name}{p.industry ? <span className="ml-1.5 text-muted">· {p.industry}</span> : null}</td>
-                  <td className="py-2 pr-3 text-muted">{p.email || p.phone || '—'}</td>
+                  <td className="py-2 pr-3 text-muted"><EditableEmail prospect={p} onSaved={invalidate} /></td>
                   <td className="py-2 pr-3 text-muted">{[p.city, p.state].filter(Boolean).join(', ') || '—'}</td>
                   <td className="py-2 pr-3">
                     <select
@@ -234,6 +240,150 @@ function ProspectsTab() {
 
       <EnrollmentsCard />
     </div>
+  )
+}
+
+// Phase 2: real business search (Google Places), scored only on public
+// signals -- no website? weak reviews? -- never a personal profile. Places
+// never returns an email, so results show a "no email" notice; add one by
+// hand (edit isn't built yet here, so add manually via + Add prospect with
+// the same name) before enrolling someone found this way in a sequence.
+function FindProspectsPanel({ onAdded, onClose }) {
+  const [industry, setIndustry] = useState('')
+  const [location, setLocation] = useState('')
+  const [searching, setSearching] = useState(false)
+  const [results, setResults] = useState(null)
+  const [selected, setSelected] = useState(new Set())
+  const [adding, setAdding] = useState(false)
+  const [err, setErr] = useState('')
+
+  const search = async (e) => {
+    e.preventDefault()
+    setErr('')
+    if (!industry.trim() || !location.trim()) { setErr('Enter both an industry and a location.'); return }
+    setSearching(true)
+    try {
+      const r = await searchBusinesses({ industry, location })
+      setResults(r)
+      setSelected(new Set())
+    } catch (ex) {
+      setErr(ex.message || 'Search failed.')
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const toggle = (i) => setSelected((s) => {
+    const next = new Set(s)
+    next.has(i) ? next.delete(i) : next.add(i)
+    return next
+  })
+
+  const addSelected = async () => {
+    if (!selected.size) return
+    setAdding(true)
+    try {
+      await addProspectsFromSearch([...selected].map((i) => results[i]))
+      onAdded()
+      setResults(null)
+      setSelected(new Set())
+    } catch (ex) {
+      setErr(ex.message || 'Could not add these prospects.')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  return (
+    <div className={`${card} space-y-3`}>
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-ink">Find prospects by industry + location</h2>
+        <button onClick={onClose} className="text-xs text-muted hover:text-ink">✕</button>
+      </div>
+      <p className="text-xs text-muted">
+        Real businesses from Google's own listings, scored on what's public — no website, weak reviews. Google
+        never shares an email address, so add one by hand once you've found it before enrolling someone in a sequence.
+      </p>
+      {err && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-port">{err}</p>}
+      <form onSubmit={search} className="flex flex-wrap gap-2">
+        <input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="e.g. wedding photographer" className={`${field} max-w-xs`} />
+        <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Long Beach, CA" className={`${field} max-w-xs`} />
+        <button type="submit" disabled={searching} className={btnAccent}>{searching ? 'Searching…' : 'Search'}</button>
+      </form>
+
+      {results && !results.length && <p className="text-xs text-muted">No results for that search.</p>}
+      {!!results?.length && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted">{results.length} found</span>
+            <button onClick={addSelected} disabled={!selected.size || adding} className={btnAccent}>
+              {adding ? 'Adding…' : `Add selected (${selected.size})`}
+            </button>
+          </div>
+          <div className="max-h-96 space-y-1.5 overflow-y-auto">
+            {results.map((r, i) => (
+              <label key={i} className="flex items-start gap-2 rounded-lg border border-line bg-canvas/50 px-3 py-2 text-xs hover:border-accent">
+                <input type="checkbox" checked={selected.has(i)} onChange={() => toggle(i)} className="mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-ink">{r.business_name}</p>
+                  <p className="text-muted">{[r.city, r.state].filter(Boolean).join(', ') || r.address}{r.phone ? ` · ${r.phone}` : ''}</p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${r.website ? 'bg-line/60 text-muted' : 'bg-red-100 text-red-600'}`}>
+                      {r.website ? 'Has website' : 'No website'}
+                    </span>
+                    <span className="rounded-full bg-line/60 px-2 py-0.5 text-[10px] font-semibold text-muted">
+                      {r.rating ? `${r.rating}★ (${r.review_count})` : `${r.review_count} reviews`}
+                    </span>
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// A prospect added by hand or CSV usually already has an email; one found
+// via Places search never does (Google doesn't expose them) -- this is the
+// one place to fill that in, since a missing email is what blocks
+// enrolling someone in a sequence at all.
+function EditableEmail({ prospect, onSaved }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(prospect.email || '')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await updateProspectEmail(prospect.id, value)
+      onSaved()
+      setEditing(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <span className="flex items-center gap-1">
+        <input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false) }}
+          placeholder="email@example.com"
+          className="w-40 rounded border border-line bg-canvas px-1.5 py-1 text-xs text-ink outline-none focus:border-accent"
+        />
+        <button onClick={save} disabled={saving} className="text-starboard hover:underline">✓</button>
+      </span>
+    )
+  }
+  return (
+    <button onClick={() => setEditing(true)} className="hover:text-ink hover:underline">
+      {prospect.email || prospect.phone || <span className="italic text-red-500">no email — click to add</span>}
+    </button>
   )
 }
 

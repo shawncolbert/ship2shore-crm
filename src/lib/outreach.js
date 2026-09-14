@@ -34,6 +34,63 @@ export async function createProspect(fields) {
   return data
 }
 
+// Phase 2: real business search via Google Places, gated by the
+// GOOGLE_PLACES_API_KEY env var (see prospect-search.js). Returns raw
+// search results -- addProspectsFromSearch below is the separate step
+// that actually saves the ones a human picks.
+export async function searchBusinesses({ industry, location }) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/prospect-search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ industry, location }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Search failed')
+  return data.results || []
+}
+
+// Saves selected Places search results as prospects -- same dedupe-by-email
+// rule as importProspects, but most Places results have no email at all
+// (Places never exposes one), so those just get added without a dedupe key.
+export async function addProspectsFromSearch(results) {
+  const orgId = await fetchMyOrgId()
+  const emails = results.map((r) => r.email).filter(Boolean).map((e) => e.toLowerCase())
+  let seen = new Set()
+  if (emails.length) {
+    const { data: existing } = await supabase.from('prospects').select('email').eq('org_id', orgId).in('email', emails)
+    seen = new Set((existing || []).map((r) => r.email?.toLowerCase()))
+  }
+  const toInsert = results
+    .filter((r) => !r.email || !seen.has(r.email.toLowerCase()))
+    .map((r) => ({
+      org_id: orgId,
+      business_name: r.business_name,
+      website: r.website || null,
+      phone: r.phone || null,
+      email: r.email?.toLowerCase() || null,
+      city: r.city || null,
+      state: r.state || null,
+      audit_score: r.audit_score || {},
+      source: 'places_search',
+    }))
+  if (!toInsert.length) return { added: 0 }
+  const { error } = await supabase.from('prospects').insert(toInsert)
+  if (error) throw error
+  return { added: toInsert.length }
+}
+
+// Fills in the one thing Places search can never provide -- a prospect
+// found that way starts with no email and can't be enrolled in a sequence
+// until someone adds one by hand.
+export async function updateProspectEmail(id, email) {
+  const { error } = await supabase
+    .from('prospects')
+    .update({ email: email.trim().toLowerCase() || null, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function updateProspectStatus(id, status) {
   const { error } = await supabase.from('prospects').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
   if (error) throw error
