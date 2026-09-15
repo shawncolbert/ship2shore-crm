@@ -1806,7 +1806,7 @@ export async function deleteStage(id) {
 export async function fetchAutomationRules() {
   const { data, error } = await supabase
     .from('automation_rules')
-    .select('id, from_stage, to_stage, action, email_subject, email_body, enabled, position')
+    .select('id, from_stage, to_stage, action, email_subject, email_body, sms_body, enabled, position')
     .order('position', { ascending: true })
   if (error) throw error
   return data || []

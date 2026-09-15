@@ -13,6 +13,7 @@ const label = 'mb-1 block text-[10px] font-semibold uppercase tracking-wide text
 
 const ACTIONS = [
   { value: 'send_customer_email', label: 'Send customer email' },
+  { value: 'send_customer_sms', label: 'Text the customer' },
   { value: 'notify_internal', label: 'Notify me internally' },
   { value: 'send_payment_request', label: 'Send payment request' },
   { value: 'log_only', label: 'Log only' },
@@ -89,6 +90,7 @@ function RuleRow({ rule, stages, onChanged, onError }) {
         action: draft.action,
         email_subject: draft.email_subject || null,
         email_body: draft.email_body || null,
+        sms_body: draft.sms_body || null,
         enabled: draft.enabled,
       })
       setSavedAt(Date.now()); onChanged()
@@ -151,6 +153,21 @@ function RuleRow({ rule, stages, onChanged, onError }) {
             <textarea className={input + ' font-[family-name:var(--font-mono)]'} rows={6}
               value={draft.email_body || ''} onChange={(e) => set('email_body', e.target.value)}
               placeholder={'Hi {{first_name}},\n\nYour booking is scheduled for {{scheduled_at}}.'} />
+          </div>
+        </div>
+      )}
+
+      {draft.action === 'send_customer_sms' && (
+        <div className="mt-3 space-y-3 border-t border-line pt-3">
+          <p className="text-xs text-muted">
+            Only sends to a contact who has already opted in to texts (booking-form checkbox or "Ask to text" on
+            Contact Detail) — this rule is silently skipped for anyone who hasn't, never a cold text.
+          </p>
+          <div>
+            <label className={label}>Text message</label>
+            <textarea className={input + ' font-[family-name:var(--font-mono)]'} rows={4}
+              value={draft.sms_body || ''} onChange={(e) => set('sms_body', e.target.value)}
+              placeholder={'Hi {{first_name}}, your booking is scheduled for {{scheduled_at}}.'} />
           </div>
         </div>
       )}

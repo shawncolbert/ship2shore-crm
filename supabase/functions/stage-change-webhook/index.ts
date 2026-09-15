@@ -138,6 +138,36 @@ function cashAppLink(handle: string, amount: unknown): string {
   return `https://cash.app/$${encodeURIComponent(clean)}/${encodeURIComponent(Number(amount) || 0)}`;
 }
 const hasPayLink = (method: string) => method === "venmo" || method === "cashapp";
+
+// Mirrors netlify/functions/_shared/twilioSend.js's sendInboxSms -- can't
+// import across the Netlify/Deno boundary, so the same per-org lookup +
+// Twilio REST call is duplicated here. inbox_twilio_phone_number falls
+// back to twilio_phone_number (Prospecting's number) exactly like the
+// Netlify side, so this works today on the shared number.
+async function sendCustomerSmsViaTwilio(supabase: any, org_id: string, to: string, body: string): Promise<{ sent: boolean; sid?: string; reason?: string }> {
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("twilio_account_sid, twilio_auth_token, twilio_phone_number, inbox_twilio_phone_number")
+    .eq("id", org_id).maybeSingle();
+  const accountSid = org?.twilio_account_sid;
+  const authToken = org?.twilio_auth_token;
+  const from = org?.inbox_twilio_phone_number || org?.twilio_phone_number;
+  if (!accountSid || !authToken || !from) return { sent: false, reason: "Twilio not configured" };
+
+  const fullBody = `${body}\n\nReply STOP to opt out.`;
+  const params = new URLSearchParams({ To: to, From: from, Body: fullBody });
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: params,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { sent: false, reason: data.message || `HTTP ${res.status}` };
+  return { sent: true, sid: data.sid };
+}
 const escapeHtml = (s: unknown) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => (({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as Record<string, string>)[c]));
 
@@ -326,6 +356,31 @@ Deno.serve(async (req: Request) => {
             .update({ payment_requested_at: new Date().toISOString(), payment_method_requested: method })
             .eq("id", opportunity_id);
           results.push({ action: rule.action, ok: true, to: contact.email, method });
+        } else if (rule.action === "send_customer_sms") {
+          // Consent is the one thing this action can't skip -- a stage
+          // move firing without it would be an automated cold text, exactly
+          // what the whole Inbox SMS lane exists to prevent.
+          if (!contact?.phone) { results.push({ action: rule.action, ok: false, reason: "contact has no phone" }); continue; }
+          const { data: fullContact } = await supabase
+            .from("contacts").select("sms_consent").eq("id", contact_id).maybeSingle();
+          if (!fullContact?.sms_consent) { results.push({ action: rule.action, ok: false, reason: "contact hasn't opted in to texts" }); continue; }
+
+          const smsBody = render(rule.sms_body || "", vars);
+          const sms = await sendCustomerSmsViaTwilio(supabase, org_id, contact.phone, smsBody);
+          if (!sms.sent) { results.push({ action: rule.action, ok: false, reason: sms.reason }); continue; }
+
+          const { data: conv } = await supabase
+            .from("conversations")
+            .upsert({ org_id, contact_id, channel: "sms" }, { onConflict: "org_id,contact_id,channel" })
+            .select("id").single();
+          await supabase.from("messages").insert({
+            org_id, conversation_id: conv.id, direction: "outbound", channel: "sms",
+            body: smsBody, to_addr: contact.phone, provider: "twilio",
+            provider_msg_id: sms.sid, status: "sent",
+          });
+          await supabase.from("conversations")
+            .update({ last_message_at: new Date().toISOString(), unread: false }).eq("id", conv.id);
+          results.push({ action: rule.action, ok: true, to: contact.phone });
         }
 
         // Timeline entry for the audit trail.
