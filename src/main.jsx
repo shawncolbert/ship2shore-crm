@@ -55,6 +55,8 @@ const LandingPages = lazy(() => import('./pages/LandingPages'))
 const LandingPageEditor = lazy(() => import('./pages/LandingPageEditor'))
 const PublicUpload = lazy(() => import('./pages/PublicUpload'))
 const PublicBooking = lazy(() => import('./pages/PublicBooking'))
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
+const TermsOfService = lazy(() => import('./pages/TermsOfService'))
 const LandingPagePublic = lazy(() => import('./pages/LandingPagePublic'))
 const PublicBusinessCard = lazy(() => import('./pages/PublicBusinessCard'))
 const DriverTracking = lazy(() => import('./pages/DriverTracking'))
@@ -103,6 +105,9 @@ function App() {
             /book/:orgSlug is the per-org link white-label orgs get. */}
         <Route path="/book" element={<PublicBooking />} />
         <Route path="/book/:orgSlug" element={<PublicBooking />} />
+        {/* Public legal pages — no auth gate, linked from A2P 10DLC campaign registration */}
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/terms" element={<TermsOfService />} />
         {/* Public landing pages — no auth gate */}
         <Route path="/pages/:slug" element={<LandingPagePublic />} />
         {/* Public digital business card — no auth gate */}
