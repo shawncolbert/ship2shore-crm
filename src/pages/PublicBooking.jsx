@@ -164,6 +164,7 @@ export default function PublicBooking() {
   const [slots, setSlots] = useState(null)
   const [slot, setSlot] = useState('')
   const [loadingSlots, setLoadingSlots] = useState(false)
+  const [smsConsent, setSmsConsent] = useState(false)
   const [form, setForm] = useState({
     full_name: '', email: '', phone: '', notes: '', pickup_address: '', dropoff_address: '',
     vehicle_make: '', vehicle_model: '', vehicle_year: '', vehicle_vin: '',
@@ -233,6 +234,7 @@ export default function PublicBooking() {
       await callBooking('book', orgSlug, ref, {
         service_code: serviceCode, start_at: slot,
         full_name: form.full_name.trim(), email: form.email.trim(), phone: form.phone.trim() || null,
+        sms_consent: form.phone.trim() ? smsConsent : false,
         notes: form.notes.trim() || null, photo,
         pickup_address: form.pickup_address.trim() || null, dropoff_address: form.dropoff_address.trim() || null,
         distance_miles: distanceMiles != null ? Number(distanceMiles.toFixed(1)) : null,
@@ -355,6 +357,12 @@ export default function PublicBooking() {
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Phone (optional)</label>
               <input type="tel" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                 className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent" />
+              {form.phone.trim() && (
+                <label className="mt-2 flex items-start gap-2 text-xs text-muted">
+                  <input type="checkbox" checked={smsConsent} onChange={(e) => setSmsConsent(e.target.checked)} className="mt-0.5" />
+                  Text me updates about my booking.
+                </label>
+              )}
             </div>
             {showAddressFields && (
               <>

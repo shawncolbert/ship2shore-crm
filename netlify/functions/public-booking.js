@@ -292,7 +292,7 @@ async function signedPhotoUrl(path) {
 async function bookSlot(orgId, payload) {
   const {
     service_code, port, start_at, full_name, email, phone, notes, ref, photo, pickup_address, dropoff_address,
-    distance_miles, vehicle_make, vehicle_model, vehicle_year, vehicle_vin,
+    distance_miles, vehicle_make, vehicle_model, vehicle_year, vehicle_vin, sms_consent,
   } = payload
   if (!service_code || !start_at || !full_name || !email) {
     return { status: 400, body: { error: 'Missing required fields.' } }
@@ -332,14 +332,26 @@ async function bookSlot(orgId, payload) {
   const cleanPhone = phone ? String(phone).trim() : null
   const cleanDistanceMiles = Number.isFinite(Number(distance_miles)) && distance_miles != null ? Number(distance_miles) : null
 
+  // Consent is opt-in only -- checking the box gives it, leaving it
+  // unchecked never takes it away (an earlier booking's yes shouldn't be
+  // silently revoked just because a later form didn't show the checkbox
+  // again, e.g. a repeat customer whose phone is already on file).
+  const wantsSmsConsent = cleanPhone && sms_consent === true
+
   const { data: existingContact } = await admin
-    .from('contacts').select('id, phone').eq('org_id', orgId).eq('email', cleanEmail).maybeSingle()
+    .from('contacts').select('id, phone, sms_consent').eq('org_id', orgId).eq('email', cleanEmail).maybeSingle()
 
   let contactId
   if (existingContact) {
     contactId = existingContact.id
-    if (cleanPhone && !existingContact.phone) {
-      await admin.from('contacts').update({ phone: cleanPhone }).eq('id', contactId)
+    const updates = {}
+    if (cleanPhone && !existingContact.phone) updates.phone = cleanPhone
+    if (wantsSmsConsent && !existingContact.sms_consent) {
+      updates.sms_consent = true
+      updates.sms_consent_at = new Date().toISOString()
+    }
+    if (Object.keys(updates).length) {
+      await admin.from('contacts').update(updates).eq('id', contactId)
     }
   } else {
     const { data: newContact, error: contactErr } = await admin
@@ -347,6 +359,7 @@ async function bookSlot(orgId, payload) {
       .insert({
         org_id: orgId, full_name: String(full_name).trim(), email: cleanEmail, phone: cleanPhone,
         segment: 'private', source: 'in_app',
+        sms_consent: wantsSmsConsent, sms_consent_at: wantsSmsConsent ? new Date().toISOString() : null,
       })
       .select('id').single()
     if (contactErr || !newContact) return { status: 500, body: { error: 'Could not create contact.', detail: contactErr?.message } }
