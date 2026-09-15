@@ -1407,7 +1407,7 @@ export async function fetchLeadsForDispatcher(dispatcherId, days) {
 export async function fetchConversations() {
   const { data, error } = await supabase
     .from('conversations')
-    .select('id, channel, last_message_at, unread, contact_id, contacts(full_name, company, email)')
+    .select('id, channel, last_message_at, unread, contact_id, contacts(full_name, company, email, phone)')
     .order('last_message_at', { ascending: false, nullsFirst: false })
   if (error) throw error
   return data
@@ -1459,6 +1459,39 @@ export async function sendEmail({ conversationId, contactId, to, subject, body, 
     body: JSON.stringify({ conversationId, contactId, to, subject, body, html }),
   })
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Send failed')
+  return res.json()
+}
+
+// Send an SMS reply through the Netlify function (server holds Twilio
+// creds, enforces sms_consent). Same shape as sendEmail so Inbox's Thread
+// component can treat both channels the same way.
+export async function sendSms({ conversationId, contactId, to, body }) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/send-sms', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session?.access_token || ''}`,
+    },
+    body: JSON.stringify({ conversationId, contactId, to, body }),
+  })
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Send failed')
+  return res.json()
+}
+
+// One-time consent-request text for a contact with a phone number but no
+// sms_consent yet -- their reply is what actually grants consent.
+export async function askToText(contactId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/.netlify/functions/ask-to-text', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session?.access_token || ''}`,
+    },
+    body: JSON.stringify({ contactId }),
+  })
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not send')
   return res.json()
 }
 

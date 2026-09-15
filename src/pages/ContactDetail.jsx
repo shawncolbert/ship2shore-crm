@@ -5,7 +5,7 @@ import {
   fetchContact, fetchContacts, fetchMyOrgId, fetchMyOrg, fetchAttachments, uploadDeliveryOrder,
   signedAttachmentUrl, deleteAttachment, createUploadLink, updateContact,
   sendEmail, markAttachmentViewed, deleteAppointment, renameAttachment, fetchSignedUrls,
-  deleteContact, fetchCarrierQuotesForContact,
+  deleteContact, fetchCarrierQuotesForContact, askToText,
 } from '../lib/supabase'
 import { fetchConnections, addConnection, deleteConnection } from '../lib/prospecting'
 import { fetchDocumentPresets, renderPresetBody } from '../lib/documentPresets'
@@ -33,6 +33,8 @@ export default function ContactDetail() {
   const navigate = useNavigate()
   const [emailOpen, setEmailOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [askingToText, setAskingToText] = useState(false)
+  const [askToTextSent, setAskToTextSent] = useState(false)
   const { data, isLoading, error } = useQuery({ queryKey: ['contact', id], queryFn: () => fetchContact(id) })
   const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg, staleTime: 5 * 60 * 1000 })
 
@@ -45,6 +47,18 @@ export default function ContactDetail() {
     if (!confirm(`Delete this appointment (${a.title || a.service_code || 'Appointment'} — ${fmtDate(a.start_at)})? This can't be undone.`)) return
     await deleteAppointment(a.id)
     qc.invalidateQueries({ queryKey: ['contact', id] })
+  }
+
+  const handleAskToText = async () => {
+    setAskingToText(true)
+    try {
+      await askToText(contact.id)
+      setAskToTextSent(true)
+    } catch (e) {
+      alert(e.message || 'Could not send the text request.')
+    } finally {
+      setAskingToText(false)
+    }
   }
 
   const handleDeleteContact = async () => {
@@ -77,6 +91,16 @@ export default function ContactDetail() {
         <div className="flex flex-wrap items-center gap-2">
           {contact.email && (
             <button className={btn} onClick={() => setEmailOpen(true)}>✉️ Email</button>
+          )}
+          {contact.phone && !contact.sms_consent && (
+            <button className={btn} onClick={handleAskToText} disabled={askingToText || askToTextSent} title="Sends a one-time text asking permission to text this contact going forward">
+              {askingToText ? 'Sending…' : askToTextSent ? '✓ Asked' : '💬 Ask to text'}
+            </button>
+          )}
+          {contact.phone && contact.sms_consent && (
+            <span className={`${btn} cursor-default`} title={contact.sms_consent_at ? `Opted in ${new Date(contact.sms_consent_at).toLocaleDateString()}` : 'Opted in'}>
+              💬 Texting enabled
+            </span>
           )}
           {org?.calendly_url ? (
             <a className={btnAccent} href={calendlyPrefillUrl(contact, org.calendly_url)} target="_blank" rel="noreferrer">📅 Book</a>

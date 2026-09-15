@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchConversations, fetchMessages, subscribeMessages, sendEmail, deleteConversation, deleteMessage, supabase, fetchMyOrg,
+  fetchConversations, fetchMessages, subscribeMessages, sendEmail, sendSms, deleteConversation, deleteMessage, supabase, fetchMyOrg,
 } from '../lib/supabase'
 
 const fmtTime = (d) =>
@@ -199,7 +199,7 @@ export default function Inbox() {
           >
             Inbox
           </h1>
-          <p className="text-xs text-muted">Email conversations. SMS lane is dormant until a compliant business number is set up.</p>
+          <p className="text-xs text-muted">Email and text conversations with your customers, in one place.</p>
         </div>
 
         {connectNotice && (
@@ -259,7 +259,7 @@ export default function Inbox() {
               </span>
               <p className="text-sm font-medium text-ink">No conversations yet</p>
               <p className="text-sm text-muted">
-                Once Gmail sync runs, emails to and from your contacts show up here.
+                Emails sync in automatically. Texts show up once a contact has opted in and either side sends one.
               </p>
             </div>
           )}
@@ -412,18 +412,29 @@ function Thread({ conversation, orgName, onBack, onDelete }) {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  const isSms = conversation.channel === 'sms'
+
   const send = async () => {
     if (!body.trim()) return
     setSending(true); setErr('')
     try {
-      const lastSubject = messages?.findLast?.((m) => m.channel === 'email')?.subject
-      await sendEmail({
-        conversationId: conversation.id,
-        contactId: conversation.contact_id,
-        to: conversation.contacts?.email,
-        subject: lastSubject || `${orgName || 'New message'} - ${conversation.contacts?.full_name || ''}`.trim(),
-        body,
-      })
+      if (isSms) {
+        await sendSms({
+          conversationId: conversation.id,
+          contactId: conversation.contact_id,
+          to: conversation.contacts?.phone,
+          body,
+        })
+      } else {
+        const lastSubject = messages?.findLast?.((m) => m.channel === 'email')?.subject
+        await sendEmail({
+          conversationId: conversation.id,
+          contactId: conversation.contact_id,
+          to: conversation.contacts?.email,
+          subject: lastSubject || `${orgName || 'New message'} - ${conversation.contacts?.full_name || ''}`.trim(),
+          body,
+        })
+      }
       setBody('')
       qc.invalidateQueries({ queryKey: ['messages', conversation.id] })
       qc.invalidateQueries({ queryKey: ['conversations'] })
@@ -449,7 +460,7 @@ function Thread({ conversation, orgName, onBack, onDelete }) {
         <Avatar name={conversation.contacts?.full_name} email={conversation.contacts?.email} size={32} />
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium text-ink">{conversation.contacts?.full_name || conversation.contacts?.email}</div>
-          <div className="truncate text-xs text-muted">{conversation.contacts?.email}</div>
+          <div className="truncate text-xs text-muted">{isSms ? conversation.contacts?.phone : conversation.contacts?.email}</div>
         </div>
         <button
           onClick={onDelete}
@@ -498,7 +509,7 @@ function Thread({ conversation, orgName, onBack, onDelete }) {
             onChange={(e) => setBody(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send() }}
             rows={2}
-            placeholder="Write a reply…  (⌘/Ctrl + Enter to send)"
+            placeholder={isSms ? 'Write a text…  (⌘/Ctrl + Enter to send)' : 'Write a reply…  (⌘/Ctrl + Enter to send)'}
             className="flex-1 resize-none rounded-[var(--radius-card)] border border-line bg-canvas/50 px-3 py-2 text-sm text-ink outline-none transition-shadow focus:border-transparent focus:shadow-[0_0_0_2px_var(--color-accent)]"
           />
           <button
