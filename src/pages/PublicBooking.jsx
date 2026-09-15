@@ -360,7 +360,12 @@ export default function PublicBooking() {
               {form.phone.trim() && (
                 <label className="mt-2 flex items-start gap-2 text-xs text-muted">
                   <input type="checkbox" checked={smsConsent} onChange={(e) => setSmsConsent(e.target.checked)} className="mt-0.5" />
-                  Text me updates about my booking.
+                  <span>
+                    Text me updates about my booking (confirmations, scheduling changes, delivery status).
+                    Msg &amp; data rates may apply. Msg frequency varies. Reply STOP to cancel, HELP for help.
+                    View our <a href="/privacy" target="_blank" rel="noreferrer" className="underline">Privacy Policy</a> and{' '}
+                    <a href="/terms" target="_blank" rel="noreferrer" className="underline">Terms</a>.
+                  </span>
                 </label>
               )}
             </div>
