@@ -34,6 +34,10 @@ export const handler = async () => {
   const featureCache = new Map()
   const suppressedEmailCache = new Map() // orgId -> Set(email)
   const suppressedPhoneCache = new Map() // orgId -> Set(phone)
+  const limitCache = new Map() // orgId -> { email: number, sms: number }
+  const sentTodayCount = new Map() // orgId -> { email: number, sms: number }, running count for this run
+
+  const todayStartIso = new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString()
 
   const orgHasOutreach = async (orgId) => {
     if (featureCache.has(orgId)) return featureCache.get(orgId)
@@ -41,6 +45,33 @@ export const handler = async () => {
     const on = org?.enabled_features?.outreach !== false
     featureCache.set(orgId, on)
     return on
+  }
+
+  // Failsafe against a mass-enrollment (huge CSV import, "select all" +
+  // enroll) blasting hundreds of sends in one run: each org has its own
+  // daily email/SMS cap (organizations.outreach_daily_*_limit, editable in
+  // Outreach settings). Once an org hits its cap for a channel, further due
+  // sends on that channel are left alone (not marked sent, not advanced) so
+  // they're simply picked up on tomorrow's run instead of being dropped.
+  const underDailyCap = async (orgId, channel) => {
+    if (!limitCache.has(orgId)) {
+      const { data: org } = await admin.from('organizations')
+        .select('outreach_daily_email_limit, outreach_daily_sms_limit').eq('id', orgId).maybeSingle()
+      limitCache.set(orgId, {
+        email: org?.outreach_daily_email_limit ?? 150,
+        sms: org?.outreach_daily_sms_limit ?? 100,
+      })
+    }
+    if (!sentTodayCount.has(orgId)) {
+      const { count: emailCount } = await admin.from('outreach_sends')
+        .select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('channel', 'email').gte('sent_at', todayStartIso)
+      const { count: smsCount } = await admin.from('outreach_sends')
+        .select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('channel', 'sms').gte('sent_at', todayStartIso)
+      sentTodayCount.set(orgId, { email: emailCount || 0, sms: smsCount || 0 })
+    }
+    const limits = limitCache.get(orgId)
+    const counts = sentTodayCount.get(orgId)
+    return counts[channel] < limits[channel]
   }
   const isEmailSuppressed = async (orgId, email) => {
     if (!suppressedEmailCache.has(orgId)) {
@@ -92,6 +123,8 @@ export const handler = async () => {
 
     const channel = step.channel === 'sms' ? 'sms' : 'email'
 
+    if (!(await underDailyCap(enr.org_id, channel))) { skipped++; continue }
+
     if (channel === 'sms') {
       // Opt-in gate: not opted in yet, or no phone on file -- skip this
       // step and move on, don't send, don't stall. sms_opted_in is set
@@ -135,6 +168,7 @@ export const handler = async () => {
       }
 
       await advance(enr, steps, nowIso)
+      sentTodayCount.get(enr.org_id)[channel]++
       sent++
     } catch (e) {
       console.error('❌ outreach-sequence-sender: send failed for enrollment', enr.id, e)

@@ -182,7 +182,7 @@ export async function fetchMyOrg() {
   const orgId = await fetchMyOrgId()
   const { data, error } = await supabase
     .from('organizations')
-    .select('id, name, slug, logo_url, tagline, primary_color, enabled_features, theme_mode, theme_preset, calendly_url, idle_timeout_enabled, idle_timeout_minutes, auto_assign_leads, telegram_bot_username, telegram_bot_token, telegram_group_chat_id, google_review_link, twilio_account_sid, twilio_auth_token, twilio_phone_number')
+    .select('id, name, slug, logo_url, tagline, primary_color, enabled_features, theme_mode, theme_preset, calendly_url, idle_timeout_enabled, idle_timeout_minutes, auto_assign_leads, telegram_bot_username, telegram_bot_token, telegram_group_chat_id, google_review_link, twilio_account_sid, twilio_auth_token, twilio_phone_number, outreach_daily_email_limit, outreach_daily_sms_limit')
     .eq('id', orgId)
     .single()
   if (error) throw error

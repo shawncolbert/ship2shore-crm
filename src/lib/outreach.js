@@ -227,6 +227,17 @@ export async function saveTwilioCredentials(orgId, { accountSid, authToken, phon
   if (error) throw error
 }
 
+// Daily send caps -- the failsafe against a mass-enrollment blasting
+// hundreds of sends in one scheduled run. Enforced server-side in
+// outreach-sequence-sender.js; this just lets an org adjust its own limits.
+export async function saveOutreachLimits(orgId, { dailyEmailLimit, dailySmsLimit }) {
+  const { error } = await supabase.from('organizations').update({
+    outreach_daily_email_limit: Math.max(1, Number(dailyEmailLimit) || 150),
+    outreach_daily_sms_limit: Math.max(1, Number(dailySmsLimit) || 100),
+  }).eq('id', orgId)
+  if (error) throw error
+}
+
 /* ------------------------------------------------------------------ */
 /* Suppression list                                                     */
 /* ------------------------------------------------------------------ */

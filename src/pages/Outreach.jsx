@@ -7,7 +7,7 @@ import {
   fetchSequences, saveSequence, deleteSequence,
   enrollProspects, fetchEnrollments, stopEnrollment,
   fetchDoNotContact, addDoNotContact, removeDoNotContact,
-  saveTwilioCredentials,
+  saveTwilioCredentials, saveOutreachLimits,
 } from '../lib/outreach'
 import { fetchMyOrg, fetchMyOrgId } from '../lib/supabase'
 
@@ -93,8 +93,13 @@ function ProspectsTab() {
     if (!file) return
     setImporting(true); setImportSummary(null)
     try {
-      const { rows } = await parseCsvFile(file)
-      const result = await importProspects(rows)
+      const { rows: preview } = await parseCsvFile(file)
+      if (preview.length > 200 && !confirm(
+        `This file has ${preview.length} rows. Make sure this list is something you built yourself or that people ` +
+        `gave you their info directly — not a purchased or scraped contact list, which risks spam complaints and ` +
+        `getting your sending numbers/domain flagged. Click OK to import.`
+      )) { return }
+      const result = await importProspects(preview)
       setImportSummary(result)
       invalidate()
     } catch (ex) {
@@ -121,6 +126,10 @@ function ProspectsTab() {
 
   const doEnroll = async () => {
     if (!enrollSeq || !selected.size) return
+    if (selected.size > 25 && !confirm(
+      `You're about to enroll ${selected.size} prospects in this sequence at once. That's a big batch to send cold — ` +
+      `are you sure they're all real, relevant leads (not a purchased or scraped list)? Click OK to continue.`
+    )) return
     setEnrolling(true)
     try {
       await enrollProspects({ prospectIds: [...selected], sequenceId: enrollSeq })
@@ -286,6 +295,10 @@ function FindProspectsPanel({ onAdded, onClose }) {
 
   const addSelected = async () => {
     if (!selected.size) return
+    if (selected.size > 25 && !confirm(
+      `Add ${selected.size} businesses at once? These are public listings, not people who've asked to hear from ` +
+      `you — enroll them in a sequence thoughtfully rather than blasting the whole batch on day one.`
+    )) return
     setAdding(true)
     try {
       await addProspectsFromSearch([...selected].map((i) => results[i]))
@@ -441,6 +454,7 @@ function SequencesTab() {
   return (
     <div className="space-y-4">
       <TwilioSettingsCard />
+      <SendingLimitsCard />
       <button onClick={() => setEditing({ name: '', steps: [emptyStep()], active: true })} className={btnAccent}>+ New sequence</button>
       {isLoading && <p className="text-xs text-muted">Loading…</p>}
       {!isLoading && !sequences?.length && <p className="text-xs text-muted">No sequences yet.</p>}
@@ -532,6 +546,74 @@ function TwilioSettingsCard() {
           <label className="block text-xs font-medium text-muted">Twilio phone number
             <input className={field} value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="+15551234567" />
           </label>
+          <button onClick={save} disabled={!dirty || saving} className={btnAccent}>{saving ? 'Saving…' : 'Save'}</button>
+          {saved && !dirty && <span className="ml-2 text-xs text-starboard">Saved</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Failsafe against a mass-enrollment accidentally blasting hundreds of
+// sends in one scheduled run: a per-org daily cap, enforced server-side in
+// outreach-sequence-sender.js. Anything due beyond the cap for the day just
+// waits for tomorrow's run rather than being sent or dropped.
+function SendingLimitsCard() {
+  const qc = useQueryClient()
+  const { data: org } = useQuery({ queryKey: ['myOrg'], queryFn: fetchMyOrg })
+  const [emailLimit, setEmailLimit] = useState('')
+  const [smsLimit, setSmsLimit] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    setEmailLimit(String(org?.outreach_daily_email_limit ?? 150))
+    setSmsLimit(String(org?.outreach_daily_sms_limit ?? 100))
+  }, [org?.outreach_daily_email_limit, org?.outreach_daily_sms_limit])
+
+  const dirty = emailLimit !== String(org?.outreach_daily_email_limit ?? 150)
+    || smsLimit !== String(org?.outreach_daily_sms_limit ?? 100)
+
+  const save = async () => {
+    setSaving(true); setSaved(false)
+    try {
+      const orgId = await fetchMyOrgId()
+      await saveOutreachLimits(orgId, { dailyEmailLimit: emailLimit, dailySmsLimit: smsLimit })
+      qc.invalidateQueries({ queryKey: ['myOrg'] })
+      setSaved(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className={`${card} space-y-3`}>
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between text-left">
+        <div>
+          <h2 className="text-sm font-semibold text-ink">Daily sending limits</h2>
+          <p className="text-xs text-muted">
+            Up to {org?.outreach_daily_email_limit ?? 150} emails and {org?.outreach_daily_sms_limit ?? 100} texts per day — a
+            safety cap so a big import or "select all" can't blast your whole list at once.
+          </p>
+        </div>
+        <span className="text-xs text-muted">{open ? 'Hide ▲' : 'Adjust ▼'}</span>
+      </button>
+      {open && (
+        <div className="space-y-2 border-t border-line pt-3">
+          <p className="text-xs text-muted">
+            Once an org hits its limit for the day, anything else due just waits for tomorrow — nothing is skipped
+            or lost. Keep these conservative, especially on a newer number/domain; raise them gradually as your
+            sending reputation builds.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block text-xs font-medium text-muted">Emails per day
+              <input type="number" min="1" className={field} value={emailLimit} onChange={(e) => setEmailLimit(e.target.value)} />
+            </label>
+            <label className="block text-xs font-medium text-muted">Texts per day
+              <input type="number" min="1" className={field} value={smsLimit} onChange={(e) => setSmsLimit(e.target.value)} />
+            </label>
+          </div>
           <button onClick={save} disabled={!dirty || saving} className={btnAccent}>{saving ? 'Saving…' : 'Save'}</button>
           {saved && !dirty && <span className="ml-2 text-xs text-starboard">Saved</span>}
         </div>
